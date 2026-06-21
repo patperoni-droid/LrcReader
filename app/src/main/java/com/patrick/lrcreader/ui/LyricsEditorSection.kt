@@ -134,6 +134,8 @@ fun LyricsEditorSection(
     showChordPalette: Boolean = false,
     saveAndCloseRequestToken: Int = 0,
     chordPaletteStorageKey: String? = null,
+    tabletFocusEditingMode: Boolean = false,
+    onTabletFocusEditingChange: (Boolean) -> Unit = {},
     headerEndContent: @Composable RowScope.() -> Unit = {}
 ) {
     if (!isEditingLyrics) return
@@ -162,6 +164,7 @@ fun LyricsEditorSection(
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
     var lineMenuColorArgb by remember { mutableStateOf<Int?>(null) }
+    val tabletLineEditFocusActive = tabletFocusEditingMode && lineMenuIndex != null
     var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
     var previousEditingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>?>(null) }
     var showEditorHintDialog by remember { mutableStateOf(false) }
@@ -170,6 +173,12 @@ fun LyricsEditorSection(
     var showChordHelpDialog by remember { mutableStateOf(false) }
     var lastAutoSavedLyricsSignature by remember(currentTrackUri, showChordPalette) { mutableStateOf<String?>(null) }
     val displayedPalette = paletteChords
+    LaunchedEffect(tabletLineEditFocusActive) {
+        onTabletFocusEditingChange(tabletLineEditFocusActive)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onTabletFocusEditingChange(false) }
+    }
     val editorHintTitleRes = if (showChordPalette) {
         R.string.chords_editor_hint_title
     } else {
@@ -833,60 +842,62 @@ fun LyricsEditorSection(
             )
         }
 
-        // Onglets + Enregistrer
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(modifier = Modifier.weight(1f)) {
-                TabRow(
-                    selectedTabIndex = currentEditTab,
-                    containerColor = Color.Transparent,
-                    contentColor = highlightColor
-                ) {
-                    Tab(
-                        selected = currentEditTab == 0,
-                        onClick = { switchEditTab(0) },
-                        text = { Text(stringResource(mainTabLabelRes)) }
-                    )
-                    Tab(
-                        selected = currentEditTab == 1,
-                        onClick = { switchEditTab(1) },
-                        text = { Text(stringResource(R.string.lyrics_editor_tab_sync)) }
-                    )
+        if (!tabletLineEditFocusActive) {
+            // Onglets + Enregistrer
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
+                    TabRow(
+                        selectedTabIndex = currentEditTab,
+                        containerColor = Color.Transparent,
+                        contentColor = highlightColor
+                    ) {
+                        Tab(
+                            selected = currentEditTab == 0,
+                            onClick = { switchEditTab(0) },
+                            text = { Text(stringResource(mainTabLabelRes)) }
+                        )
+                        Tab(
+                            selected = currentEditTab == 1,
+                            onClick = { switchEditTab(1) },
+                            text = { Text(stringResource(R.string.lyrics_editor_tab_sync)) }
+                        )
+                    }
                 }
+
+                if (showChordPalette && currentEditTab == 1) {
+                    TextButton(
+                        onClick = { showChordHelpDialog = true }
+                    ) {
+                        Text(
+                            text = stringResource(R.string.chords_editor_help_action),
+                            color = Color(0xFF90A4AE),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                if (showChordPalette) {
+                    IconButton(
+                        onClick = { handleSave() },
+                        enabled = !isPersistBusy,
+                        modifier = Modifier.padding(start = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = stringResource(R.string.lyrics_editor_cd_save_lyrics),
+                            tint = Color(0xFF80CBC4)
+                        )
+                    }
+                }
+
+                headerEndContent()
             }
 
-            if (showChordPalette && currentEditTab == 1) {
-                TextButton(
-                    onClick = { showChordHelpDialog = true }
-                ) {
-                    Text(
-                        text = stringResource(R.string.chords_editor_help_action),
-                        color = Color(0xFF90A4AE),
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            if (showChordPalette) {
-                IconButton(
-                    onClick = { handleSave() },
-                    enabled = !isPersistBusy,
-                    modifier = Modifier.padding(start = 4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Check,
-                        contentDescription = stringResource(R.string.lyrics_editor_cd_save_lyrics),
-                        tint = Color(0xFF80CBC4)
-                    )
-                }
-            }
-
-            headerEndContent()
+            Spacer(Modifier.height(8.dp))
         }
-
-        Spacer(Modifier.height(8.dp))
 
         when (currentEditTab) {
             0 -> {
@@ -918,7 +929,7 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    if (hasTimedLines) {
+                    if (hasTimedLines && !tabletLineEditFocusActive) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.End

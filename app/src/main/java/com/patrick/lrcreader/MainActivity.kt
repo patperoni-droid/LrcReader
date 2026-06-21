@@ -1317,6 +1317,7 @@ class MainActivity : AppCompatActivity() {
                 var tabletLibrarySearchToggleSignal by remember { mutableIntStateOf(0) }
                 var tabletLibrarySearchCloseSignal by remember { mutableIntStateOf(0) }
                 var tabletLibraryOpenStorageSignal by remember { mutableIntStateOf(0) }
+                var tabletLyricsEditorFocusMode by remember { mutableStateOf(false) }
 
                 // ✅ MODE de recherche (PLAYER ou DJ)
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
@@ -4301,6 +4302,7 @@ class MainActivity : AppCompatActivity() {
                                         showLiveGainControls = true,
                                         liveGainControlsEnabled = canAdjustTabletLiveGain(),
                                         onLiveGainDelta = ::adjustTabletLiveGain,
+                                        onTabletFocusEditingChange = { tabletLyricsEditorFocusMode = it },
                                         readerHeaderEndContent = {}
                                     )
                                 }
@@ -4802,6 +4804,12 @@ class MainActivity : AppCompatActivity() {
                                 val useTabletSplitLiveLayout =
                                     splitEligibleByTabletMode
 
+                                LaunchedEffect(useTabletSplitLiveLayout, tabletRightPanel) {
+                                    if (!useTabletSplitLiveLayout || tabletRightPanel != TabletSplitRightPanel.LYRICS) {
+                                        tabletLyricsEditorFocusMode = false
+                                    }
+                                }
+
                                 LaunchedEffect(
                                     adaptiveTokens.tabletMode,
                                     adaptiveTokens.isLandscape,
@@ -4845,7 +4853,9 @@ class MainActivity : AppCompatActivity() {
                                                 when (tabletRightPanel) {
                                                     TabletSplitRightPanel.LYRICS -> {
                                                         Column(Modifier.fillMaxSize()) {
-                                                            TabletSplitTopNavigationShortcuts()
+                                                            if (!tabletLyricsEditorFocusMode) {
+                                                                TabletSplitTopNavigationShortcuts()
+                                                            }
                                                             playerPane(
                                                                 Modifier
                                                                     .weight(1f)
