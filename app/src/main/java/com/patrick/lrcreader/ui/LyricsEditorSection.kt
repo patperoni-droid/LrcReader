@@ -761,8 +761,15 @@ fun LyricsEditorSection(
         }
     }
 
+    var consumedSaveAndCloseRequestToken by remember {
+        mutableIntStateOf(saveAndCloseRequestToken)
+    }
     LaunchedEffect(saveAndCloseRequestToken) {
-        if (saveAndCloseRequestToken > 0) {
+        if (
+            saveAndCloseRequestToken > 0 &&
+            saveAndCloseRequestToken != consumedSaveAndCloseRequestToken
+        ) {
+            consumedSaveAndCloseRequestToken = saveAndCloseRequestToken
             persistCurrentDraftAndClose()
         }
     }
