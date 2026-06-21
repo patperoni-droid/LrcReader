@@ -4303,6 +4303,7 @@ class MainActivity : AppCompatActivity() {
                                         liveGainControlsEnabled = canAdjustTabletLiveGain(),
                                         onLiveGainDelta = ::adjustTabletLiveGain,
                                         onTabletFocusEditingChange = { tabletLyricsEditorFocusMode = it },
+                                        stableTabletLyricsEditorSession = true,
                                         readerHeaderEndContent = {}
                                     )
                                 }

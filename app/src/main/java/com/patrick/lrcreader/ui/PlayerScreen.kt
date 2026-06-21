@@ -177,6 +177,7 @@ fun PlayerScreen(
     liveGainControlsEnabled: Boolean = true,
     onLiveGainDelta: (Int) -> Unit = {},
     onTabletFocusEditingChange: (Boolean) -> Unit = {},
+    stableTabletLyricsEditorSession: Boolean = false,
     readerHeaderEndContent: @Composable RowScope.() -> Unit = {}
 ) {
     val isManualTransitionActive = !manualTransitionTargetTitle.isNullOrBlank()
@@ -752,15 +753,23 @@ fun PlayerScreen(
         }
     }
 
-    var rawLyricsText by remember(currentTrackUri) { mutableStateOf("") }
-    var editingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
-    var editingLinesDirty by remember(currentTrackUri) { mutableStateOf(false) }
-    var currentEditTab by rememberSaveable(currentTrackUri) { mutableStateOf(0) }
+    val lyricsEditorSessionKey = if (
+        stableTabletLyricsEditorSession &&
+        !currentSongId.isNullOrBlank()
+    ) {
+        "song:$currentSongId"
+    } else {
+        currentTrackUri
+    }
+    var rawLyricsText by remember(lyricsEditorSessionKey) { mutableStateOf("") }
+    var editingLines by remember(lyricsEditorSessionKey) { mutableStateOf<List<LrcLine>>(emptyList()) }
+    var editingLinesDirty by remember(lyricsEditorSessionKey) { mutableStateOf(false) }
+    var currentEditTab by rememberSaveable(lyricsEditorSessionKey) { mutableStateOf(0) }
     var showUnsavedLyricsDialog by remember { mutableStateOf(false) }
     var saveAndCloseRequestToken by remember { mutableIntStateOf(0) }
     val inlineLrcTimeTagRegex = remember { Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""") }
 
-    LaunchedEffect(currentTrackUri) {
+    LaunchedEffect(lyricsEditorSessionKey) {
         isEditingLyrics = false
         editingTrackUri = null
         showUnsavedLyricsDialog = false
