@@ -1316,6 +1316,7 @@ class MainActivity : AppCompatActivity() {
                 var librarySearchToggleSignal by remember { mutableIntStateOf(0) }
                 var tabletLibrarySearchToggleSignal by remember { mutableIntStateOf(0) }
                 var tabletLibrarySearchCloseSignal by remember { mutableIntStateOf(0) }
+                var tabletLibraryOpenStorageSignal by remember { mutableIntStateOf(0) }
 
                 // ✅ MODE de recherche (PLAYER ou DJ)
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
@@ -4311,6 +4312,7 @@ class MainActivity : AppCompatActivity() {
                                         workspaceVersion = setupTick,
                                         currentPlayingSongId = currentPlayingSongId,
                                         reselectRootSignal = libraryTabReselectSignal,
+                                        openStorageSignal = tabletLibraryOpenStorageSignal,
                                         searchToggleSignal = tabletLibrarySearchToggleSignal,
                                         searchCloseSignal = tabletLibrarySearchCloseSignal,
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
@@ -4779,17 +4781,9 @@ class MainActivity : AppCompatActivity() {
                                         hardwareCommand = quickHardwareCommand,
                                         hardwareReturnToCurrentToken = quickHardwareReturnToken,
                                         hardwareReturnCommand = quickHardwareReturnCommand,
-                                        onAddTrackToPlaylist = { playlistName ->
-                                            pendingPlaylistTrackTarget = playlistName
-                                            pickPlaylistTrackLauncher.launch(
-                                                arrayOf(
-                                                    "audio/*",
-                                                    "application/zip",
-                                                    "application/x-zip-compressed",
-                                                    "application/octet-stream",
-                                                    "*/*"
-                                                )
-                                            )
+                                        onAddTrackToPlaylist = {
+                                            openTabletSplitLibrary(openSearch = false)
+                                            tabletLibraryOpenStorageSignal++
                                         },
                                         searchToggleSignal = playlistSearchToggleSignal,
                                         smpSongsCache = smpSongsById,

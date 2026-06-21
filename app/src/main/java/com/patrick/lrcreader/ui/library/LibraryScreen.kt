@@ -545,6 +545,7 @@ fun LibraryScreen(
     workspaceVersion: Int = 0,
     currentPlayingSongId: String? = null,
     reselectRootSignal: Int = 0,
+    openStorageSignal: Int = 0,
     searchToggleSignal: Int = 0,
     searchCloseSignal: Int = 0,
     compactTabletLayout: Boolean = false,
@@ -3707,6 +3708,10 @@ fun LibraryScreen(
                 clearVisibleOnMiss = true
             )
         }
+    }
+    LaunchedEffect(openStorageSignal) {
+        if (openStorageSignal == 0) return@LaunchedEffect
+        openStorageView()
     }
     val isSetupDone = workspaceSnapshot.isUsable
     if (!isSetupDone) {
