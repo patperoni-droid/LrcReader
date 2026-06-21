@@ -1,18 +1,28 @@
 package com.patrick.lrcreader.ui
 
-import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isUnspecified
+import androidx.compose.ui.unit.sp
 
 @Composable
 fun SmpSearchField(
@@ -27,40 +37,59 @@ fun SmpSearchField(
     containerColor: Color = Color.White.copy(alpha = 0.07f),
     trailingIcon: @Composable (() -> Unit)? = null
 ) {
-    OutlinedTextField(
+    val shape = RoundedCornerShape(14.dp)
+    val safeTextStyle = textStyle.copy(
+        color = textColor,
+        lineHeight = if (textStyle.lineHeight.isUnspecified) 20.sp else textStyle.lineHeight
+    )
+
+    BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.defaultMinSize(minHeight = 44.dp),
+        modifier = modifier
+            .heightIn(min = 44.dp)
+            .clip(shape)
+            .background(containerColor, shape),
         singleLine = true,
-        textStyle = textStyle.copy(color = textColor),
-        placeholder = {
-            Text(
-                text = placeholder,
-                color = placeholderColor,
-                style = textStyle.copy(color = placeholderColor)
-            )
-        },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Filled.Search,
-                contentDescription = null,
-                tint = leadingIconTint
-            )
-        },
-        trailingIcon = trailingIcon,
-        shape = RoundedCornerShape(14.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = Color.Transparent,
-            unfocusedBorderColor = Color.Transparent,
-            disabledBorderColor = Color.Transparent,
-            errorBorderColor = Color.Transparent,
-            focusedContainerColor = containerColor,
-            unfocusedContainerColor = containerColor,
-            disabledContainerColor = containerColor.copy(alpha = 0.5f),
-            focusedTextColor = textColor,
-            unfocusedTextColor = textColor,
-            disabledTextColor = textColor.copy(alpha = 0.5f),
-            cursorColor = leadingIconTint
-        )
+        textStyle = safeTextStyle,
+        cursorBrush = androidx.compose.ui.graphics.SolidColor(leadingIconTint),
+        decorationBox = { innerTextField ->
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Search,
+                    contentDescription = null,
+                    tint = leadingIconTint,
+                    modifier = Modifier.size(20.dp)
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 10.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (value.isEmpty()) {
+                        Text(
+                            text = placeholder,
+                            color = placeholderColor,
+                            style = safeTextStyle.copy(color = placeholderColor)
+                        )
+                    }
+                    innerTextField()
+                }
+                if (trailingIcon != null) {
+                    Box(
+                        modifier = Modifier.width(40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        trailingIcon()
+                    }
+                }
+            }
+        }
     )
 }
