@@ -39,6 +39,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
@@ -144,6 +145,7 @@ fun LyricsEditorSection(
     BackHandler(onBack = onCloseEditor)
 
     val context = LocalContext.current
+    val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
     var isPersistBusy by remember { mutableStateOf(false) }
@@ -166,8 +168,11 @@ fun LyricsEditorSection(
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
     var lineMenuColorArgb by remember { mutableStateOf<Int?>(null) }
+    val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
     val tabletLineEditFocusActive = tabletFocusEditingMode &&
-        (lineMenuIndex != null || (currentEditTab == 0 && rawTextFieldFocused))
+        currentEditTab == 0 &&
+        rawTextFieldFocused &&
+        keyboardVisible
     var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
     var previousEditingLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>?>(null) }
     var showEditorHintDialog by remember { mutableStateOf(false) }
