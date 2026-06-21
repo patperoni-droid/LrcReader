@@ -354,7 +354,7 @@ fun QuickPlaylistsScreen(
     val groupAccentHeight = if (compactTabletLayout) 22.dp else 26.dp
     val rowMenuSize = if (compactTabletLayout) 30.dp else 32.dp
     val topSpacerHeight = if (compactTabletLayout) 6.dp else 10.dp
-    val searchFieldHeight = if (compactTabletLayout) 38.dp else 56.dp
+    val searchFieldHeight = if (compactTabletLayout) 44.dp else 56.dp
     val searchTextSize = if (compactTabletLayout) 13.sp else 16.sp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     val headerDropPaddingPx = with(LocalDensity.current) { 12.dp.toPx() }
@@ -1430,22 +1430,17 @@ fun QuickPlaylistsScreen(
             Spacer(Modifier.height(12.dp))
 
             if (isSearchVisible) {
-                OutlinedTextField(
+                SmpSearchField(
                     value = playlistSearchQuery,
                     onValueChange = { playlistSearchQuery = it },
+                    placeholder = stringResource(R.string.common_search_placeholder),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(searchFieldHeight)
                         .focusRequester(searchFocusRequester)
                         .semantics { testTag = "quick_playlists_search" },
                     textStyle = TextStyle(fontSize = searchTextSize),
-                    placeholder = {
-                        Text(
-                            text = stringResource(R.string.common_search_placeholder),
-                            fontSize = searchTextSize
-                        )
-                    },
-                    singleLine = true,
+                    leadingIconTint = Color(0xFFFFC107),
                     trailingIcon = {
                         IconButton(
                             onClick = {

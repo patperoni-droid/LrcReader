@@ -13,7 +13,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -140,12 +140,16 @@ fun SearchScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        OutlinedTextField(
+        SmpSearchField(
             value = q,
             onValueChange = { q = it },
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(stringResource(R.string.common_search_placeholder)) },
-            singleLine = true
+            placeholder = stringResource(R.string.common_search_placeholder),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            textStyle = TextStyle(fontSize = 15.sp),
+            placeholderColor = subtitleColor,
+            leadingIconTint = accent
         )
 
         Spacer(Modifier.height(10.dp))

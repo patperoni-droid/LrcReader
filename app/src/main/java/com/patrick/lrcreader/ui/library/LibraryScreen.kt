@@ -78,6 +78,7 @@ import com.patrick.lrcreader.core.config.SongIdKeyResolver
 import com.patrick.lrcreader.core.search.SearchEngine
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
+import com.patrick.lrcreader.ui.SmpSearchField
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpBatchImportProcessor
@@ -581,7 +582,7 @@ fun LibraryScreen(
     val cardBg = Color(0xFF181818)
     val rowBorder = Color(0x33FFFFFF)
     val accent = Color(0xFFFFC107)
-    val searchFieldHeight = if (compactTabletLayout) 38.dp else 56.dp
+    val searchFieldHeight = if (compactTabletLayout) 44.dp else 56.dp
     val searchTextSize = if (compactTabletLayout) 13.sp else 16.sp
     val searchSpacerHeight = if (compactTabletLayout) 4.dp else 8.dp
 
@@ -4055,22 +4056,17 @@ fun LibraryScreen(
                 } else if (isPlaylistsViewMode) {
                     Column(modifier = Modifier.fillMaxSize()) {
                         if (isSearchVisible) {
-                            OutlinedTextField(
+                            SmpSearchField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
+                                placeholder = sSearch,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(searchFieldHeight)
                                     .focusRequester(searchFocusRequester),
-                                singleLine = true,
                                 textStyle = TextStyle(fontSize = searchTextSize),
-                                placeholder = {
-                                    Text(
-                                        text = sSearch,
-                                        color = subtitleColor,
-                                        fontSize = searchTextSize
-                                    )
-                                },
+                                placeholderColor = subtitleColor,
+                                leadingIconTint = accent,
                                 trailingIcon = {
                                     if (searchQuery.isNotEmpty()) {
                                         IconButton(onClick = { searchQuery = "" }) {
@@ -4169,21 +4165,17 @@ fun LibraryScreen(
                     Column(modifier = Modifier.fillMaxSize()) {
 
                         if (isSearchVisible) {
-                            OutlinedTextField(
+                            SmpSearchField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
+                                placeholder = sSearch,
                                 modifier = Modifier
                                     .fillMaxWidth(0.85f)
                                     .height(searchFieldHeight)
                                     .focusRequester(searchFocusRequester),
                                 textStyle = TextStyle(fontSize = searchTextSize),
-                                placeholder = {
-                                    Text(
-                                        text = sSearch,
-                                        fontSize = searchTextSize
-                                    )
-                                },
-                                singleLine = true,
+                                placeholderColor = subtitleColor,
+                                leadingIconTint = accent,
                                 trailingIcon = {
                                     IconButton(
                                         onClick = {

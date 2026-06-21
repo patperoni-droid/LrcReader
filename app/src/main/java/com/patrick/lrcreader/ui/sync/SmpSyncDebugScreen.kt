@@ -86,6 +86,7 @@ import com.patrick.lrcreader.core.sync.SyncPlan
 import com.patrick.lrcreader.core.sync.SyncPlanAction
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.ui.SmpSearchField
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
@@ -1691,11 +1692,10 @@ private fun SimpleSongSelectionCard(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedTextField(
+            SmpSearchField(
                 value = searchQuery,
                 onValueChange = onSearchChange,
-                placeholder = { Text(stringResource(R.string.smp_sync_manual_search)) },
-                singleLine = true,
+                placeholder = stringResource(R.string.smp_sync_manual_search),
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp)
@@ -2436,12 +2436,13 @@ private fun ManualSelectionSyncCard(
                     fontSize = 13.sp
                 )
             } else {
-                OutlinedTextField(
+                SmpSearchField(
                     value = searchQuery,
                     onValueChange = onSearchChange,
-                    label = { Text(stringResource(R.string.smp_sync_manual_search)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = stringResource(R.string.smp_sync_manual_search),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
                 )
 
                 Row(

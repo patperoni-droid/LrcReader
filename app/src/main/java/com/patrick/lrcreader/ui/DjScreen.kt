@@ -864,35 +864,23 @@ fun DjScreen(
             // 🔍 barre de recherche
             if (isSearchOpen) {
                 Spacer(Modifier.height(6.dp))
-                OutlinedTextField(
+                SmpSearchField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
+                    placeholder = if (isGlobalAudioMode) {
+                        stringResource(R.string.dj_search_placeholder_global)
+                    } else {
+                        stringResource(R.string.dj_search_placeholder)
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 6.dp),
-                    singleLine = true,
+                        .padding(horizontal = 6.dp)
+                        .height(48.dp),
                     textStyle = LocalTextStyle.current.copy(
-                        fontSize = 14.sp,
-                        color = Color.White
+                        fontSize = 14.sp
                     ),
-                    placeholder = {
-                        Text(
-                            text = if (isGlobalAudioMode) {
-                                stringResource(R.string.dj_search_placeholder_global)
-                            } else {
-                                stringResource(R.string.dj_search_placeholder)
-                            },
-                            fontSize = 12.sp,
-                            color = Color(0x77FFFFFF)
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Search,
-                            contentDescription = null,
-                            tint = accentGo
-                        )
-                    }
+                    placeholderColor = Color(0x77FFFFFF),
+                    leadingIconTint = accentGo
                 )
             }
 
