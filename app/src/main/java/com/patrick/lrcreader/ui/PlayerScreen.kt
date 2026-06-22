@@ -524,11 +524,6 @@ fun PlayerScreen(
         }
     }
 
-    // ✅ "Niveau du titre" appliqué au moteur
-    LaunchedEffect(currentTrackUri, currentTrackGainDb) {
-        AudioEngine.applyTrackGainDb(currentTrackGainDb)
-    }
-
     LaunchedEffect(currentTrackUri) {
         MidiCueDispatcher.clearTriggeredProgramChange()
         val loadedNotes = currentTrackUri?.let { trackUriString ->
