@@ -5241,7 +5241,10 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekToMs = { ms -> exoPlayer.seekTo(ms) }
+                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        liveGainControlsEnabled = canAdjustTabletLiveGain(),
+                                        onLiveGainDelta = ::adjustTabletLiveGain,
+                                        showPhoneLiveGainDrawer = !adaptiveTokens.tabletMode
                                     )
 
                                     is BottomTab.QuickPlaylists -> QuickPlaylistsScreen(

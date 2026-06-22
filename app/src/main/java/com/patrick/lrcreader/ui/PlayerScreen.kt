@@ -32,15 +32,22 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -55,8 +62,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
@@ -177,6 +186,7 @@ fun PlayerScreen(
     showLiveGainControls: Boolean = false,
     liveGainControlsEnabled: Boolean = true,
     onLiveGainDelta: (Int) -> Unit = {},
+    showPhoneLiveGainDrawer: Boolean = false,
     onTabletFocusEditingChange: (Boolean) -> Unit = {},
     stableTabletLyricsEditorSession: Boolean = false,
     readerHeaderEndContent: @Composable RowScope.() -> Unit = {}
@@ -228,6 +238,7 @@ fun PlayerScreen(
     val sTrackMixProTitle = stringResource(R.string.track_mix_lite_dialog_title)
     val sTrackMixProMessage = stringResource(R.string.track_mix_lite_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
+    var isPhoneLiveGainDrawerOpen by rememberSaveable { mutableStateOf(false) }
     val midiCueTraceTag = "MIDI_CUE_TRACE"
 
     // 🔊 Brancher ExoPlayer au bus principal (fader LECTEUR)
@@ -3116,6 +3127,18 @@ fun PlayerScreen(
                                         .padding(end = 4.dp)
                                 )
                             }
+
+                            if (showPhoneLiveGainDrawer && liveGainControlsEnabled) {
+                                PhoneLyricsGainDrawer(
+                                    gainDb = currentTrackGainDb,
+                                    isOpen = isPhoneLiveGainDrawerOpen,
+                                    onToggleOpen = {
+                                        isPhoneLiveGainDrawerOpen = !isPhoneLiveGainDrawerOpen
+                                    },
+                                    onGainDelta = onLiveGainDelta,
+                                    modifier = Modifier.align(Alignment.CenterEnd)
+                                )
+                            }
                         }
                         TimeBar(
                             positionMs = if (isDragging) dragPosMs else positionMs,
@@ -3461,14 +3484,14 @@ private fun LyricsViewSelector(
 private fun TabletLyricsGainFader(
     gainDb: Int,
     onGainDelta: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    faderHeight: Dp = 390.dp,
+    faderWidth: Dp = 52.dp,
+    inactiveBoostZoneHeight: Dp = 58.dp
 ) {
     val minGainDb = -24
     val maxActiveGainDb = 6
     val visualMaxGainDb = 12
-    val faderHeight = 390.dp
-    val faderWidth = 52.dp
-    val inactiveBoostZoneHeight = 58.dp
     var localGainDb by rememberSaveable { mutableIntStateOf(gainDb.coerceIn(minGainDb, maxActiveGainDb)) }
     LaunchedEffect(gainDb) {
         localGainDb = gainDb.coerceIn(minGainDb, maxActiveGainDb)
@@ -3538,6 +3561,67 @@ private fun TabletLyricsGainFader(
                     shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
                 )
         )
+    }
+}
+
+@Composable
+private fun PhoneLyricsGainDrawer(
+    gainDb: Int,
+    isOpen: Boolean,
+    onToggleOpen: () -> Unit,
+    onGainDelta: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val faderHeight = 320.dp
+    val faderWidth = 52.dp
+
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .padding(end = 4.dp, bottom = 8.dp)
+            .zIndex(9999f),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.weight(1f))
+
+        Box(
+            modifier = Modifier
+                .height(faderHeight)
+                .width(faderWidth),
+            contentAlignment = Alignment.CenterEnd
+        ) {
+            androidx.compose.animation.AnimatedVisibility(
+                visible = isOpen,
+                enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
+                exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+            ) {
+                TabletLyricsGainFader(
+                    gainDb = gainDb,
+                    onGainDelta = onGainDelta,
+                    faderHeight = faderHeight,
+                    faderWidth = faderWidth,
+                    inactiveBoostZoneHeight = 48.dp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        FilledTonalIconButton(
+            onClick = onToggleOpen,
+            modifier = Modifier
+                .size(38.dp)
+                .offset(x = 6.dp)
+        ) {
+            Icon(
+                imageVector = if (isOpen) {
+                    Icons.Filled.KeyboardArrowRight
+                } else {
+                    Icons.Filled.KeyboardArrowLeft
+                },
+                contentDescription = stringResource(R.string.common_cd_toggle_slider)
+            )
+        }
     }
 }
 
