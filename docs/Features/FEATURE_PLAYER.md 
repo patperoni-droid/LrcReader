@@ -420,15 +420,29 @@ Level workflow note:
 - Track Console must reflect the level actually applied to the current playback
 - Player must apply prepared gain values only; it must not run heavy level analysis during live playback
 
-Tablet live gain controls:
+Live gain controls:
+- phone and tablet use the same business logic for per-song gain
+- both paths must use the existing `currentTrackGainDb` / `onLiveGainDelta(...)` workflow
+- both paths must persist through the existing per-song gain storage
+- neither phone nor tablet may create a separate gain model
+
+Tablet UX:
 - tablet split Player may show a permanent live gain fader in the right pane
-- the fader uses the same per-song gain setting as the existing LUFS/manual gain workflow
+- the fader remains directly visible because the playlist is already separated in the split layout
+
+Phone UX:
+- phone Player may show a right-side slide-out gain drawer
+- the drawer is closed by default
+- a small right-edge handle/arrow opens or closes it
+- closed state must keep lyrics readable and must not cover the main reading area
+- open state contains the same vertical gain fader behavior as tablet where possible
+- the drawer may remain open across song changes; the displayed value must update to the newly selected song's stored gain
+
+Common rules:
 - changing the fader stores the gain for the current song
 - changing song must refresh the fader to the new song's stored gain
-- the fader must not create a separate gain model
 - current active range is `-24 dB` to `+6 dB`
 - a visible future reserve may show `+6 dB` to `+12 dB`, but that zone is inactive until a future explicit boost feature exists
-- phone Player layout remains unchanged
 
 Known limitation:
 - crossing around `0 dB` during active playback may still cause a small audible interruption because the player may need to switch between the normal Exo path and the positive-gain path

@@ -264,14 +264,31 @@ La page d'ajustement volume sert aussi d'atelier d'uniformisation des playlists 
 - correction `+1` / `-1` audible immédiatement
 - sauvegarde automatique du gain manuel
 
-En tablette split, le lecteur paroles peut aussi afficher un fader permanent de gain live :
+Contrôles de gain live dans le lecteur paroles :
 
-- accessible directement dans le panneau droit
-- basé sur le gain manuel mémorisé par morceau
-- plage active actuelle : `-24 dB` à `+6 dB`
-- réserve visuelle future possible : `+6 dB` à `+12 dB`, inactive pour l'instant
+- même logique métier téléphone/tablette
+- même gain manuel mémorisé par morceau
+- même workflow existant `currentTrackGainDb` / `onLiveGainDelta(...)`
+- aucun modèle de gain séparé selon l'appareil
+
+Tablette split :
+
+- fader permanent visible dans le panneau droit
+- accès immédiat pendant la lecture et la consultation des paroles
+
+Téléphone :
+
+- fader dans un tiroir latéral droit
+- tiroir fermé par défaut
+- poignée/flèche discrète sur le bord droit du Player
+- fermeture/ouverture par la poignée
+- le tiroir peut rester ouvert lors des changements de morceaux
 - changement de morceau : le fader doit refléter le gain sauvegardé du nouveau morceau
-- téléphone inchangé
+
+Plage actuelle :
+
+- plage active : `-24 dB` à `+6 dB`
+- réserve visuelle future possible : `+6 dB` à `+12 dB`, inactive pour l'instant
 
 Limite connue :
 
