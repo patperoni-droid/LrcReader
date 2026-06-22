@@ -102,6 +102,9 @@ Bibliothèque tablette :
 - l'en-tête compact regroupe `Songs / Lists / Lyrics / LUFS / dossier / menu / cockpit`
 - le titre `Bibliothèque` et le sous-titre sont masqués en mode tablette compact pour gagner de la hauteur
 - les lignes de morceaux ne sont pas compactées pour l'instant à cause d'un risque runtime déjà rencontré
+- depuis la playlist gauche, l'icône dossier doit ouvrir la navigation dossiers / Bibliothèque dans le panneau droit
+- cette action ne doit pas sortir du split tablette
+- la Playlist doit rester visible à gauche pendant la navigation dossiers
 
 Recherche tablette :
 
@@ -109,6 +112,15 @@ Recherche tablette :
 - Recherche n'est pas une destination autonome
 - Bibliothèque + Recherche filtre la Bibliothèque
 - Playlist + Recherche filtre la Playlist
+
+Édition paroles tablette :
+
+- l'éditeur de paroles peut activer un mode focus uniquement en split tablette
+- quand le clavier Android est ouvert, les éléments secondaires peuvent être masqués pour récupérer de la hauteur
+- la barre SMP, les onglets `Paroles / Synchro` et `Afficher les timings` sont restaurés quand le clavier est fermé
+- l'utilisateur reste dans l'onglet Édition
+- le texte en cours ne doit pas être perdu
+- le téléphone reste inchangé
 
 ---
 
@@ -251,6 +263,21 @@ La page d'ajustement volume sert aussi d'atelier d'uniformisation des playlists 
 - accès au refrain, passage dense ou passage dansant
 - correction `+1` / `-1` audible immédiatement
 - sauvegarde automatique du gain manuel
+
+En tablette split, le lecteur paroles peut aussi afficher un fader permanent de gain live :
+
+- accessible directement dans le panneau droit
+- basé sur le gain manuel mémorisé par morceau
+- plage active actuelle : `-24 dB` à `+6 dB`
+- réserve visuelle future possible : `+6 dB` à `+12 dB`, inactive pour l'instant
+- changement de morceau : le fader doit refléter le gain sauvegardé du nouveau morceau
+- téléphone inchangé
+
+Limite connue :
+
+- le passage autour de `0 dB` pendant une lecture active peut encore provoquer une micro-coupure
+- cette limite est documentée tant qu'une solution sans craquement ni reconfiguration risquée n'est pas validée
+- priorité actuelle : démarrage fiable des morceaux, stabilité des gains négatifs et absence de craquements
 
 Règles live :
 

@@ -353,6 +353,32 @@ Rules:
 
 ⸻
 
+# TABLET LYRICS EDITING FOCUS
+
+Tablet split mode may reduce the available vertical space when the Android keyboard is open.
+
+In tablet split only, the lyrics editor may enter a focus editing mode while the user edits lyric text:
+- the Playlist remains visible on the left
+- the right pane keeps the lyrics editor active
+- the SMP top bar may be temporarily hidden
+- the `Paroles / Synchro` tabs may be temporarily hidden
+- secondary controls such as `Afficher les timings` may be temporarily hidden
+- the text editor and lyric list remain available
+
+Focus mode rules:
+- phone behavior must remain unchanged
+- the editor must stay open until the user explicitly validates, cancels, or exits editing
+- closing the Android keyboard restores the tablet editor chrome
+- restoring the chrome must not close the editor
+- user text must not be lost when focus mode changes
+- save/close request tokens must be consumed once and must not replay after recomposition
+- Synchro behavior must not regress while fixing the text edit tab
+
+Purpose:
+give the performer enough usable text-editing space on tablet without changing the stable phone editor.
+
+⸻
+
 # TIMELINE INTEGRATION
 
 The Player drives timeline execution:
@@ -393,6 +419,21 @@ Level workflow note:
 - manual gain corrections are stored per song and must be audible immediately on the active track
 - Track Console must reflect the level actually applied to the current playback
 - Player must apply prepared gain values only; it must not run heavy level analysis during live playback
+
+Tablet live gain controls:
+- tablet split Player may show a permanent live gain fader in the right pane
+- the fader uses the same per-song gain setting as the existing LUFS/manual gain workflow
+- changing the fader stores the gain for the current song
+- changing song must refresh the fader to the new song's stored gain
+- the fader must not create a separate gain model
+- current active range is `-24 dB` to `+6 dB`
+- a visible future reserve may show `+6 dB` to `+12 dB`, but that zone is inactive until a future explicit boost feature exists
+- phone Player layout remains unchanged
+
+Known limitation:
+- crossing around `0 dB` during active playback may still cause a small audible interruption because the player may need to switch between the normal Exo path and the positive-gain path
+- this limitation is accepted for now; stability of negative gain and predictable launch behavior have priority
+- any future fix must avoid crackles, avoid unstable SoundTouch changes, and must not reconfigure playback in a way that blocks live launch
 
 ⸻
 
@@ -445,6 +486,21 @@ Rules:
 
 Reason:
 Double-player transitions with pitch/speed can cause inherited playback parameters, stale gain/LUFS state, ghost players, old-track restart, or audible relaunch.
+
+## Track Gain Pipeline Guard (Live Critical)
+
+Saved per-track gain must be applied to the selected track, not to the previously playing track.
+
+Rules:
+- selecting a new track must launch it on the first tap
+- the saved gain of the new track must be loaded before playback handoff
+- if the target gain requires a positive-gain pipeline or a pipeline reset around `0 dB`, the Player must use a live-safe sequential start
+- the launch must not continue with a stale ExoPlayer instance after a pipeline rebuild
+- negative gain behavior must remain stable
+- phone behavior and tablet behavior must share the same playback safety rules
+
+Reason:
+positive gain can require a different playback pipeline than neutral or negative gain. Applying that change too late during `prepare()` can invalidate the player instance selected for launch.
 
 ⸻
 
