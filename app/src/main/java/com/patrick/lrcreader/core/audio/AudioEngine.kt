@@ -31,6 +31,8 @@ object AudioEngine {
     private const val PLAYER_SMOKE_TAG = "PLAYER_SMOKE"
     private const val PITCH_TRANSITION_DIAG_TAG = "PITCH_TRANSITION_DIAG"
     private const val AUDIO_PLAYER_DIAG_TAG = "AUDIO_PLAYER_DIAG"
+    private const val MIN_TRACK_GAIN_DB = -24
+    private const val MAX_TRACK_GAIN_DB = 6
 
     // -----------------------------
     // Time-stretch mode (sécurité)
@@ -98,6 +100,11 @@ object AudioEngine {
         val s = speed.coerceIn(0.5f, 2.0f)
         val pi = pitch.coerceIn(0.5f, 2.0f)
         val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
+        val effectiveTrackGain = pendingTrackGainDb
+            ?.let { dbToLinearGain(it.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)) }
+            ?: trackGainLinear
+        val needsPositivePcmGain = effectiveTrackGain * playerBusLevel > 1.0005f
+        if (needsPositivePcmGain) return PlayerPipeline.CUSTOM_ST_SINK
         if (isNeutral) return PlayerPipeline.PURE_EXO
         return if (timeStretchMode == TimeStretchMode.HQ) {
             PlayerPipeline.CUSTOM_ST_SINK
@@ -332,16 +339,19 @@ object AudioEngine {
     // Conversions / Applis volume
     // -----------------------------
     private fun dbToLinearGain(db: Int): Float {
-        return (10f.pow(db / 20f)).coerceIn(0f, 16f)
+        return (10f.pow(db / 20f)).coerceIn(0f, 2f)
     }
 
     private fun applyFinalVolume() {
         val p = exoPlayer ?: return
 
-        val v = (trackGainLinear * playerBusLevel * fadeMultiplier).coerceIn(0f, 16f)
-        p.volume = v
+        val finalLinear = (trackGainLinear * playerBusLevel * fadeMultiplier).coerceIn(0f, 2f)
+        val exoVolume = finalLinear.coerceAtMost(1f)
+        val pcmGain = if (finalLinear > 1f) finalLinear else 1f
+        soundTouchProcessor.setOutputGainLinear(pcmGain)
+        p.volume = exoVolume
 
-        Log.d("BUS", "applyFinalVolume exo.volume=$v track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier")
+        Log.d("BUS", "applyFinalVolume exo.volume=$exoVolume pcmGain=$pcmGain track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier")
     }
 
     fun reapplyMixNow() = applyFinalVolume()
@@ -367,19 +377,26 @@ object AudioEngine {
 
         playerBusLevel = safe
         Log.d("BUS", "setPlayerBusLevel ACTIVE=$safe (exoPlayer!=null)")
+        val desiredPipeline = resolveDesiredPlayerPipeline()
+        if (activePlayerPipeline != desiredPipeline) {
+            recreatePlayerForPipeline(desiredPipeline, reason = "playerBus:$safe") ?: return
+        }
         applyFinalVolume()
     }
 
     fun applyTrackGainDb(gainDb: Int) {
-        val p = exoPlayer
-        val safeDb = gainDb.coerceIn(-24, 24)
+        val safeDb = gainDb.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)
 
-        if (p == null) {
+        if (exoPlayer == null) {
             pendingTrackGainDb = safeDb
             return
         }
 
         trackGainLinear = dbToLinearGain(safeDb)
+        val desiredPipeline = resolveDesiredPlayerPipeline()
+        if (activePlayerPipeline != desiredPipeline) {
+            recreatePlayerForPipeline(desiredPipeline, reason = "trackGain:$safeDb") ?: return
+        }
         applyFinalVolume()
         pendingTrackGainDb = null
     }
@@ -739,7 +756,7 @@ object AudioEngine {
 
         // Appliquer mix + paramètres mémorisés
         pendingPlayerBus?.let { playerBusLevel = it.coerceIn(0f, 1f) }
-        pendingTrackGainDb?.let { trackGainLinear = dbToLinearGain(it.coerceIn(-24, 24)) }
+        pendingTrackGainDb?.let { trackGainLinear = dbToLinearGain(it.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)) }
         fadeMultiplier = 1f
         applyFinalVolume()
 

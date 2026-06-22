@@ -3601,7 +3601,7 @@ private fun RowScope.CompactLiveGainControls(
         )
     }
     Text(
-        text = stringResource(R.string.library_lufs_db_value, gainDb.coerceIn(-24, 24)),
+        text = stringResource(R.string.library_lufs_db_value, gainDb.coerceIn(-24, 6)),
         color = valueTint,
         fontSize = 11.sp,
         maxLines = 1

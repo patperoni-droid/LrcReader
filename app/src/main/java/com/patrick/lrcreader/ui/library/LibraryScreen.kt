@@ -152,10 +152,10 @@ private object LibraryHelpPrefs {
 }
 private const val LIBRARY_LUFS_TARGET = -14f
 private const val LIBRARY_LUFS_MIN_DB = -24
-private const val LIBRARY_LUFS_MAX_DB = 24
+private const val LIBRARY_LUFS_MAX_DB = 6
 private const val LIBRARY_LUFS_MANUAL_MIN_DB = -24
-private const val LIBRARY_LUFS_MANUAL_MAX_DB = 24
-private const val LIBRARY_LUFS_WARNING_DB = 9
+private const val LIBRARY_LUFS_MANUAL_MAX_DB = 6
+private const val LIBRARY_LUFS_WARNING_DB = 1
 
 private data class LibraryLufsPreparation(
     val measuredLufs: Float? = null,

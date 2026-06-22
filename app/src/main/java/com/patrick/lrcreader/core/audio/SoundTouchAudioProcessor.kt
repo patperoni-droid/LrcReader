@@ -10,6 +10,7 @@ import java.nio.ByteOrder
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.ln
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /**
@@ -35,6 +36,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
     @Volatile private var pendingTempoRatio = 1f
     @Volatile private var pendingPitchSemi = 0f
     @Volatile private var tempoPitchDirty = true
+    @Volatile private var outputGainLinear = 1f
 
     private var configured = false
     private var inputFormat: AudioProcessor.AudioFormat = AudioProcessor.AudioFormat.NOT_SET
@@ -120,6 +122,10 @@ class SoundTouchAudioProcessor : AudioProcessor {
         setTempoRatioAndPitchSemi(speed, semi)
     }
 
+    fun setOutputGainLinear(value: Float) {
+        outputGainLinear = value.coerceIn(1f, 2f)
+    }
+
     // ------------------------------------------------------------
     // AudioProcessor (Media3)
     // ------------------------------------------------------------
@@ -167,7 +173,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
 
         // PASSTHROUGH si pas en HQ
         if (!enabled || h == 0L || !initializedNative || inputFormat == AudioProcessor.AudioFormat.NOT_SET) {
-            outputBuffer = inputBuffer.slice()
+            outputBuffer = applyOutputGain(inputBuffer)
             inputBuffer.position(inputBuffer.limit())
             return
         }
@@ -191,13 +197,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
             return
         }
 
-        outputBuffer = ByteBuffer
-            .allocateDirect(outBytes.size)
-            .order(ByteOrder.nativeOrder())
-            .apply {
-                put(outBytes)
-                flip()
-            }
+        outputBuffer = applyOutputGain(outBytes)
     }
 
     override fun queueEndOfStream() {
@@ -210,12 +210,7 @@ class SoundTouchAudioProcessor : AudioProcessor {
         outputBuffer = if (outBytes.isEmpty()) {
             EMPTY_BUFFER
         } else {
-            ByteBuffer.allocateDirect(outBytes.size)
-                .order(ByteOrder.nativeOrder())
-                .apply {
-                    put(outBytes)
-                    flip()
-                }
+            applyOutputGain(outBytes)
         }
     }
 
@@ -301,6 +296,57 @@ class SoundTouchAudioProcessor : AudioProcessor {
     private fun publishPcmMeter(buffer: ByteBuffer) {
         val levels = computePcm16Levels(buffer) ?: return
         MeterManager.onMasterPcm(rms = levels.rms, peak = levels.peak)
+    }
+
+    private fun applyOutputGain(inputBuffer: ByteBuffer): ByteBuffer {
+        val gain = outputGainLinear
+        if (abs(gain - 1f) < 0.0005f) {
+            return inputBuffer.slice()
+        }
+
+        val source = inputBuffer.slice().order(ByteOrder.LITTLE_ENDIAN)
+        val output = ByteBuffer
+            .allocateDirect(source.remaining())
+            .order(ByteOrder.LITTLE_ENDIAN)
+        while (source.remaining() >= 2) {
+            val sample = source.short.toInt()
+            val amplified = (sample * gain)
+                .roundToInt()
+                .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            output.putShort(amplified.toShort())
+        }
+        while (source.hasRemaining()) {
+            output.put(source.get())
+        }
+        output.flip()
+        return output
+    }
+
+    private fun applyOutputGain(bytes: ByteArray): ByteBuffer {
+        val gain = outputGainLinear
+        val output = ByteBuffer
+            .allocateDirect(bytes.size)
+            .order(ByteOrder.LITTLE_ENDIAN)
+        var index = 0
+        while (index + 1 < bytes.size) {
+            val lo = bytes[index].toInt() and 0xFF
+            val hi = bytes[index + 1].toInt()
+            val sample = ((hi shl 8) or lo).toShort().toInt()
+            val amplified = if (abs(gain - 1f) < 0.0005f) {
+                sample
+            } else {
+                (sample * gain)
+                    .roundToInt()
+                    .coerceIn(Short.MIN_VALUE.toInt(), Short.MAX_VALUE.toInt())
+            }
+            output.putShort(amplified.toShort())
+            index += 2
+        }
+        if (index < bytes.size) {
+            output.put(bytes[index])
+        }
+        output.flip()
+        return output
     }
 
     private fun computePcm16Levels(buffer: ByteBuffer): Levels? {

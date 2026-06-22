@@ -106,7 +106,7 @@ private const val ZOOM_MIN = 1f
 private const val ZOOM_MAX = 120f
 private const val MATCH_VOLUME_TARGET_LUFS = -14f
 private const val MATCH_VOLUME_MIN_DB = -24
-private const val MATCH_VOLUME_MAX_DB = 24
+private const val MATCH_VOLUME_MAX_DB = 6
 private const val WAVEFORM_GESTURE_TAG = "SMP_WAVEFORM_GESTURE"
 
 private enum class DragTarget {

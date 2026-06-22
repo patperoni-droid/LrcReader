@@ -13,7 +13,7 @@ object TrackVolumePrefs {
     private const val TRACKS_DIR_NAME = "tracks"
     private const val SMP_CONFIG_FILE_NAME = "config.json"
     private const val MIN_DB = -24
-    private const val MAX_DB = 24
+    private const val MAX_DB = 6
 
     fun saveDb(
         context: Context,
