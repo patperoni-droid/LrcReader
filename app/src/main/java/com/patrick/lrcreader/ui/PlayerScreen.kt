@@ -118,6 +118,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.pow
 
 private const val DEFAULT_TIMELINE_LIGHT_CUE_ARGB = 0xFFFF0000L
@@ -3110,6 +3111,16 @@ fun PlayerScreen(
                                         .padding(end = 14.dp, bottom = 14.dp)
                                 )
                             }
+
+                            if (showLiveGainControls && liveGainControlsEnabled) {
+                                TabletLyricsGainFader(
+                                    gainDb = currentTrackGainDb,
+                                    onGainDelta = onLiveGainDelta,
+                                    modifier = Modifier
+                                        .align(Alignment.CenterEnd)
+                                        .padding(end = 4.dp)
+                                )
+                            }
                         }
                         TimeBar(
                             positionMs = if (isDragging) dragPosMs else positionMs,
@@ -3449,6 +3460,62 @@ private fun LyricsViewSelector(
             )
         }
     }
+}
+
+@Composable
+private fun TabletLyricsGainFader(
+    gainDb: Int,
+    onGainDelta: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var localGainDb by rememberSaveable { mutableIntStateOf(gainDb.coerceIn(-24, 6)) }
+    LaunchedEffect(gainDb) {
+        localGainDb = gainDb.coerceIn(-24, 6)
+    }
+
+    VerticalTransparentSpeedSlider(
+        value = localGainDb.toFloat(),
+        onValueChange = { rawValue ->
+            val targetDb = rawValue.roundToInt().coerceIn(-24, 6)
+            if (targetDb != localGainDb) {
+                val delta = targetDb - localGainDb
+                localGainDb = targetDb
+                onGainDelta(delta)
+            }
+        },
+        valueRange = -24f..6f,
+        modifier = modifier,
+        height = 260.dp,
+        width = 52.dp,
+        sliderOffsetX = 0.dp,
+        contentOffsetX = 0.dp,
+        decorOffsetX = 0.dp,
+        panelTintAlpha = 0.34f,
+        overhangRight = 0.dp,
+        decorOverhangLeft = 0.dp,
+        decorOverhangRight = 0.dp,
+        corner = 12.dp,
+        trackThickness = 4.dp,
+        trackVerticalPadding = 18.dp,
+        trackColor = Color.White.copy(alpha = 0.22f),
+        filledTrackColor = Color(0xFFFFC107).copy(alpha = 0.76f),
+        centeredFilledTrack = true,
+        thumbHeight = 28.dp,
+        thumbWidth = 50.dp,
+        thumbCorner = 8.dp,
+        thumbColor = Color.White.copy(alpha = 0.94f),
+        thumbShadowElevation = 4.dp,
+        thumbContent = {
+            Text(
+                text = stringResource(R.string.library_lufs_db_value, localGainDb),
+                color = Color(0xFF111111),
+                fontSize = 10.sp,
+                maxLines = 1
+            )
+        },
+        borderThickness = 1.dp,
+        borderAlpha = 0.36f
+    )
 }
 
 @Composable
