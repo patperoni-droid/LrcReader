@@ -95,12 +95,15 @@ object AudioEngine {
 
     private fun resolveDesiredPlayerPipeline(
         speed: Float = currentSpeed,
-        pitch: Float = currentPitchRatio
+        pitch: Float = currentPitchRatio,
+        trackGainDbOverride: Int? = null
     ): PlayerPipeline {
         val s = speed.coerceIn(0.5f, 2.0f)
         val pi = pitch.coerceIn(0.5f, 2.0f)
         val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
-        val effectiveTrackGain = pendingTrackGainDb
+        val effectiveTrackGain = trackGainDbOverride
+            ?.let { dbToLinearGain(it.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)) }
+            ?: pendingTrackGainDb
             ?.let { dbToLinearGain(it.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)) }
             ?: trackGainLinear
         val needsPositivePcmGain = effectiveTrackGain * playerBusLevel > 1.0005f
@@ -399,6 +402,25 @@ object AudioEngine {
         }
         applyFinalVolume()
         pendingTrackGainDb = null
+    }
+
+    fun rememberTrackGainForNextStart(gainDb: Int) {
+        pendingTrackGainDb = gainDb.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)
+    }
+
+    fun shouldUseSequentialStartForTrackGainDb(
+        gainDb: Int,
+        speed: Float,
+        pitch: Float
+    ): Boolean {
+        val safeDb = gainDb.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)
+        val desiredPipeline = resolveDesiredPlayerPipeline(
+            speed = speed,
+            pitch = pitch,
+            trackGainDbOverride = safeDb
+        )
+        return desiredPipeline == PlayerPipeline.CUSTOM_ST_SINK ||
+            (exoPlayer != null && activePlayerPipeline != desiredPipeline)
     }
 
     // -----------------------------

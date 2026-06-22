@@ -2309,6 +2309,12 @@ class MainActivity : AppCompatActivity() {
                     currentTrackTempo = loadedTrackMixSettings.tempo
                     currentTrackPitchSemi = loadedTrackMixSettings.pitchSemi
                     val loadedPitchFactor = 2f.pow(loadedTrackMixSettings.pitchSemi.coerceIn(-6, 6) / 12f)
+                    AudioEngine.rememberTrackGainForNextStart(loadedTrackMixSettings.gainDb)
+                    val forceSequentialForTrackGainPipeline = AudioEngine.shouldUseSequentialStartForTrackGainDb(
+                        gainDb = loadedTrackMixSettings.gainDb,
+                        speed = loadedTrackMixSettings.tempo,
+                        pitch = loadedPitchFactor
+                    )
                     Log.d(
                         "PITCH_TRANSITION_DIAG",
                         "SONG_START_REQUEST songId=$uriString tempo=${loadedTrackMixSettings.tempo} pitchSemi=${loadedTrackMixSettings.pitchSemi} pitch=$loadedPitchFactor"
@@ -2327,17 +2333,19 @@ class MainActivity : AppCompatActivity() {
                         nextSpeed = loadedTrackMixSettings.tempo,
                         nextPitchSemi = loadedTrackMixSettings.pitchSemi
                     )
+                    val forceSequentialPlayback = forceSequentialForPitchSpeed || forceSequentialForTrackGainPipeline
                     val playerIsCurrentlyPlaying = runCatching { exoPlayer.isPlaying }.getOrDefault(false)
                     Log.d(
                         "PITCH_TRANSITION_GUARD",
-                        "TRANSITION_MODE=${if (forceSequentialForPitchSpeed) "SEQUENTIAL_NO_CROSSFADE" else "CROSSFADE_ALLOWED"} " +
+                        "TRANSITION_MODE=${if (forceSequentialPlayback) "SEQUENTIAL_NO_CROSSFADE" else "CROSSFADE_ALLOWED"} " +
                             "currentSpeed=$previousTrackTempo currentPitch=$previousTrackPitchSemi " +
                             "nextSpeed=${loadedTrackMixSettings.tempo} nextPitch=${loadedTrackMixSettings.pitchSemi} " +
+                            "nextGainDb=${loadedTrackMixSettings.gainDb} forceGainPipeline=$forceSequentialForTrackGainPipeline " +
                             "isPlaying=$playerIsCurrentlyPlaying currentSongId=$currentPlayingUri nextSongId=$uriString " +
                             "currentUri=$currentPlayingUri nextUri=$uriString"
                     )
                     val shouldUseImmediateTransition =
-                        !forceSequentialForPitchSpeed &&
+                        !forceSequentialPlayback &&
                             playerIsCurrentlyPlaying &&
                             !currentPlayingUri.isNullOrBlank() &&
                             currentPlayingUri != uriString
@@ -2358,7 +2366,7 @@ class MainActivity : AppCompatActivity() {
                         currentPlayingPlaylist = playlistName
                         playbackPlayer = promotedPlayer
                         playbackLyricsListener = AudioEngine.getLyricsListener()
-                    } else if (forceSequentialForPitchSpeed) {
+                    } else if (forceSequentialPlayback) {
                         playbackPlayer = AudioEngine.prepareMainPlayerForSequentialStart(
                             context = ctx,
                             speed = loadedTrackMixSettings.tempo,
@@ -2542,7 +2550,7 @@ class MainActivity : AppCompatActivity() {
                             onNaturalEnd = {
                                 onEnded.value.invoke()
                             },
-                            sequentialNoCrossfade = forceSequentialForPitchSpeed,
+                            sequentialNoCrossfade = forceSequentialPlayback,
                             beforePrepare = { player, playableUri ->
                                 AudioEngine.applyTrackGainDb(currentTrackGainDb)
                                 Log.d(
