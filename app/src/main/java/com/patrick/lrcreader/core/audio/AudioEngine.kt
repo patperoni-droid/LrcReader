@@ -93,24 +93,14 @@ object AudioEngine {
 
     fun getTimeStretchMode(): TimeStretchMode = timeStretchMode
 
+    @Suppress("UNUSED_PARAMETER")
     private fun resolveDesiredPlayerPipeline(
         speed: Float = currentSpeed,
         pitch: Float = currentPitchRatio
     ): PlayerPipeline {
-        val s = speed.coerceIn(0.5f, 2.0f)
-        val pi = pitch.coerceIn(0.5f, 2.0f)
-        val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
-        val effectiveTrackGain = pendingTrackGainDb
-            ?.let { dbToLinearGain(it.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)) }
-            ?: trackGainLinear
-        val needsPositivePcmGain = effectiveTrackGain * playerBusLevel > 1.0005f
-        if (needsPositivePcmGain) return PlayerPipeline.CUSTOM_ST_SINK
-        if (isNeutral) return PlayerPipeline.PURE_EXO
-        return if (timeStretchMode == TimeStretchMode.HQ) {
-            PlayerPipeline.CUSTOM_ST_SINK
-        } else {
-            PlayerPipeline.PURE_EXO
-        }
+        // Keep one stable player audio path for the whole track. Switching between
+        // pure ExoPlayer and the custom sink while crossing 0 dB causes an audible cut.
+        return PlayerPipeline.CUSTOM_ST_SINK
     }
 
     private fun publishPlayerEpoch() {
