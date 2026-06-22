@@ -3468,54 +3468,82 @@ private fun TabletLyricsGainFader(
     onGainDelta: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var localGainDb by rememberSaveable { mutableIntStateOf(gainDb.coerceIn(-24, 6)) }
+    val minGainDb = -24
+    val maxActiveGainDb = 6
+    val visualMaxGainDb = 12
+    val faderHeight = 390.dp
+    val faderWidth = 52.dp
+    val inactiveBoostZoneHeight = 58.dp
+    var localGainDb by rememberSaveable { mutableIntStateOf(gainDb.coerceIn(minGainDb, maxActiveGainDb)) }
     LaunchedEffect(gainDb) {
-        localGainDb = gainDb.coerceIn(-24, 6)
+        localGainDb = gainDb.coerceIn(minGainDb, maxActiveGainDb)
     }
 
-    VerticalTransparentSpeedSlider(
-        value = localGainDb.toFloat(),
-        onValueChange = { rawValue ->
-            val targetDb = rawValue.roundToInt().coerceIn(-24, 6)
-            if (targetDb != localGainDb) {
-                val delta = targetDb - localGainDb
-                localGainDb = targetDb
-                onGainDelta(delta)
-            }
-        },
-        valueRange = -24f..6f,
-        modifier = modifier,
-        height = 260.dp,
-        width = 52.dp,
-        sliderOffsetX = 0.dp,
-        contentOffsetX = 0.dp,
-        decorOffsetX = 0.dp,
-        panelTintAlpha = 0.34f,
-        overhangRight = 0.dp,
-        decorOverhangLeft = 0.dp,
-        decorOverhangRight = 0.dp,
-        corner = 12.dp,
-        trackThickness = 4.dp,
-        trackVerticalPadding = 18.dp,
-        trackColor = Color.White.copy(alpha = 0.22f),
-        filledTrackColor = Color(0xFFFFC107).copy(alpha = 0.76f),
-        centeredFilledTrack = true,
-        thumbHeight = 28.dp,
-        thumbWidth = 50.dp,
-        thumbCorner = 8.dp,
-        thumbColor = Color.White.copy(alpha = 0.94f),
-        thumbShadowElevation = 4.dp,
-        thumbContent = {
-            Text(
-                text = stringResource(R.string.library_lufs_db_value, localGainDb),
-                color = Color(0xFF111111),
-                fontSize = 10.sp,
-                maxLines = 1
-            )
-        },
-        borderThickness = 1.dp,
-        borderAlpha = 0.36f
-    )
+    Box(
+        modifier = modifier
+            .width(faderWidth)
+            .height(faderHeight)
+    ) {
+        VerticalTransparentSpeedSlider(
+            value = localGainDb.toFloat(),
+            onValueChange = { rawValue ->
+                val targetDb = rawValue.roundToInt().coerceIn(minGainDb, maxActiveGainDb)
+                if (targetDb != localGainDb) {
+                    val delta = targetDb - localGainDb
+                    localGainDb = targetDb
+                    onGainDelta(delta)
+                }
+            },
+            valueRange = minGainDb.toFloat()..visualMaxGainDb.toFloat(),
+            modifier = Modifier.align(Alignment.Center),
+            height = faderHeight,
+            width = faderWidth,
+            sliderOffsetX = 0.dp,
+            contentOffsetX = 0.dp,
+            decorOffsetX = 0.dp,
+            panelTintAlpha = 0.34f,
+            overhangRight = 0.dp,
+            decorOverhangLeft = 0.dp,
+            decorOverhangRight = 0.dp,
+            corner = 12.dp,
+            trackThickness = 4.dp,
+            trackVerticalPadding = 18.dp,
+            trackColor = Color.White.copy(alpha = 0.22f),
+            filledTrackColor = Color(0xFFFFC107).copy(alpha = 0.76f),
+            centeredFilledTrack = true,
+            thumbHeight = 28.dp,
+            thumbWidth = 50.dp,
+            thumbCorner = 8.dp,
+            thumbColor = Color.White.copy(alpha = 0.94f),
+            thumbShadowElevation = 4.dp,
+            thumbContent = {
+                Text(
+                    text = stringResource(R.string.library_lufs_db_value, localGainDb),
+                    color = Color(0xFF111111),
+                    fontSize = 10.sp,
+                    maxLines = 1
+                )
+            },
+            borderThickness = 1.dp,
+            borderAlpha = 0.36f
+        )
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .width(faderWidth)
+                .height(inactiveBoostZoneHeight)
+                .background(
+                    Color(0xFF90A4AE).copy(alpha = 0.30f),
+                    RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
+                )
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.18f),
+                    shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
+                )
+        )
+    }
 }
 
 @Composable
