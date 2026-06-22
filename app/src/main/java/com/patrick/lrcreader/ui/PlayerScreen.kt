@@ -2862,7 +2862,7 @@ fun PlayerScreen(
                                 currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
                             },
                             showAutoReturnButton = showAutoReturnButton,
-                            showLiveGainControls = showLiveGainControls,
+                            showLiveGainControls = showLiveGainControls && !compactTabletLayout,
                             liveGainDb = currentTrackGainDb,
                             liveGainEnabled = liveGainControlsEnabled,
                             onLiveGainDelta = onLiveGainDelta,
