@@ -42,6 +42,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -60,6 +62,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -1738,6 +1741,25 @@ fun PlayerScreen(
         }
     }
 
+    fun selectLyricsViewMode(mode: LyricsViewMode) {
+        if (mode == LyricsViewMode.CHORDS && EditionConfig.isLite) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.timeline_pro_only),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        selectedViewMode = mode
+        currentTrackUri?.let { trackUri ->
+            TrackLyricsViewPrefs.save(context, trackUri, mode)
+        }
+        recomputeCurrentIndexForActiveView()
+        if (mode == LyricsViewMode.LYRICS) {
+            centerCurrentLineLazy(listState)
+        }
+    }
+
     fun seekAndCenter(targetMs: Int, targetIndex: Int) {
         PlaybackCoordinator.onPlayerStart()
 
@@ -2862,6 +2884,17 @@ fun PlayerScreen(
                                 currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
                             },
                             showAutoReturnButton = showAutoReturnButton,
+                            lyricsModeControls = {
+                                if (compactTabletLayout && showViewToggle) {
+                                    CompactLyricsModeControls(
+                                        selectedMode = selectedViewMode,
+                                        hasLyrics = true,
+                                        hasChords = true,
+                                        chordsBlocked = EditionConfig.isLite,
+                                        onSelectMode = ::selectLyricsViewMode
+                                    )
+                                }
+                            },
                             showLiveGainControls = showLiveGainControls && !compactTabletLayout,
                             liveGainDb = currentTrackGainDb,
                             liveGainEnabled = liveGainControlsEnabled,
@@ -2893,64 +2926,45 @@ fun PlayerScreen(
                             )
                         }
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(viewSelectorHeight),
-                            contentAlignment = Alignment.TopCenter
-                        ) {
-                            if (showViewToggle) {
-                                LyricsViewSelector(
-                                    selectedMode = selectedViewMode,
-                                    hasLyrics = currentTrackUri != null,
-                                    hasChords = if (EditionConfig.isLite) {
-                                        currentTrackUri != null
-                                    } else {
-                                        currentTrackUri != null
-                                    },
-                                    chordsBlocked = EditionConfig.isLite,
-                                    onSelectMode = { mode ->
-                                        if (mode == LyricsViewMode.CHORDS && EditionConfig.isLite) {
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.timeline_pro_only),
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                            return@LyricsViewSelector
-                                        }
-                                        selectedViewMode = mode
-                                        currentTrackUri?.let { trackUri ->
-                                            TrackLyricsViewPrefs.save(context, trackUri, mode)
-                                        }
-                                        recomputeCurrentIndexForActiveView()
-                                        if (mode == LyricsViewMode.LYRICS) {
-                                            centerCurrentLineLazy(listState)
-                                        }
-                                    }
-                                )
-                            }
-
-                            midiMonitorEvent?.let { sent ->
-                                Box(
-                                    modifier = Modifier
-                                        .align(Alignment.TopEnd)
-                                        .padding(top = 6.dp, end = 10.dp)
-                                        .background(
-                                            Color.White,
-                                            RectangleShape
-                                        )
-                                        .border(
-                                            1.dp,
-                                            Color.Black.copy(alpha = 0.12f),
-                                            RectangleShape
-                                        )
-                                        .padding(horizontal = 10.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        text = sent.program.toString(),
-                                        color = Color.Black,
-                                        fontSize = 12.sp
+                        if (!compactTabletLayout) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(viewSelectorHeight),
+                                contentAlignment = Alignment.TopCenter
+                            ) {
+                                if (showViewToggle) {
+                                    LyricsViewSelector(
+                                        selectedMode = selectedViewMode,
+                                        hasLyrics = true,
+                                        hasChords = true,
+                                        chordsBlocked = EditionConfig.isLite,
+                                        onSelectMode = ::selectLyricsViewMode
                                     )
+                                }
+
+                                midiMonitorEvent?.let { sent ->
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .padding(top = 6.dp, end = 10.dp)
+                                            .background(
+                                                Color.White,
+                                                RectangleShape
+                                            )
+                                            .border(
+                                                1.dp,
+                                                Color.Black.copy(alpha = 0.12f),
+                                                RectangleShape
+                                            )
+                                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            text = sent.program.toString(),
+                                            color = Color.Black,
+                                            fontSize = 12.sp
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -3481,6 +3495,70 @@ private fun LyricsViewSelector(
 }
 
 @Composable
+private fun RowScope.CompactLyricsModeControls(
+    selectedMode: LyricsViewMode,
+    hasLyrics: Boolean,
+    hasChords: Boolean,
+    chordsBlocked: Boolean,
+    onSelectMode: (LyricsViewMode) -> Unit
+) {
+    if (hasLyrics) {
+        CompactLyricsModeButton(
+            selected = selectedMode == LyricsViewMode.LYRICS,
+            icon = Icons.Filled.Mic,
+            contentDescription = stringResource(R.string.player_view_lyrics),
+            onClick = { onSelectMode(LyricsViewMode.LYRICS) }
+        )
+    }
+    if (hasChords) {
+        CompactLyricsModeButton(
+            selected = selectedMode == LyricsViewMode.CHORDS,
+            enabled = !chordsBlocked,
+            icon = Icons.Filled.MusicNote,
+            contentDescription = stringResource(R.string.player_view_chords),
+            onClick = { onSelectMode(LyricsViewMode.CHORDS) }
+        )
+    }
+}
+
+@Composable
+private fun CompactLyricsModeButton(
+    selected: Boolean,
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(9.dp)
+    val activeColor = Color(0xFFFFC107)
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .size(34.dp)
+            .background(
+                color = if (selected) activeColor.copy(alpha = 0.20f) else Color.Transparent,
+                shape = shape
+            )
+            .border(
+                width = 1.dp,
+                color = if (selected) activeColor.copy(alpha = 0.78f) else Color.White.copy(alpha = 0.18f),
+                shape = shape
+            )
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = when {
+                !enabled -> Color.White.copy(alpha = 0.30f)
+                selected -> activeColor
+                else -> Color(0xFFCFD8DC)
+            }
+        )
+    }
+}
+
+@Composable
 private fun TabletLyricsGainFader(
     gainDb: Int,
     onGainDelta: (Int) -> Unit,
@@ -3647,6 +3725,7 @@ private fun ReaderHeader(
     onOpenArrangement: () -> Unit,
     showWaveformAction: Boolean,
     onOpenWaveform: () -> Unit,
+    lyricsModeControls: @Composable RowScope.() -> Unit = {},
     endContent: @Composable RowScope.() -> Unit = {},
 ) {
     Box(
@@ -3686,6 +3765,8 @@ private fun ReaderHeader(
                     )
                 }
             }
+
+            lyricsModeControls()
 
             if (showLiveGainControls) {
                 CompactLiveGainControls(
