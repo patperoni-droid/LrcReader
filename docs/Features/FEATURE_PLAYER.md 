@@ -153,6 +153,18 @@ Supported modes:
 Switching must be instant.
 No reload allowed.
 
+Tablet split UI:
+- the former dedicated `Lyrics / Chords` tab row is not shown on tablet split, to preserve vertical reading space
+- the active display mode is controlled from the Player/Audio toolbar
+- toolbar controls are explicit and localized:
+  - `🎤 Lyrics / Paroles / Letras`
+  - `🎸 Chords / Accords / Acordes`
+- the active mode must be visually obvious through SMP color, background, and border treatment
+- this toolbar-based model must remain extensible for a future simultaneous `Lyrics + Chords` display mode
+
+Phone UI:
+- existing phone Lyrics / Chords behavior remains unchanged
+
 ⸻
 
 # LYRICS EDITOR AUTO-SAVE
