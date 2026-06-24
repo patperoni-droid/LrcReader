@@ -42,8 +42,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -62,7 +60,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -3505,8 +3502,8 @@ private fun RowScope.CompactLyricsModeControls(
     if (hasLyrics) {
         CompactLyricsModeButton(
             selected = selectedMode == LyricsViewMode.LYRICS,
-            icon = Icons.Filled.Mic,
-            contentDescription = stringResource(R.string.player_view_lyrics),
+            symbol = "🎤",
+            label = stringResource(R.string.player_view_lyrics),
             onClick = { onSelectMode(LyricsViewMode.LYRICS) }
         )
     }
@@ -3514,8 +3511,8 @@ private fun RowScope.CompactLyricsModeControls(
         CompactLyricsModeButton(
             selected = selectedMode == LyricsViewMode.CHORDS,
             enabled = !chordsBlocked,
-            icon = Icons.Filled.MusicNote,
-            contentDescription = stringResource(R.string.player_view_chords),
+            symbol = "🎸",
+            label = stringResource(R.string.player_view_chords),
             onClick = { onSelectMode(LyricsViewMode.CHORDS) }
         )
     }
@@ -3524,36 +3521,40 @@ private fun RowScope.CompactLyricsModeControls(
 @Composable
 private fun CompactLyricsModeButton(
     selected: Boolean,
-    icon: ImageVector,
-    contentDescription: String,
+    symbol: String,
+    label: String,
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     val shape = RoundedCornerShape(9.dp)
     val activeColor = Color(0xFFFFC107)
-    IconButton(
+    val textColor = when {
+        !enabled -> Color.White.copy(alpha = 0.30f)
+        selected -> activeColor
+        else -> Color(0xFFECEFF1)
+    }
+    TextButton(
         onClick = onClick,
         enabled = enabled,
         modifier = Modifier
-            .size(34.dp)
+            .height(34.dp)
+            .widthIn(min = 82.dp)
             .background(
-                color = if (selected) activeColor.copy(alpha = 0.20f) else Color.Transparent,
+                color = if (selected) activeColor.copy(alpha = 0.24f) else Color.Transparent,
                 shape = shape
             )
             .border(
                 width = 1.dp,
-                color = if (selected) activeColor.copy(alpha = 0.78f) else Color.White.copy(alpha = 0.18f),
+                color = if (selected) activeColor.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.20f),
                 shape = shape
-            )
+            ),
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = when {
-                !enabled -> Color.White.copy(alpha = 0.30f)
-                selected -> activeColor
-                else -> Color(0xFFCFD8DC)
-            }
+        Text(
+            text = "$symbol $label",
+            color = textColor,
+            fontSize = 12.sp,
+            maxLines = 1
         )
     }
 }
