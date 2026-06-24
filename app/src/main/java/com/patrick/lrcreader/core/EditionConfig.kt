@@ -14,7 +14,7 @@ object EditionConfig {
     private const val PREFS_NAME = "edition_config_prefs"
     private const val KEY_CURRENT_EDITION = "current_edition"
     private const val BETA_PRO_CODE = "SMP-PRO-2026"
-    private val defaultEdition: AppEdition = AppEdition.LITE
+    private val defaultEdition: AppEdition = AppEdition.PRO
 
     private var currentState by mutableStateOf(defaultEdition)
 
