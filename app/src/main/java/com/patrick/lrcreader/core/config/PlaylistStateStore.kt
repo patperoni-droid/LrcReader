@@ -111,14 +111,21 @@ internal object PlaylistStateStore {
         }
     }
 
-    fun restorePlaylistsIntoRepository(context: Context): RestoreResult {
+    fun restorePlaylistsIntoRepository(
+        context: Context,
+        preferInternalState: Boolean = false
+    ): RestoreResult {
         return withLockBlocking {
             val internalState = readStateLocked(context)
             val workspaceState = WorkspacePlaylistFilesStore.readAll(context)
-            val mergedState = mergeWorkspacePlaylists(
-                internalState = internalState,
-                workspaceState = workspaceState
-            )
+            val mergedState = if (preferInternalState) {
+                internalState
+            } else {
+                mergeWorkspacePlaylists(
+                    internalState = internalState,
+                    workspaceState = workspaceState
+                )
+            }
             val transientTitles = currentGroupTransientTitles(context)
             val state = stripTransientGroupsFromState(
                 state = mergedState,
@@ -126,7 +133,7 @@ internal object PlaylistStateStore {
             )
             Log.d(
                 PERSIST_LOG_TAG,
-                "restore.begin internal=${internalState.playlists.keys.sorted()} workspace=${workspaceState.playlists.keys.sorted()} merged=${mergedState.playlists.keys.sorted()} cleaned=${state.playlists.keys.sorted()} counts=${
+                "restore.begin preferInternal=$preferInternalState internal=${internalState.playlists.keys.sorted()} workspace=${workspaceState.playlists.keys.sorted()} merged=${mergedState.playlists.keys.sorted()} cleaned=${state.playlists.keys.sorted()} counts=${
                     state.playlists.toSortedMap().entries.joinToString { "${it.key}:${it.value.items.size}" }
                 }"
             )

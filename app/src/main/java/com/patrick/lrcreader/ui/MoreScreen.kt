@@ -2615,7 +2615,10 @@ private fun restoreLibraryFromBackupFolder(
                     mergePlaylists = true
                 ) { lastPlayed = it }
                 val saved = PlaylistStateStore.savePlaylistsSnapshot(context)
-                val restored = PlaylistStateStore.restorePlaylistsIntoRepository(context)
+                val restored = PlaylistStateStore.restorePlaylistsIntoRepository(
+                    context = context,
+                    preferInternalState = true
+                )
                 Log.d(
                     RESTORE_DIAG_TAG,
                     "libraryIndexCountAfterRestart=${scanner.listSongs().size} playlistStoreSaved=$saved playlistStoreReload=${restored.success} restoredPlaylistCount=${restored.restoredPlaylistCount}"
