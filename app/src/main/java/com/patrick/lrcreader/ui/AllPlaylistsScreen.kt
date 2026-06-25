@@ -3,6 +3,8 @@ package com.patrick.lrcreader.ui
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -32,6 +34,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -57,6 +61,7 @@ fun AllPlaylistsScreen(
     val playlists = remember(version) { PlaylistRepository.getPlaylists() }
 
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // ✅ cache durée par titre (uriString -> durée ms)
     // => évite de relire 200 fois les mêmes mp3 (super important)
@@ -72,6 +77,33 @@ fun AllPlaylistsScreen(
 
     // dialog suppression
     var deleteTarget by remember { mutableStateOf<String?>(null) }
+
+    // résultat import playlist
+    var playlistImportResultMessage by remember { mutableStateOf<String?>(null) }
+    val importPlaylistLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { pickedUri ->
+        if (pickedUri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val rawJson = context.contentResolver.openInputStream(pickedUri)
+                        ?.bufferedReader(Charsets.UTF_8)
+                        ?.use { it.readText() }
+                        .orEmpty()
+                    importPlaylistFile(context.applicationContext, rawJson)
+                }.getOrElse {
+                    PlaylistFileImportResult(
+                        importedPlaylistCount = 0,
+                        foundCount = 0,
+                        missingCount = 0,
+                        failed = true
+                    )
+                }
+            }
+            playlistImportResultMessage = formatPlaylistImportResultMessage(context, result)
+        }
+    }
 
     // Palette console
     val backgroundBrush = Brush.verticalGradient(
@@ -138,6 +170,44 @@ fun AllPlaylistsScreen(
                 Spacer(Modifier.width(8.dp))
                 Text(
                     stringResource(R.string.all_playlists_new_playlist_button),
+                    color = onBg,
+                    fontSize = 14.sp
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = {
+                    importPlaylistLauncher.launch(
+                        arrayOf(
+                            "application/json",
+                            "text/json",
+                            "text/plain",
+                            "*/*"
+                        )
+                    )
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp),
+                shape = RoundedCornerShape(999.dp),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = Color.Transparent,
+                    contentColor = onBg
+                ),
+                border = ButtonDefaults.outlinedButtonBorder.copy(
+                    width = 1.dp,
+                    brush = Brush.horizontalGradient(
+                        listOf(
+                            accent.copy(alpha = 0.9f),
+                            accent.copy(alpha = 0.4f)
+                        )
+                    )
+                )
+            ) {
+                Text(
+                    stringResource(R.string.more_item_import_playlist),
                     color = onBg,
                     fontSize = 14.sp
                 )
@@ -268,6 +338,31 @@ fun AllPlaylistsScreen(
                 dismissButton = {
                     TextButton(onClick = { deleteTarget = null }) {
                         Text(stringResource(R.string.common_cancel), color = sub)
+                    }
+                },
+                containerColor = Color(0xFF222222)
+            )
+        }
+
+        playlistImportResultMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { playlistImportResultMessage = null },
+                title = {
+                    Text(
+                        text = stringResource(R.string.more_item_import_playlist),
+                        color = onBg
+                    )
+                },
+                text = {
+                    Text(
+                        text = message,
+                        color = onBg,
+                        fontSize = 14.sp
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = { playlistImportResultMessage = null }) {
+                        Text(stringResource(R.string.common_close), color = onBg)
                     }
                 },
                 containerColor = Color(0xFF222222)
