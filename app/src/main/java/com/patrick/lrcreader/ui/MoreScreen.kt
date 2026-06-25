@@ -2592,19 +2592,17 @@ private fun restoreLibraryFromBackupFolder(
         )
     }
     missingImportedSongIds.forEach { songId ->
-        Log.e(
+        Log.w(
             RESTORE_DIAG_TAG,
-            "playlistRestoreBlocked missingImportedSongId=$songId libraryIndexCountAfterRefresh=${songsAfterImportById.size}"
+            "playlistRestoreLibraryIndexPending songId=$songId libraryIndexCountAfterRefresh=${songsAfterImportById.size}"
         )
     }
 
     scanResult.stateJson?.let { stateJson ->
         onProgress(completed, total, "state.json")
-        if (missingImportedSongIds.isNotEmpty()) {
-            stateFailureCount += missingImportedSongIds.size
-        } else when (val remapResult = BackupStateRemapper.remapBundleStateJson(stateJson, importedSongs)) {
+        when (val remapResult = BackupStateRemapper.remapBundleStateJson(stateJson, importedSongs)) {
             is BackupStateRemapResult.Success -> {
-                stateWarningCount = remapResult.warnings.size
+                stateWarningCount = remapResult.warnings.size + missingImportedSongIds.size
                 logPlaylistRestoreDiagnostics(
                     stateJson = remapResult.stateJson,
                     runtimeSongIds = songsAfterImportById.keys
