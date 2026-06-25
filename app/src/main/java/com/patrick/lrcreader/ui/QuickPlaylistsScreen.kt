@@ -216,6 +216,31 @@ fun QuickPlaylistsScreen(
     )
 
     val scope = rememberCoroutineScope()
+    var playlistImportResultMessage by remember { mutableStateOf<String?>(null) }
+    val importPlaylistLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { pickedUri ->
+        if (pickedUri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val rawJson = context.contentResolver.openInputStream(pickedUri)
+                        ?.bufferedReader(Charsets.UTF_8)
+                        ?.use { it.readText() }
+                        .orEmpty()
+                    importPlaylistFile(context.applicationContext, rawJson)
+                }.getOrElse {
+                    PlaylistFileImportResult(
+                        importedPlaylistCount = 0,
+                        foundCount = 0,
+                        missingCount = 0,
+                        failed = true
+                    )
+                }
+            }
+            playlistImportResultMessage = formatPlaylistImportResultMessage(context, result)
+        }
+    }
     val titleAliasVersion = TitleAliasesStore.version.intValue
     val variantFamilyVersion = SongVariantFamiliesStore.version.intValue
     val variantFamilies = remember(variantFamilyVersion) { SongVariantFamiliesStore.load(context) }
@@ -1312,6 +1337,25 @@ fun QuickPlaylistsScreen(
                             onClick = {
                                 showMenu = false
                                 requestSaveCurrentPlaylist()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    text = stringResource(R.string.more_item_import_playlist),
+                                    color = Color.White
+                                )
+                            },
+                            onClick = {
+                                showMenu = false
+                                importPlaylistLauncher.launch(
+                                    arrayOf(
+                                        "application/json",
+                                        "text/json",
+                                        "text/plain",
+                                        "*/*"
+                                    )
+                                )
                             }
                         )
                         DropdownMenuItem(
@@ -3496,6 +3540,31 @@ fun QuickPlaylistsScreen(
             dismissButton = {
                 TextButton(onClick = { renameTarget = null }) {
                     Text(stringResource(R.string.common_cancel), color = Color.White)
+                }
+            },
+            containerColor = Color(0xFF222222)
+        )
+    }
+
+    playlistImportResultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { playlistImportResultMessage = null },
+            title = {
+                Text(
+                    text = stringResource(R.string.more_item_import_playlist),
+                    color = Color.White
+                )
+            },
+            text = {
+                Text(
+                    text = message,
+                    color = Color.White,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { playlistImportResultMessage = null }) {
+                    Text(stringResource(R.string.common_close), color = Color.White)
                 }
             },
             containerColor = Color(0xFF222222)
