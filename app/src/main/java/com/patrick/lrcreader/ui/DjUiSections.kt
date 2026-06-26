@@ -23,14 +23,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
@@ -43,6 +46,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.dj.DjQueuedTrack
+import com.patrick.lrcreader.core.DjMediaFolderNode
 import com.patrick.lrcreader.exo.R
 
 /* -------------------------------------------------------------------------- */
@@ -364,6 +368,110 @@ fun DjSearchResultsList(
 /* -------------------------------------------------------------------------- */
 /*  Navigateur de dossiers / titres                                           */
 /* -------------------------------------------------------------------------- */
+
+@Composable
+fun DjMediaStoreBrowser(
+    currentFolder: DjMediaFolderNode?,
+    rootFolders: List<DjMediaFolderNode>,
+    playingUri: String?,
+    onBg: Color,
+    subColor: Color,
+    onOpenFolder: (DjMediaFolderNode) -> Unit,
+    onTrackPlay: (DjQueuedTrack) -> Unit,
+    onTrackEnqueue: (DjQueuedTrack) -> Unit,
+    isLoading: Boolean,
+    onChooseManualFolder: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = 6.dp)
+    ) {
+        when {
+            isLoading -> {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = onBg)
+                }
+            }
+
+            rootFolders.isEmpty() -> {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.dj_folder_play_no_media_folders),
+                        color = subColor,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    TextButton(onClick = onChooseManualFolder) {
+                        Text(stringResource(R.string.dj_folder_play_choose_manual))
+                    }
+                }
+            }
+
+            else -> {
+                val visibleFolders = currentFolder?.childFolders ?: rootFolders
+                val visibleTracks = currentFolder?.directTracks.orEmpty()
+
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    items(visibleFolders, key = { "folder:${it.folderPath}" }) { folder ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onOpenFolder(folder) }
+                                .padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Folder,
+                                contentDescription = null,
+                                tint = onBg,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = folder.folderName,
+                                    color = onBg,
+                                    fontSize = 13.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.dj_folder_picker_folder_meta,
+                                        folder.childFolders.size,
+                                        folder.recursiveTracks.size
+                                    ),
+                                    color = subColor,
+                                    fontSize = 11.sp
+                                )
+                            }
+                            Icon(
+                                imageVector = Icons.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = subColor
+                            )
+                        }
+                    }
+
+                    items(visibleTracks, key = { "track:${it.uri}" }) { track ->
+                        DjTrackRow(
+                            title = track.title,
+                            isPlaying = track.uri == playingUri,
+                            onPlay = { onTrackPlay(track) },
+                            onEnqueue = { onTrackEnqueue(track) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 fun DjFolderBrowser(

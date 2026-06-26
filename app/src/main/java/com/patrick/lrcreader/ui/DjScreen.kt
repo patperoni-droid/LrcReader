@@ -96,6 +96,7 @@ fun DjScreen(
     var entries by remember { mutableStateOf<List<DjEntry>>(emptyList()) }
 
     var isLoading by remember { mutableStateOf(false) }
+    var isMediaBrowserLoading by remember { mutableStateOf(false) }
     var hasResolvedDjAccess by remember { mutableStateOf(false) }
     var isGlobalAudioMode by remember { mutableStateOf(hasDjGlobalAudioAccess(context)) }
 
@@ -376,14 +377,6 @@ fun DjScreen(
         val cached = DjIndexCache.load(context).orEmpty()
         indexAll = cached
         refreshFromIndex()
-
-        val shouldScan = forceSignatureCheck &&
-            cached.isNotEmpty() &&
-            shouldAutoScanDj(root, cached)
-
-        if (shouldScan) {
-            launchDjScan(root, showToast = false)
-        }
     }
 
     fun startDjFolderPlayback(tracks: List<DjQueuedTrack>) {
@@ -423,6 +416,19 @@ fun DjScreen(
             } finally {
                 isLoading = false
             }
+        }
+    }
+
+    suspend fun loadMediaBrowserTreeIfAllowed() {
+        if (!hasDjGlobalAudioAccess(context)) return
+        isMediaBrowserLoading = true
+        try {
+            djMediaFolderRoots = withContext(Dispatchers.IO) {
+                loadDjMediaFolderTree(context)
+            }
+            djFolderPickerStack = emptyList()
+        } finally {
+            isMediaBrowserLoading = false
         }
     }
 
@@ -595,6 +601,7 @@ fun DjScreen(
         } finally {
             hasResolvedDjAccess = true
         }
+        loadMediaBrowserTreeIfAllowed()
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -602,6 +609,9 @@ fun DjScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 scope.launch {
                     refreshDjState(forceSignatureCheck = true)
+                    if (djMediaFolderRoots.isEmpty()) {
+                        loadMediaBrowserTreeIfAllowed()
+                    }
                 }
             }
         }
@@ -658,9 +668,11 @@ fun DjScreen(
             allAudioEntries.filter { !it.isDirectory && it.name.lowercase().contains(q) }
         }
     }
+    val mediaCurrentFolder = djFolderPickerStack.lastOrNull()
     val isResolvingDjAccess = !hasResolvedDjAccess
     val needsDjAuthorization = hasResolvedDjAccess && browserVm.rootFolderUri == null
     val showDjEmptyState = hasResolvedDjAccess &&
+        !isGlobalAudioMode &&
         !needsDjAuthorization &&
         !isLoading &&
         searchQuery.isBlank() &&
@@ -719,11 +731,21 @@ fun DjScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
 
-                if (browserVm.folderStack.isNotEmpty()) {
+                val canNavigateBack = if (isGlobalAudioMode) {
+                    mediaCurrentFolder != null
+                } else {
+                    browserVm.folderStack.isNotEmpty()
+                }
+
+                if (canNavigateBack) {
                     IconButton(onClick = {
-                        browserVm.popToParentOrRoot()
-                        refreshFromIndex()
-                        searchQuery = ""
+                        if (isGlobalAudioMode && mediaCurrentFolder != null) {
+                            djFolderPickerStack = djFolderPickerStack.dropLast(1)
+                        } else {
+                            browserVm.popToParentOrRoot()
+                            refreshFromIndex()
+                            searchQuery = ""
+                        }
                     }) {
                         Icon(
                             imageVector = Icons.Filled.ArrowBack,
@@ -770,8 +792,13 @@ fun DjScreen(
                     Spacer(Modifier.width(10.dp))
 
                     val shownUri = browserVm.currentFolderUri ?: browserVm.rootFolderUri
+                    val shownLocation = if (isGlobalAudioMode) {
+                        mediaCurrentFolder?.folderName ?: globalMusicLabel
+                    } else {
+                        djRootDisplayName(shownUri)
+                    }
                     Text(
-                        text = djRootDisplayName(shownUri),
+                        text = shownLocation,
                         color = Color.Gray,
                         fontSize = 12.sp,
                         maxLines = 1
@@ -1136,30 +1163,55 @@ fun DjScreen(
                 }
 
                 else -> {
-                    DjFolderBrowser(
-                        currentFolderUri = browserVm.currentFolderUri,
-                        visibleEntries = visibleEntries,
-                        onBg = onBg,
-                        subColor = sub,
-                        isLoading = isLoading,
-                        onDirectoryClick = { entry ->
-                            val old = browserVm.currentFolderUri ?: browserVm.rootFolderUri
-                            if (old != null) browserVm.pushCurrent(old)
+                    if (isGlobalAudioMode) {
+                        DjMediaStoreBrowser(
+                            currentFolder = mediaCurrentFolder,
+                            rootFolders = djMediaFolderRoots,
+                            playingUri = djState.playingUri,
+                            onBg = onBg,
+                            subColor = sub,
+                            isLoading = isMediaBrowserLoading,
+                            onOpenFolder = { folder ->
+                                djFolderPickerStack = djFolderPickerStack + folder
+                                searchQuery = ""
+                            },
+                            onTrackPlay = { track ->
+                                PlaybackCoordinator.onDjStart()
+                                DjEngine.selectTrackFromList(track.uri, track.title)
+                            },
+                            onTrackEnqueue = { track ->
+                                DjEngine.addToQueue(track.uri, track.title)
+                            },
+                            onChooseManualFolder = {
+                                pickDjAutoFolderLauncher.launch(null)
+                            }
+                        )
+                    } else {
+                        DjFolderBrowser(
+                            currentFolderUri = browserVm.currentFolderUri,
+                            visibleEntries = visibleEntries,
+                            onBg = onBg,
+                            subColor = sub,
+                            isLoading = isLoading,
+                            onDirectoryClick = { entry ->
+                                val old = browserVm.currentFolderUri ?: browserVm.rootFolderUri
+                                if (old != null) browserVm.pushCurrent(old)
 
-                            browserVm.setCurrent(entry.uri)
-                            refreshFromIndex()
-                            searchQuery = ""
-                        },
-                        onFilePlay = { entry ->
-                            val uriStr = entry.uri.toString()
-                            PlaybackCoordinator.onDjStart()
-                            DjEngine.selectTrackFromList(uriStr, entry.name)
-                        },
-                        onFileEnqueue = { entry ->
-                            val uriStr = entry.uri.toString()
-                            DjEngine.addToQueue(uriStr, entry.name)
-                        }
-                    )
+                                browserVm.setCurrent(entry.uri)
+                                refreshFromIndex()
+                                searchQuery = ""
+                            },
+                            onFilePlay = { entry ->
+                                val uriStr = entry.uri.toString()
+                                PlaybackCoordinator.onDjStart()
+                                DjEngine.selectTrackFromList(uriStr, entry.name)
+                            },
+                            onFileEnqueue = { entry ->
+                                val uriStr = entry.uri.toString()
+                                DjEngine.addToQueue(uriStr, entry.name)
+                            }
+                        )
+                    }
                 }
             }
 
