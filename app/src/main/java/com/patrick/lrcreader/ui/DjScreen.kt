@@ -377,13 +377,9 @@ fun DjScreen(
         indexAll = cached
         refreshFromIndex()
 
-        val shouldScan = if (forceSignatureCheck) {
+        val shouldScan = forceSignatureCheck &&
+            cached.isNotEmpty() &&
             shouldAutoScanDj(root, cached)
-        } else {
-            !DjFolderPrefs.isScanned(context) ||
-                cached.isEmpty() ||
-                DjIndexCache.loadScanMeta(context)?.rootUriString != root.toString()
-        }
 
         if (shouldScan) {
             launchDjScan(root, showToast = false)
@@ -669,7 +665,8 @@ fun DjScreen(
         !isLoading &&
         searchQuery.isBlank() &&
         visibleEntries.isEmpty() &&
-        allAudioEntries.isEmpty()
+        allAudioEntries.isEmpty() &&
+        DjFolderPrefs.isScanned(context)
     val authorizeMenuLabel = if (needsDjAuthorization) {
         stringResource(R.string.dj_menu_choose_folder)
     } else {
@@ -1085,40 +1082,6 @@ fun DjScreen(
                                 text = stringResource(R.string.common_loading),
                                 color = sub,
                                 fontSize = 13.sp
-                            )
-                        }
-                    }
-                }
-
-                needsDjAuthorization -> {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = card),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.dj_authorize_title),
-                                color = onBg,
-                                fontSize = 16.sp
-                            )
-                            Text(
-                                text = stringResource(R.string.dj_authorize_body, fixedDjPath),
-                                color = sub,
-                                fontSize = 13.sp
-                            )
-                            Button(onClick = { pickDjFolderLauncher.launch(null) }) {
-                                Text(stringResource(R.string.dj_menu_choose_folder))
-                            }
-                            Text(
-                                text = stringResource(R.string.dj_authorize_hint),
-                                color = sub,
-                                fontSize = 12.sp
                             )
                         }
                     }
