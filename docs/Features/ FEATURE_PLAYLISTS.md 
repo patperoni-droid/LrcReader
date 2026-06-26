@@ -391,6 +391,32 @@ Playlist must:
 - restore optional group colors after app restart
 - remain backward compatible with groups that have no stored color
 
+PLAYLIST JSON IMPORT
+
+Playlists can be imported directly from:
+- the global Playlists screen
+- the current playlist menu
+
+Both entry points must reuse the same JSON import flow.
+
+Import must preserve:
+- groups
+- group colors
+- ghost occurrences / repeated `songId` occurrences
+- raw song order
+
+The Android file picker used for playlist import is based on SAF / DocumentsUI.
+
+Known picker behavior:
+- the app requests JSON-compatible files
+- depending on the device, Android version, and file provider, other file types may still be visible
+- this visibility is controlled by the Android DocumentsUI provider, not by playlist business logic
+
+Restore philosophy:
+- library restore prioritizes rebuilding runtime SongUnits first
+- playlists can then be imported individually by the user
+- this allows the user to choose which playlists should be reactivated after a restore
+
 Restore rules:
 - restored playlists must reference SMP songs by `smp://songId`
 - display resolution for `smp://songId` must use the current Library index
