@@ -241,13 +241,15 @@ Tablet split navigation rule:
 - in tablet split mode, `Lyrics` always means the scrolling playback lyrics: `Playlist | Lyrics`
 - `Lyrics` never means the lyrics editor; the editor is a secondary right-pane destination
 - Lyrics is the home state of the right pane
-- compatible right-pane destinations may include Lyrics, Library, Track Console, Settings, Background Sound, Lyrics Editor, and future tablet-safe panels
+- compatible right-pane destinations may include Lyrics, Library, Track Console, Settings, Background Sound, DJ, Main Bus, Tuner, Lyrics Editor, and future tablet-safe panels
 - the cockpit menu is the preferred navigation mechanism between right-pane destinations
 - every compatible right-pane destination must avoid trapping the user and must provide a simple visible path back to `Playlist | Lyrics`
 - some tools may leave the Split Layout and use a Fullscreen mode when they need the full tablet width
 - Arrangement, Timeline, and future wide editing tools may use Fullscreen instead of the Split Layout
 - fullscreen tools must return explicitly to the live cockpit without changing playback state
 - phone UX remains the default behavior and must not inherit tablet split assumptions
+- on a fresh tablet install, tablet split mode is enabled automatically after tablet detection
+- existing tablet split preferences are never overwritten; if the user has already enabled or disabled the mode, that saved choice wins
 
 Tablet split roadmap:
 - study an option to invert the split, with Playlist on the left or on the right

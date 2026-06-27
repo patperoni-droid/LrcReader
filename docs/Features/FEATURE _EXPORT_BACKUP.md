@@ -131,7 +131,7 @@ Export_YYYY-MM-DD_HH-mm
 - sélection d’un dossier via SAF
 - scan des `.smp`
 - lecture du `state.json`
-- import des morceaux
+- import prioritaire des morceaux / `SongUnit`
 - gestion des conflits
 
 ---
@@ -156,8 +156,21 @@ Export_YYYY-MM-DD_HH-mm
 
 ✔ aucun doublon (`songId`)  
 ✔ aucune suppression automatique  
-✔ playlists restaurées après import  
+✔ les morceaux restaurés sont disponibles comme runtime normalisé  
+✔ les playlists peuvent être réactivées par import JSON dédié  
 ✔ fonctionnement non destructif
+
+### Playlists et restauration bêta
+
+En bêta publique, la restauration bibliothèque privilégie la reconstruction fiable des morceaux.
+
+Règles :
+
+- les `SongUnit` restaurés redeviennent immédiatement exploitables
+- les playlists peuvent ensuite être importées individuellement depuis leur JSON
+- l'utilisateur choisit ainsi quelles playlists réactiver
+- l'import JSON playlist préserve groupes, couleurs, occurrences fantômes et ordre brut
+- voir `FEATURE_PLAYLISTS.md`
 
 ---
 
@@ -185,6 +198,16 @@ Export_YYYY-MM-DD_HH-mm
 ✔ sécurisé  
 ✔ flexible  
 ✔ compatible tous appareils
+
+### Installation initiale
+
+Lors du premier choix du workspace :
+
+- l'utilisateur valide le dossier via SAF Android
+- SMP affiche un état de préparation du workspace
+- l'initialisation SAF est effectuée hors thread UI
+- l'écran ne doit pas rester noir pendant la création / validation du workspace
+- la préparation peut durer quelques secondes selon l'appareil et le fournisseur DocumentsUI
 
 ---
 

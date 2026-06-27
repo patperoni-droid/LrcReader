@@ -46,6 +46,22 @@ Tablette :
 👉 Le téléphone reste l'outil flexible et mobile.
 👉 La tablette devient le cockpit live principal.
 
+### 🚀 Onboarding bêta
+
+Sur une installation vierge de la bêta publique :
+
+- le Bus principal est visible par défaut
+- le Mode DJ est visible par défaut
+- ces valeurs par défaut ne s'appliquent que si aucune préférence utilisateur n'existe encore
+- une tablette détectée active automatiquement le mode split au premier lancement
+- une préférence tablette déjà enregistrée n'est jamais écrasée
+
+Principe :
+
+✔ téléphone = interface téléphone  
+✔ tablette = expérience split par défaut  
+✔ les choix existants de l'utilisateur restent prioritaires
+
 ### 🧭 Cockpit tablette
 
 En mode tablette, SMP peut utiliser un Split Layout :
@@ -121,6 +137,24 @@ Recherche tablette :
 - l'utilisateur reste dans l'onglet Édition
 - le texte en cours ne doit pas être perdu
 - le téléphone reste inchangé
+
+Installation initiale :
+
+- après validation SAF Android, SMP affiche un état de préparation du workspace
+- l'initialisation SAF du workspace s'exécute hors thread UI
+- l'utilisateur ne doit pas voir d'écran noir pendant cette préparation
+- la préparation initiale doit rester claire même si Android met plusieurs secondes à finaliser l'accès dossier
+
+Mode DJ bêta :
+
+- le premier lancement DJ est simplifié
+- la carte automatique `Activer le mode DJ` n'est plus imposée
+- aucun scan DJ long n'est déclenché automatiquement au premier affichage
+- si la permission audio Android manque, elle est demandée automatiquement à l'ouverture du DJ
+- après acceptation, l'arborescence MediaStore est chargée et affichée directement
+- le bouton `Folder` reste disponible pour lire ou ajouter rapidement un dossier complet à la file DJ
+- le dossier DJ dédié, le scan manuel, le cache et l'index restent disponibles comme fonctions avancées
+- la séparation DJ / Backing Track reste stricte : le DJ garde son moteur et son bus séparés
 
 ---
 
@@ -425,7 +459,7 @@ stop
 
 ### V3
 
-- intégration complète mode DJ simplifié
+- amélioration continue du mode DJ simplifié
 - enchaînements intelligents
 - étude d'un système "Niveau Live" offline :
   - détection des passages forts

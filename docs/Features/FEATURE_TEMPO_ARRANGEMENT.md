@@ -371,7 +371,8 @@ Fonction :
 
 ✔ aucun doublon (`songId`)  
 ✔ aucune suppression automatique  
-✔ playlists restaurées après import  
+✔ morceaux restaurés comme runtime normalisé  
+✔ playlists réactivables par import JSON dédié  
 ✔ fonctionnement non destructif
 
 ---

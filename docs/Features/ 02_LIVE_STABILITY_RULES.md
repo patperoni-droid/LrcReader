@@ -203,7 +203,7 @@ Tablet live navigation:
 - in tablet split mode, the Playlist remains fixed on the left
 - the right pane hosts the active destination and defaults to Lyrics
 - `Lyrics` means the scrolling playback lyrics, not the lyrics editor
-- compatible right-pane destinations include Lyrics, Library, Track Console, Settings, Background Sound, Lyrics Editor, and future tablet-safe panels
+- compatible right-pane destinations include Lyrics, Library, Track Console, Settings, Background Sound, DJ, Main Bus, Tuner, Lyrics Editor, and future tablet-safe panels
 - the cockpit menu is the preferred way to navigate between compatible right-pane destinations
 - every compatible right-pane destination must keep a clear path back to `Playlist | Lyrics`
 - secondary panels such as Track Console, Library, Settings, Background Sound, or Lyrics Editor must not trap the user away from `Playlist | Lyrics`
