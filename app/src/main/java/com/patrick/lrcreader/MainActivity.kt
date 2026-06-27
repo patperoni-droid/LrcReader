@@ -1179,20 +1179,32 @@ class MainActivity : AppCompatActivity() {
                     onDispose { exoPlayer.removeListener(embeddedLyricsListener) }
                 }
 
+                val adaptiveTokens = rememberSmpAdaptiveTokens()
+                val hasInitialSessionToRestore = !initialTabKey.isNullOrBlank() ||
+                    !initialQuickPlaylist.isNullOrBlank() ||
+                    !initialOpenedPlaylist.isNullOrBlank() ||
+                    !initialLastSongId.isNullOrBlank() ||
+                    !initialLastTrackUri.isNullOrBlank()
+                val freshTabletInstall = adaptiveTokens.tabletMode &&
+                    !TabletExperimentalModePrefs.hasSavedValue(ctx) &&
+                    !hasInitialSessionToRestore
                 var selectedTab by remember {
                     mutableStateOf(
-                        tabFromKey(
-                            key = initialTabKey ?: defaultTabKeyForEdition(),
-                            showDjTab = initialShowDjTab,
-                            showMainBusTab = initialShowMainBusTab
-                        )
+                        if (freshTabletInstall) {
+                            BottomTab.Player
+                        } else {
+                            tabFromKey(
+                                key = initialTabKey ?: defaultTabKeyForEdition(),
+                                showDjTab = initialShowDjTab,
+                                showMainBusTab = initialShowMainBusTab
+                            )
+                        }
                     )
                 }
                 var showDjTab by rememberSaveable { mutableStateOf(initialShowDjTab) }
                 var showMainBusTab by rememberSaveable { mutableStateOf(initialShowMainBusTab) }
-                val adaptiveTokens = rememberSmpAdaptiveTokens()
                 var tabletExperimentalModeEnabled by rememberSaveable {
-                    mutableStateOf(TabletExperimentalModePrefs.isEnabled(ctx))
+                    mutableStateOf(TabletExperimentalModePrefs.isEnabled(ctx) || freshTabletInstall)
                 }
                 LaunchedEffect(adaptiveTokens.tabletMode) {
                     if (
@@ -1232,19 +1244,7 @@ class MainActivity : AppCompatActivity() {
 
                 var closeMixSignal by remember { mutableIntStateOf(0) }
                 var sessionRestored by remember { mutableStateOf(false) }
-                val hasSessionToRestore = remember(
-                    initialTabKey,
-                    initialQuickPlaylist,
-                    initialOpenedPlaylist,
-                    initialLastTrackUri,
-                    initialLastSongId
-                ) {
-                    !initialTabKey.isNullOrBlank() ||
-                            !initialQuickPlaylist.isNullOrBlank() ||
-                            !initialOpenedPlaylist.isNullOrBlank() ||
-                            !initialLastSongId.isNullOrBlank() ||
-                            !initialLastTrackUri.isNullOrBlank()
-                }
+                val hasSessionToRestore = hasInitialSessionToRestore
                 var isRestoringSession by remember { mutableStateOf(hasSessionToRestore) }
 
                 var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
