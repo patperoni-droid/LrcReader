@@ -15,7 +15,7 @@ object UiEntryPrefs {
         if (EditionConfig.isLite) {
             true
         } else {
-            prefs(context).getBoolean(KEY_SHOW_DJ_TAB, false)
+            prefs(context).getBoolean(KEY_SHOW_DJ_TAB, true)
         }
 
     fun setShowDjTab(context: Context, value: Boolean) {
@@ -23,7 +23,7 @@ object UiEntryPrefs {
     }
 
     fun showMainBusTab(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_SHOW_MAIN_BUS_TAB, false)
+        prefs(context).getBoolean(KEY_SHOW_MAIN_BUS_TAB, true)
 
     fun setShowMainBusTab(context: Context, value: Boolean) {
         prefs(context).edit { putBoolean(KEY_SHOW_MAIN_BUS_TAB, value) }
