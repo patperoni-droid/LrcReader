@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -106,6 +107,8 @@ fun DjScreen(
     var isDjFolderPickerOpen by remember { mutableStateOf(false) }
     var djMediaFolderRoots by remember { mutableStateOf<List<DjMediaFolderNode>>(emptyList()) }
     var djFolderPickerStack by remember { mutableStateOf<List<DjMediaFolderNode>>(emptyList()) }
+    var didAutoRequestAudioPermission by rememberSaveable { mutableStateOf(false) }
+    var openFolderAfterAudioPermission by remember { mutableStateOf(false) }
 
     // 🔍 état recherche
     var isSearchOpen by remember { mutableStateOf(false) }
@@ -436,14 +439,23 @@ fun DjScreen(
         contract = ActivityResultContracts.RequestPermission(),
         onResult = { granted ->
             if (granted) {
-                openDjFolderPlayChooser()
+                isGlobalAudioMode = true
+                if (openFolderAfterAudioPermission) {
+                    openDjFolderPlayChooser()
+                } else {
+                    scope.launch {
+                        loadMediaBrowserTreeIfAllowed()
+                    }
+                }
             } else {
+                isGlobalAudioMode = false
                 Toast.makeText(
                     context,
                     context.getString(R.string.dj_folder_play_permission_required),
                     Toast.LENGTH_SHORT
                 ).show()
             }
+            openFolderAfterAudioPermission = false
         }
     )
 
@@ -601,7 +613,13 @@ fun DjScreen(
         } finally {
             hasResolvedDjAccess = true
         }
-        loadMediaBrowserTreeIfAllowed()
+        if (hasDjGlobalAudioAccess(context)) {
+            loadMediaBrowserTreeIfAllowed()
+        } else if (!didAutoRequestAudioPermission) {
+            didAutoRequestAudioPermission = true
+            openFolderAfterAudioPermission = false
+            requestDjAudioPermissionLauncher.launch(requiredDjAudioPermission())
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -774,6 +792,7 @@ fun DjScreen(
                             if (hasDjGlobalAudioAccess(context)) {
                                 openDjFolderPlayChooser()
                             } else {
+                                openFolderAfterAudioPermission = true
                                 requestDjAudioPermissionLauncher.launch(requiredDjAudioPermission())
                             }
                         },
