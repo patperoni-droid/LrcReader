@@ -22,7 +22,9 @@ import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.StorageModePrefs
 import com.patrick.lrcreader.exo.R
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val SETUP_STORAGE_TAG = "SETUP_STORAGE"
 
@@ -46,6 +48,7 @@ fun SetupInstallScreen(
 
     var currentStep by remember { mutableStateOf(SetupOnboardingStep.WORKSPACE) }
     var isInstallingDemo by remember { mutableStateOf(false) }
+    var isPreparingWorkspace by remember { mutableStateOf(false) }
 
     var showBadFolderDialog by remember { mutableStateOf(false) }
     var pendingBadUri by remember { mutableStateOf<Uri?>(null) }
@@ -54,30 +57,40 @@ fun SetupInstallScreen(
     // Handler : configure SPL_Music sous le dossier choisi (SAF normal)
     // --------------------------------------------
     fun handlePickedUri(uri: Uri) {
+        if (isPreparingWorkspace) return
         Log.i(SETUP_STORAGE_TAG, "setup:start backend=SAF pickedUri=$uri")
         Log.i(
             SETUP_STORAGE_TAG,
             "setup:picked authority=${uri.authority} treeId=${safeTreeDocumentId(uri)} docId=${safeDocumentId(uri)}"
         )
 
-        val folders = initializeSafWorkspaceFromPickedTree(
-            context = context,
-            pickedTreeUri = uri,
-            stage = "setup_install_screen:saf"
-        ) ?: run {
-            Log.e(SETUP_STORAGE_TAG, "setup:workspace_prepare_failed pickedUri=$uri")
-            Toast.makeText(
-                context,
-                context.getString(R.string.setup_workspace_prepare_error),
-                Toast.LENGTH_SHORT
-            ).show()
-            return
+        scope.launch {
+            isPreparingWorkspace = true
+            try {
+                val folders = withContext(Dispatchers.IO) {
+                    initializeSafWorkspaceFromPickedTree(
+                        context = context,
+                        pickedTreeUri = uri,
+                        stage = "setup_install_screen:saf"
+                    )
+                } ?: run {
+                    Log.e(SETUP_STORAGE_TAG, "setup:workspace_prepare_failed pickedUri=$uri")
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.setup_workspace_prepare_error),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@launch
+                }
+                Log.i(
+                    SETUP_STORAGE_TAG,
+                    "setup:workspace_ready mode=${folders.snapshot.mode} status=${folders.snapshot.status} root=${folders.rootUri} audio=${folders.audioUri} smp=${folders.smpUri} dj=${folders.djUri}"
+                )
+                currentStep = SetupOnboardingStep.COMPLETE
+            } finally {
+                isPreparingWorkspace = false
+            }
         }
-        Log.i(
-            SETUP_STORAGE_TAG,
-            "setup:workspace_ready mode=${folders.snapshot.mode} status=${folders.snapshot.status} root=${folders.rootUri} audio=${folders.audioUri} smp=${folders.smpUri} dj=${folders.djUri}"
-        )
-        currentStep = SetupOnboardingStep.COMPLETE
     }
 
     val pickDocumentsLauncher = rememberLauncherForActivityResult(
@@ -117,75 +130,89 @@ fun SetupInstallScreen(
         ) {
             when (currentStep) {
                 SetupOnboardingStep.WORKSPACE -> {
-                    Text(
-                        stringResource(R.string.setup_workspace_title),
-                        color = titleColor,
-                        fontSize = 26.sp
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Text(
-                        stringResource(R.string.setup_workspace_explainer),
-                        color = subtitleColor,
-                        fontSize = 14.sp,
-                        lineHeight = 18.sp,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Text(
-                        stringResource(R.string.setup_workspace_music_recommended),
-                        color = Color(0xFF6F7A80),
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(Modifier.height(10.dp))
-
-                    Text(
-                        stringResource(R.string.setup_workspace_android_confirmation_hint),
-                        color = Color(0xFF8D969B),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        textAlign = TextAlign.Center
-                    )
-
-                    Spacer(Modifier.height(26.dp))
-
-                    Button(
-                        onClick = {
-                            StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
-                            launchWorkspacePicker(preferMusicFolder = true)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color.White,
-                            contentColor = Color.Black
+                    if (isPreparingWorkspace) {
+                        CircularProgressIndicator(
+                            color = accent,
+                            strokeWidth = 2.dp
                         )
-                    ) {
-                        Text(stringResource(R.string.setup_use_music_workspace), fontSize = 16.sp)
-                    }
+                        Spacer(Modifier.height(14.dp))
+                        Text(
+                            stringResource(R.string.common_loading),
+                            color = subtitleColor,
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center
+                        )
+                    } else {
+                        Text(
+                            stringResource(R.string.setup_workspace_title),
+                            color = titleColor,
+                            fontSize = 26.sp
+                        )
 
-                    Spacer(Modifier.height(12.dp))
+                        Spacer(Modifier.height(10.dp))
 
-                    OutlinedButton(
-                        onClick = {
-                            StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
-                            launchWorkspacePicker(preferMusicFolder = false)
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
-                        border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
-                    ) {
-                        Text(stringResource(R.string.setup_choose_workspace), fontSize = 16.sp)
+                        Text(
+                            stringResource(R.string.setup_workspace_explainer),
+                            color = subtitleColor,
+                            fontSize = 14.sp,
+                            lineHeight = 18.sp,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+
+                        Text(
+                            stringResource(R.string.setup_workspace_music_recommended),
+                            color = Color(0xFF6F7A80),
+                            fontSize = 12.sp,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(Modifier.height(10.dp))
+
+                        Text(
+                            stringResource(R.string.setup_workspace_android_confirmation_hint),
+                            color = Color(0xFF8D969B),
+                            fontSize = 12.sp,
+                            lineHeight = 16.sp,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(Modifier.height(26.dp))
+
+                        Button(
+                            onClick = {
+                                StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
+                                launchWorkspacePicker(preferMusicFolder = true)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White,
+                                contentColor = Color.Black
+                            )
+                        ) {
+                            Text(stringResource(R.string.setup_use_music_workspace), fontSize = 16.sp)
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
+                        OutlinedButton(
+                            onClick = {
+                                StorageModePrefs.set(context, StorageModePrefs.Mode.SAF)
+                                launchWorkspacePicker(preferMusicFolder = false)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp)
+                        ) {
+                            Text(stringResource(R.string.setup_choose_workspace), fontSize = 16.sp)
+                        }
                     }
                 }
 
