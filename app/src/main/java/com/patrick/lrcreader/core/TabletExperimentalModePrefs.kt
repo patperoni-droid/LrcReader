@@ -12,6 +12,12 @@ object TabletExperimentalModePrefs {
             .getBoolean(KEY_ENABLED, false)
     }
 
+    fun hasSavedValue(context: Context): Boolean {
+        return context.applicationContext
+            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .contains(KEY_ENABLED)
+    }
+
     fun setEnabled(context: Context, enabled: Boolean) {
         context.applicationContext
             .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

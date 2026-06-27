@@ -1194,6 +1194,15 @@ class MainActivity : AppCompatActivity() {
                 var tabletExperimentalModeEnabled by rememberSaveable {
                     mutableStateOf(TabletExperimentalModePrefs.isEnabled(ctx))
                 }
+                LaunchedEffect(adaptiveTokens.tabletMode) {
+                    if (
+                        adaptiveTokens.tabletMode &&
+                        !TabletExperimentalModePrefs.hasSavedValue(ctx)
+                    ) {
+                        TabletExperimentalModePrefs.setEnabled(ctx, true)
+                        tabletExperimentalModeEnabled = true
+                    }
+                }
                 LaunchedEffect(adaptiveTokens.tabletMode, tabletExperimentalModeEnabled) {
                     requestedOrientation = if (
                         adaptiveTokens.tabletMode &&
