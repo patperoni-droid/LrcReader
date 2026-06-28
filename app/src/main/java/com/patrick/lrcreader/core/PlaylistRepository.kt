@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateOf
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Petit repo en mémoire pour gérer :
@@ -42,6 +43,20 @@ object PlaylistRepository {
     // clé de rafraîchissement pour Compose
     var version = mutableStateOf(0)
         private set
+
+    private val restoreDepth = AtomicInteger(0)
+
+    val isRestoring: Boolean
+        get() = restoreDepth.get() > 0
+
+    fun <T> withRestoreInProgress(block: () -> T): T {
+        restoreDepth.incrementAndGet()
+        return try {
+            block()
+        } finally {
+            restoreDepth.decrementAndGet()
+        }
+    }
 
     // -------------------------------------------------
     // NOW PLAYING + "PLAYED" APRÈS 10s DE LECTURE RÉELLE

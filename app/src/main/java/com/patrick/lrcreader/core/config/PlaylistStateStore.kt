@@ -197,6 +197,10 @@ internal object PlaylistStateStore {
         context: Context,
         transientGroupTitles: Set<String> = emptySet()
     ): Boolean {
+        if (PlaylistRepository.isRestoring) {
+            Log.w(PERSIST_LOG_TAG, "save.blocked reason=playlist_restore_in_progress")
+            return false
+        }
         val startMs = SystemClock.elapsedRealtime()
         val threadName = Thread.currentThread().name
         Log.e(ANR_PLAYLIST_TAG, "save:start thread=$threadName")

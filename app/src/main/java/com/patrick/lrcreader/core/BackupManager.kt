@@ -713,6 +713,7 @@ object BackupManager {
         mergePlaylists: Boolean = false,
         onLastPlayed: (LastPlayed?) -> Unit = {}
     ) {
+        PlaylistRepository.withRestoreInProgress {
         val root = JSONObject(json)
         val importedPlaylistNameBySource = linkedMapOf<String, String>()
 
@@ -945,6 +946,7 @@ object BackupManager {
             IMPORT_LOG_TAG,
             "Import done. localByName=${localByName?.size ?: 0} localMapBuilt=${localByName != null} kept=${uriStats.kept} remapped=${uriStats.remapped} unresolved=${uriStats.unresolved}"
         )
+        }
     }
 
     private const val DEFAULT_BACKUP_FILE = "lrc_backup.json"

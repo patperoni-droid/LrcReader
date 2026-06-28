@@ -548,8 +548,12 @@ fun QuickPlaylistsScreen(
             val portableStamp = "$refreshKey|$repoVersion|$libraryLoadedSignal|${raw.hashCode()}"
             if (portableStampByPlaylist[pl] != portableStamp) {
                 val portableStart = SystemClock.elapsedRealtime()
-                val restoredManual = withContext(Dispatchers.Default) {
-                    loadManualOrder(context, pl, raw)
+                val restoredManual = if (PlaylistRepository.isRestoring) {
+                    null
+                } else {
+                    withContext(Dispatchers.Default) {
+                        loadManualOrder(context, pl, raw)
+                    }
                 }
                 val hasPlayedItems = raw.any { PlaylistRepository.isSongPlayed(pl, it) }
                 var portableApplied = false

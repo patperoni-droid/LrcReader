@@ -1163,6 +1163,10 @@ class MainActivity : AppCompatActivity() {
                     if (!canUseWorkspace || rootKey == null || playlistStateReadyForRoot != rootKey) {
                         return@LaunchedEffect
                     }
+                    if (PlaylistRepository.isRestoring) {
+                        Log.d("PLAYLIST_PERSIST", "auto_save.skip reason=playlist_restore_in_progress")
+                        return@LaunchedEffect
+                    }
                     withContext(Dispatchers.IO) {
                         PlaylistStateStore.savePlaylistsSnapshot(ctx)
                     }
