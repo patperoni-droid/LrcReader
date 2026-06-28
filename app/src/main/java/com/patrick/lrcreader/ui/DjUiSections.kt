@@ -441,15 +441,6 @@ fun DjMediaStoreBrowser(
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
-                                Text(
-                                    text = stringResource(
-                                        R.string.dj_folder_picker_folder_meta,
-                                        folder.childFolders.size,
-                                        folder.recursiveTracks.size
-                                    ),
-                                    color = subColor,
-                                    fontSize = 11.sp
-                                )
                             }
                             Icon(
                                 imageVector = Icons.Filled.KeyboardArrowRight,
