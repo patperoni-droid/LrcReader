@@ -227,6 +227,87 @@ This complements:
 - targeted documentation;
 - architecture before refactor.
 
+Extended SMP workflow:
+
+This does not replace the existing workflow. It completes it with remote validation on GitHub.
+
+Official order:
+
+Product vision
+↓
+UX reasoning
+↓
+Architecture, when needed
+↓
+Documentation, when needed
+↓
+Diagnosis
+↓
+Minimal patch
+↓
+Compilation
+↓
+Validation / Tests
+↓
+Commit
+↓
+Push GitHub
+↓
+Remote repository verification
+↓
+GitHub Actions check
+↓
+Patch completed
+
+Local validation:
+
+Before any commit:
+- compilation must pass;
+- required tests must pass;
+- functional validation must be done when needed.
+
+Remote validation:
+
+After the commit:
+- push to GitHub;
+- verify that the remote branch contains the latest commit;
+- verify the GitHub Actions result.
+
+Important:
+
+A failing GitHub workflow does not mean that the push failed.
+
+Final reports must clearly separate:
+
+- Push GitHub: successful
+- GitHub Actions: successful or failing
+
+Expected final report format:
+
+Compilation: OK
+
+Local tests: OK
+
+Commit: created
+
+Push GitHub: successful
+
+Remote branch: verified
+
+GitHub Actions:
+- OK, all tests green
+or
+- Warning, workflow failing, diagnosis required
+
+Final principle:
+
+An SMP development is considered finished only when:
+- local validation is complete;
+- remote backup is confirmed;
+- GitHub Actions status is known.
+
+This rule reinforces project safety and ensures that every change is correctly backed up before it is considered complete.
+
 Rules:
 - No manual code editing
 - No premature commit
