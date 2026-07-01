@@ -83,6 +83,7 @@ fun LocalLinkReceiverScreen(
     var activeSongId by remember { mutableStateOf<String?>(null) }
     var lastTimeMs by remember { mutableStateOf<Long?>(null) }
     var lastLoggedLineIndex by remember { mutableStateOf<Int?>(null) }
+    var showAdvancedOptions by remember { mutableStateOf(false) }
     val receiverDeviceName = stringResource(R.string.local_link_receiver_device_name)
     val experimentalToken = stringResource(R.string.local_link_experimental_token)
 
@@ -295,32 +296,37 @@ fun LocalLinkReceiverScreen(
                             color = Color(0xFFE0E0E0),
                             fontSize = 14.sp
                         )
-                        OutlinedTextField(
-                            value = host,
-                            onValueChange = { host = it.trim() },
-                            label = { Text(stringResource(R.string.local_link_host_label)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        OutlinedTextField(
-                            value = portText,
-                            onValueChange = { portText = it.filter(Char::isDigit) },
-                            label = { Text(stringResource(R.string.local_link_port_label)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            Button(
-                                enabled = client == null,
-                                onClick = { connectReceiver() }
-                            ) {
-                                Text(stringResource(R.string.local_link_connect))
-                            }
-                            TextButton(
-                                enabled = client != null,
-                                onClick = { disconnect() }
-                            ) {
-                                Text(stringResource(R.string.local_link_disconnect))
+                        TextButton(onClick = { showAdvancedOptions = !showAdvancedOptions }) {
+                            Text(stringResource(R.string.second_screen_advanced_title))
+                        }
+                        if (showAdvancedOptions) {
+                            OutlinedTextField(
+                                value = host,
+                                onValueChange = { host = it.trim() },
+                                label = { Text(stringResource(R.string.local_link_host_label)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = portText,
+                                onValueChange = { portText = it.filter(Char::isDigit) },
+                                label = { Text(stringResource(R.string.local_link_port_label)) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Button(
+                                    enabled = client == null,
+                                    onClick = { connectReceiver() }
+                                ) {
+                                    Text(stringResource(R.string.local_link_connect))
+                                }
+                                TextButton(
+                                    enabled = client != null,
+                                    onClick = { disconnect() }
+                                ) {
+                                    Text(stringResource(R.string.local_link_disconnect))
+                                }
                             }
                         }
                         statusMessageRes?.let { resId ->

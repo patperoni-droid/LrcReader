@@ -146,6 +146,7 @@ fun LocalLinkTestSenderScreen(
     val receiverReadyStatus = stringResource(R.string.local_link_receiver_ready_status)
     val testSongTitle = stringResource(R.string.local_link_test_payload_title)
     val testSongLines = context.resources.getStringArray(R.array.local_link_test_payload_lines).toList()
+    var showAdvancedOptions by remember { mutableStateOf(false) }
     runtime.updateLiveSource(
         currentSongId = { currentSongId },
         currentSongTitle = { currentSongTitle },
@@ -208,29 +209,12 @@ fun LocalLinkTestSenderScreen(
                         value = stringResource(runtime.statusRes)
                     )
                     InfoLine(
-                        label = stringResource(R.string.local_link_ip_label),
-                        value = localIp
-                    )
-                    InfoLine(
-                        label = stringResource(R.string.local_link_port_label),
-                        value = runtime.port?.toString() ?: emptyValue
-                    )
-                    InfoLine(
-                        label = stringResource(R.string.local_link_token_label),
-                        value = experimentalToken
-                    )
-                    InfoLine(
                         label = stringResource(R.string.local_link_remote_label),
                         value = runtime.remoteStatus.ifBlank { emptyValue }
                     )
                     InfoLine(
                         label = stringResource(R.string.local_link_current_song_label),
                         value = runtime.currentSongTitle() ?: emptyValue
-                    )
-                    Text(
-                        text = stringResource(R.string.local_link_manual_pairing_hint),
-                        color = Color(0xFF9E9E9E),
-                        fontSize = 13.sp
                     )
                     runtime.statusDetail?.let { detail ->
                         Text(
@@ -281,6 +265,28 @@ fun LocalLinkTestSenderScreen(
                         ) {
                             Text(stringResource(R.string.local_link_stop_server))
                         }
+                    }
+                    TextButton(onClick = { showAdvancedOptions = !showAdvancedOptions }) {
+                        Text(stringResource(R.string.second_screen_advanced_title))
+                    }
+                    if (showAdvancedOptions) {
+                        InfoLine(
+                            label = stringResource(R.string.local_link_ip_label),
+                            value = localIp
+                        )
+                        InfoLine(
+                            label = stringResource(R.string.local_link_port_label),
+                            value = runtime.port?.toString() ?: emptyValue
+                        )
+                        InfoLine(
+                            label = stringResource(R.string.local_link_token_label),
+                            value = experimentalToken
+                        )
+                        Text(
+                            text = stringResource(R.string.local_link_manual_pairing_hint),
+                            color = Color(0xFF9E9E9E),
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }

@@ -816,9 +816,11 @@
     <string name="more_item_restore_library">Restore my library</string>
     <string name="more_item_restore_library_subtitle">Imports songs and playlists from a backup folder without deleting your other songs.</string>
     <string name="more_item_import_playlist">Import a playlist</string>
-    <string name="more_item_local_link_sender">LocalLink: test sender</string>
-    <string name="more_item_local_link_receiver">LocalLink: lyrics receiver</string>
-    <string name="more_item_local_link_experimental_subtitle">Experimental prototype isolated from the live Player.</string>
+    <string name="more_item_second_screen">📱  Second screen</string>
+    <string name="more_item_second_screen_subtitle">Show lyrics on another device.</string>
+    <string name="more_item_local_link_sender">Share lyrics</string>
+    <string name="more_item_local_link_receiver">Show lyrics</string>
+    <string name="more_item_local_link_experimental_subtitle">Local connection between two devices.</string>
     <string name="more_item_smp_sync_debug">SMP Sync: preview</string>
     <string name="more_item_smp_sync_debug_subtitle">Lab screen: library analysis, comparison, and confirmed manual transfer.</string>
     <string name="smp_sync_debug_title">SMP Sync preview</string>
@@ -1027,12 +1029,20 @@
     <string name="more_player_open_mode_help">Chooses when the Player opens after launching a song: always, never, or only when lyrics are available.</string>
     <string name="more_manual_crossfade_duration">Transition fade duration</string>
     <string name="more_manual_crossfade_duration_help">Sets the fade duration used for manual transitions between two songs.</string>
-    <string name="local_link_sender_title">LocalLink test sender</string>
-    <string name="local_link_receiver_title">LocalLink lyrics receiver</string>
-    <string name="local_link_sender_device_name">SMP test sender</string>
-    <string name="local_link_receiver_device_name">SMP lyrics receiver</string>
+    <string name="second_screen_title">Second screen</string>
+    <string name="second_screen_prompt">What do you want to do?</string>
+    <string name="second_screen_share_title">🎵  Share lyrics</string>
+    <string name="second_screen_share_subtitle">This device plays the music and sends the lyrics.</string>
+    <string name="second_screen_display_title">📱  Show lyrics</string>
+    <string name="second_screen_display_subtitle">This device shows lyrics sent by the main device.</string>
+    <string name="second_screen_advanced_title">⚙️  Advanced options</string>
+    <string name="second_screen_advanced_subtitle">Local connection details: IP, port, and manual connection. Use this only if the two devices do not connect automatically.</string>
+    <string name="local_link_sender_title">Share lyrics</string>
+    <string name="local_link_receiver_title">Show lyrics</string>
+    <string name="local_link_sender_device_name">Main device</string>
+    <string name="local_link_receiver_device_name">Second screen</string>
     <string name="local_link_experimental_token">experimental</string>
-    <string name="local_link_receiver_ready_status">Receiver ready</string>
+    <string name="local_link_receiver_ready_status">Screen ready</string>
     <string name="local_link_host_label">IP address</string>
     <string name="local_link_port_label">Port</string>
     <string name="local_link_connect">Connect</string>
@@ -1053,18 +1063,18 @@
     <string name="local_link_status_label">Status</string>
     <string name="local_link_ip_label">Local IP</string>
     <string name="local_link_token_label">Token</string>
-    <string name="local_link_remote_label">Receiver</string>
+    <string name="local_link_remote_label">Second screen</string>
     <string name="local_link_current_song_label">Current song</string>
     <string name="local_link_shared_song_label">Sent song</string>
     <string name="local_link_lines_sent_label">Lines sent</string>
     <string name="local_link_empty_value">-</string>
-    <string name="local_link_manual_pairing_hint">On the receiver, enter this IP and port. QR code is not included in this V1.</string>
-    <string name="local_link_start_server">Start server</string>
+    <string name="local_link_manual_pairing_hint">On the second screen, open advanced options and enter this IP and port.</string>
+    <string name="local_link_start_server">Start sharing</string>
     <string name="local_link_stop_server">Stop</string>
-    <string name="local_link_server_ready">Server ready</string>
-    <string name="local_link_server_stopped">Server stopped</string>
-    <string name="local_link_server_start_failed">Unable to start server</string>
-    <string name="local_link_no_receiver_connected">No receiver connected</string>
+    <string name="local_link_server_ready">Sharing ready</string>
+    <string name="local_link_server_stopped">Sharing stopped</string>
+    <string name="local_link_server_start_failed">Unable to start sharing</string>
+    <string name="local_link_no_receiver_connected">No second screen connected</string>
     <string name="local_link_test_song_title">Test song</string>
     <string name="local_link_live_song_title">Current live song</string>
     <string name="local_link_send_test_song">Send test song</string>
@@ -1074,10 +1084,10 @@
     <string name="local_link_no_current_song">No current song</string>
     <string name="local_link_no_live_lyrics">Lyrics missing or not loaded</string>
     <string name="local_link_live_share_running">Live share running</string>
-    <string name="local_link_test_payload_title">LocalLink test song</string>
+    <string name="local_link_test_payload_title">Test song</string>
     <string-array name="local_link_test_payload_lines">
-        <item>LocalLink experimental test</item>
-        <item>Receiver follows the remote clock</item>
+        <item>Second screen test</item>
+        <item>The second screen follows the music</item>
         <item>Only timeMs drives the active line</item>
         <item>No Player connection in this prototype</item>
         <item>Network can stop without stopping live</item>

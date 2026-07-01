@@ -734,9 +734,11 @@
     <string name="more_item_restore_library">Restaurar mi biblioteca</string>
     <string name="more_item_restore_library_subtitle">Importa canciones y listas desde una carpeta de copia sin eliminar tus otras canciones.</string>
     <string name="more_item_import_playlist">Importar una playlist</string>
-    <string name="more_item_local_link_sender">LocalLink: emisor de prueba</string>
-    <string name="more_item_local_link_receiver">LocalLink: receptor de letras</string>
-    <string name="more_item_local_link_experimental_subtitle">Prototipo experimental aislado del reproductor live.</string>
+    <string name="more_item_second_screen">📱  Segunda pantalla</string>
+    <string name="more_item_second_screen_subtitle">Muestra las letras en otro dispositivo.</string>
+    <string name="more_item_local_link_sender">Compartir letras</string>
+    <string name="more_item_local_link_receiver">Mostrar letras</string>
+    <string name="more_item_local_link_experimental_subtitle">Conexión local entre dos dispositivos.</string>
     <string name="more_item_smp_sync_debug">SMP Sync: vista previa</string>
     <string name="more_item_smp_sync_debug_subtitle">Pantalla labo: análisis de biblioteca, comparación y transferencia manual confirmada.</string>
     <string name="smp_sync_debug_title">Vista previa SMP Sync</string>
@@ -945,12 +947,20 @@
     <string name="more_player_open_mode_help">Elige cuándo se abre el reproductor al iniciar una canción: siempre, nunca o solo si hay letras disponibles.</string>
     <string name="more_manual_crossfade_duration">Duración del fundido de transición</string>
     <string name="more_manual_crossfade_duration_help">Define la duración del fundido usado en las transiciones manuales entre dos canciones.</string>
-    <string name="local_link_sender_title">Emisor de prueba LocalLink</string>
-    <string name="local_link_receiver_title">Receptor de letras LocalLink</string>
-    <string name="local_link_sender_device_name">Emisor de prueba SMP</string>
-    <string name="local_link_receiver_device_name">Receptor de letras SMP</string>
+    <string name="second_screen_title">Segunda pantalla</string>
+    <string name="second_screen_prompt">¿Qué quieres hacer?</string>
+    <string name="second_screen_share_title">🎵  Compartir letras</string>
+    <string name="second_screen_share_subtitle">Este dispositivo reproduce la música y envía las letras.</string>
+    <string name="second_screen_display_title">📱  Mostrar letras</string>
+    <string name="second_screen_display_subtitle">Este dispositivo muestra las letras enviadas por el dispositivo principal.</string>
+    <string name="second_screen_advanced_title">⚙️  Opciones avanzadas</string>
+    <string name="second_screen_advanced_subtitle">Detalles de conexión local: IP, puerto y conexión manual. Úsalo solo si los dos dispositivos no se conectan automáticamente.</string>
+    <string name="local_link_sender_title">Compartir letras</string>
+    <string name="local_link_receiver_title">Mostrar letras</string>
+    <string name="local_link_sender_device_name">Dispositivo principal</string>
+    <string name="local_link_receiver_device_name">Segunda pantalla</string>
     <string name="local_link_experimental_token">experimental</string>
-    <string name="local_link_receiver_ready_status">Receptor listo</string>
+    <string name="local_link_receiver_ready_status">Pantalla lista</string>
     <string name="local_link_host_label">Dirección IP</string>
     <string name="local_link_port_label">Puerto</string>
     <string name="local_link_connect">Conectar</string>
@@ -971,18 +981,18 @@
     <string name="local_link_status_label">Estado</string>
     <string name="local_link_ip_label">IP local</string>
     <string name="local_link_token_label">Token</string>
-    <string name="local_link_remote_label">Receptor</string>
+    <string name="local_link_remote_label">Segunda pantalla</string>
     <string name="local_link_current_song_label">Canción actual</string>
     <string name="local_link_shared_song_label">Canción enviada</string>
     <string name="local_link_lines_sent_label">Líneas enviadas</string>
     <string name="local_link_empty_value">-</string>
-    <string name="local_link_manual_pairing_hint">En el receptor, introduce esta IP y este puerto. El código QR no está incluido en esta V1.</string>
-    <string name="local_link_start_server">Iniciar servidor</string>
+    <string name="local_link_manual_pairing_hint">En la segunda pantalla, abre las opciones avanzadas e introduce esta IP y este puerto.</string>
+    <string name="local_link_start_server">Iniciar transmisión</string>
     <string name="local_link_stop_server">Detener</string>
-    <string name="local_link_server_ready">Servidor listo</string>
-    <string name="local_link_server_stopped">Servidor detenido</string>
-    <string name="local_link_server_start_failed">No se pudo iniciar el servidor</string>
-    <string name="local_link_no_receiver_connected">No hay receptor conectado</string>
+    <string name="local_link_server_ready">Transmisión lista</string>
+    <string name="local_link_server_stopped">Transmisión detenida</string>
+    <string name="local_link_server_start_failed">No se pudo iniciar la transmisión</string>
+    <string name="local_link_no_receiver_connected">No hay segunda pantalla conectada</string>
     <string name="local_link_test_song_title">Canción de prueba</string>
     <string name="local_link_live_song_title">Canción live actual</string>
     <string name="local_link_send_test_song">Enviar canción de prueba</string>
@@ -992,10 +1002,10 @@
     <string name="local_link_no_current_song">No hay canción actual</string>
     <string name="local_link_no_live_lyrics">Letras ausentes o no cargadas</string>
     <string name="local_link_live_share_running">Compartir live activo</string>
-    <string name="local_link_test_payload_title">Canción de prueba LocalLink</string>
+    <string name="local_link_test_payload_title">Canción de prueba</string>
     <string-array name="local_link_test_payload_lines">
-        <item>Prueba experimental LocalLink</item>
-        <item>El receptor sigue el reloj remoto</item>
+        <item>Prueba de segunda pantalla</item>
+        <item>La segunda pantalla sigue la música</item>
         <item>Solo timeMs elige la línea activa</item>
         <item>Sin conexión al Player en este prototipo</item>
         <item>La red puede caer sin detener el live</item>

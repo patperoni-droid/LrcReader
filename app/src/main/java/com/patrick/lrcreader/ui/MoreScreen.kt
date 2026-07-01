@@ -166,8 +166,7 @@ fun MoreScreen(
             onOpenFiller = { navigate("filler") },
             onOpenHistory = { navigate("history") },
             onOpenArrangement = { navigate("arrangement") },
-            onOpenLocalLinkSender = { navigate("local_link_sender") },
-            onOpenLocalLinkReceiver = { navigate("local_link_receiver") },
+            onOpenSecondScreen = { navigate("second_screen") },
             onOpenSmpSyncDebug = { navigate("smp_sync_debug") },
             onOpenWaveformPreview = { navigate("waveform_preview") },
             showDjTab = showDjTab,
@@ -211,6 +210,13 @@ fun MoreScreen(
             onBack = { navigate("root") }
         )
 
+        MoreSection.SecondScreen -> SecondScreenHub(
+            modifier = modifier,
+            onOpenShare = { navigate("local_link_sender") },
+            onOpenDisplay = { navigate("local_link_receiver") },
+            onBack = { navigate("root") }
+        )
+
         MoreSection.LocalLinkSender -> LocalLinkTestSenderScreen(
             modifier = modifier,
             currentSongId = currentPlayingSongId,
@@ -220,12 +226,12 @@ fun MoreScreen(
             getCurrentDurationMs = getCurrentDurationMs,
             isCurrentTrackPlaying = isCurrentTrackPlaying,
             loadCurrentParsedLines = loadCurrentParsedLines,
-            onBack = { navigate("root") }
+            onBack = { navigate("second_screen") }
         )
 
         MoreSection.LocalLinkReceiver -> LocalLinkReceiverScreen(
             modifier = modifier,
-            onBack = { navigate("root") }
+            onBack = { navigate("second_screen") }
         )
 
         MoreSection.SmpSyncDebug -> SmpSyncDebugScreen(
@@ -267,6 +273,7 @@ private enum class MoreSection(val route: String) {
     Backup("backup"),
     Filler("filler"),
     History("history"),
+    SecondScreen("second_screen"),
     LocalLinkSender("local_link_sender"),
     LocalLinkReceiver("local_link_receiver"),
     SmpSyncDebug("smp_sync_debug"),
@@ -352,6 +359,107 @@ private fun ArrangementHubScreen(
     }
 }
 
+@Composable
+private fun SecondScreenHub(
+    modifier: Modifier = Modifier,
+    onOpenShare: () -> Unit,
+    onOpenDisplay: () -> Unit,
+    onBack: () -> Unit
+) {
+    var showAdvancedOptions by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        TextButton(onClick = onBack) {
+            Text(
+                text = stringResource(R.string.common_back_arrow),
+                color = Color(0xFFB0BEC5)
+            )
+        }
+
+        Text(
+            text = stringResource(R.string.second_screen_title),
+            color = Color.White,
+            fontSize = 24.sp
+        )
+        Text(
+            text = stringResource(R.string.second_screen_prompt),
+            color = Color(0xFFE0E0E0),
+            fontSize = 17.sp
+        )
+
+        SecondScreenChoiceCard(
+            title = stringResource(R.string.second_screen_share_title),
+            subtitle = stringResource(R.string.second_screen_share_subtitle),
+            onClick = onOpenShare
+        )
+
+        SecondScreenChoiceCard(
+            title = stringResource(R.string.second_screen_display_title),
+            subtitle = stringResource(R.string.second_screen_display_subtitle),
+            onClick = onOpenDisplay
+        )
+
+        TextButton(onClick = { showAdvancedOptions = !showAdvancedOptions }) {
+            Text(
+                text = stringResource(R.string.second_screen_advanced_title),
+                color = Color(0xFFB0BEC5)
+            )
+        }
+
+        if (showAdvancedOptions) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF121212)),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.second_screen_advanced_subtitle),
+                    color = Color(0xFFBDBDBD),
+                    fontSize = 14.sp,
+                    modifier = Modifier.padding(14.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SecondScreenChoiceCard(
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF171717)),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 20.sp
+            )
+            Text(
+                text = subtitle,
+                color = Color(0xFFBDBDBD),
+                fontSize = 15.sp
+            )
+        }
+    }
+}
+
 /* ─────────────────────────────
    Menu principal – style rack analogique
    ───────────────────────────── */
@@ -363,8 +471,7 @@ private fun MoreRootScreen(
     onOpenFiller: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenArrangement: () -> Unit,
-    onOpenLocalLinkSender: () -> Unit,
-    onOpenLocalLinkReceiver: () -> Unit,
+    onOpenSecondScreen: () -> Unit,
     onOpenSmpSyncDebug: () -> Unit,
     onOpenWaveformPreview: () -> Unit,
     showDjTab: Boolean,
@@ -907,14 +1014,9 @@ private fun MoreRootScreen(
                         }
                     )
                     SettingsItem(
-                        label = stringResource(R.string.more_item_local_link_sender),
-                        subtitle = stringResource(R.string.more_item_local_link_experimental_subtitle),
-                        onClick = onOpenLocalLinkSender
-                    )
-                    SettingsItem(
-                        label = stringResource(R.string.more_item_local_link_receiver),
-                        subtitle = stringResource(R.string.more_item_local_link_experimental_subtitle),
-                        onClick = onOpenLocalLinkReceiver
+                        label = stringResource(R.string.more_item_second_screen),
+                        subtitle = stringResource(R.string.more_item_second_screen_subtitle),
+                        onClick = onOpenSecondScreen
                     )
                     if (showSmpSyncDebug) {
                         SettingsItem(
