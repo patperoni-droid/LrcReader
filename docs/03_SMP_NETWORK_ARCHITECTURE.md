@@ -53,6 +53,12 @@ Principe SMP :
 L'utilisateur choisit ce qu'il veut faire, jamais la technologie utilisée.
 ```
 
+Un réseau SMP peut contenir plusieurs appareils.
+
+Une connexion entre deux appareils n'est qu'un cas particulier de cette architecture.
+
+La cible V2 doit donc raisonner en réseau d'appareils SMP, pas seulement en liaison ponctuelle. Cette vision prépare les évolutions futures : deuxième écran, SMP Sync, prompteur, accords, annotations, contrôle distant et autres services SMP.
+
 ---
 
 ## Architecture Générale
@@ -122,6 +128,26 @@ smpSync
 annotations
 remoteControl
 ```
+
+Un appareil SMP ne représente pas une fonctionnalité unique.
+
+Chaque appareil annonce les capacités qu'il sait fournir. Un téléphone peut par exemple diffuser les paroles et préparer SMP Sync, tandis qu'une tablette peut afficher les paroles, les accords ou un prompteur.
+
+Cette approche permet d'ajouter de nouvelles fonctionnalités sans modifier l'architecture réseau. Les futures capacités deviennent des annonces et des sessions spécialisées au-dessus de la même couche de découverte, d'appairage et de supervision.
+
+Avant tout appairage, les appareils doivent vérifier leur compatibilité :
+
+- `protocolVersion` ;
+- `appVersion` ;
+- capacités minimales nécessaires à l'action demandée.
+
+Si les versions ou capacités sont incompatibles :
+
+- la connexion est refusée ;
+- l'utilisateur reçoit un message clair ;
+- aucun comportement partiel ou imprévisible ne doit être tenté.
+
+Cette règle évite les comportements instables entre versions SMP différentes.
 
 NSD / mDNS sert uniquement à trouver l'appareil et son endpoint.
 
@@ -496,3 +522,9 @@ Si une évolution réseau menace :
 - la possibilité de fallback manuel ;
 
 elle doit être rejetée ou repoussée.
+
+Le réseau SMP ne doit jamais devenir un prérequis pour jouer.
+
+Le fonctionnement local de Stage Music Player reste toujours prioritaire. Le réseau enrichit les possibilités de SMP, mais il ne doit jamais empêcher un musicien de jouer si aucun autre appareil n'est disponible.
+
+Stabilité live > fonctionnalité réseau.
