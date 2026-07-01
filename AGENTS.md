@@ -41,6 +41,10 @@ For Playlist:
 For Timeline / MIDI / DMX:
 - /docs/features/FEATURE_TIMELINE.md
 
+For Network / LocalLink / device pairing:
+- /docs/03_SMP_NETWORK_ARCHITECTURE.md
+- /docs/Features/FEATURE_SMP_SYNC.md
+
 For Library / import / files:
 - /docs/features/FEATURE_LIBRARY.md
 
