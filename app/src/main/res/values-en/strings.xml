@@ -1037,6 +1037,10 @@
     <string name="second_screen_display_subtitle">This device shows lyrics sent by the main device.</string>
     <string name="second_screen_advanced_title">⚙️  Advanced options</string>
     <string name="second_screen_advanced_subtitle">Local connection details: IP, port, and manual connection. Use this only if the two devices do not connect automatically.</string>
+    <string name="second_screen_available_devices_title">Available devices</string>
+    <string name="second_screen_no_devices_found">No device found. Check that the other device is on the same Wi-Fi and that the \"Show lyrics\" screen is open.</string>
+    <string name="second_screen_device_available">Available</string>
+    <string name="second_screen_discovery_connect_later">Automatic connection is planned for a future version.</string>
     <string name="local_link_sender_title">Share lyrics</string>
     <string name="local_link_receiver_title">Show lyrics</string>
     <string name="local_link_sender_device_name">Main device</string>

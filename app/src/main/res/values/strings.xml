@@ -1045,6 +1045,10 @@
     <string name="second_screen_display_subtitle">Cet appareil affiche les paroles envoyées par l’appareil principal.</string>
     <string name="second_screen_advanced_title">⚙️  Options avancées</string>
     <string name="second_screen_advanced_subtitle">Informations de connexion locale : IP, port et connexion manuelle. À utiliser seulement si les deux appareils ne se connectent pas automatiquement.</string>
+    <string name="second_screen_available_devices_title">Appareils disponibles</string>
+    <string name="second_screen_no_devices_found">Aucun appareil trouvé. Vérifiez que l’autre appareil est sur le même Wi-Fi et que l’écran \"Afficher les paroles\" est ouvert.</string>
+    <string name="second_screen_device_available">Disponible</string>
+    <string name="second_screen_discovery_connect_later">Connexion automatique prévue dans une prochaine version.</string>
     <string name="local_link_sender_title">Diffuser les paroles</string>
     <string name="local_link_receiver_title">Afficher les paroles</string>
     <string name="local_link_sender_device_name">Appareil principal</string>

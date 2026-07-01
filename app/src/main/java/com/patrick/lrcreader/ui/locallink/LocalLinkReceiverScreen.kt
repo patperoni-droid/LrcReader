@@ -49,6 +49,7 @@ import com.patrick.lrcreader.core.locallink.LocalLinkMessage
 import com.patrick.lrcreader.core.locallink.LyricsPacketMessage
 import com.patrick.lrcreader.core.locallink.ReceiverStatusMessage
 import com.patrick.lrcreader.core.locallink.UnknownMessage
+import com.patrick.lrcreader.core.network.SmpDeviceAdvertiser
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -86,6 +87,7 @@ fun LocalLinkReceiverScreen(
     var showAdvancedOptions by remember { mutableStateOf(false) }
     val receiverDeviceName = stringResource(R.string.local_link_receiver_device_name)
     val experimentalToken = stringResource(R.string.local_link_experimental_token)
+    val advertiser = remember(context) { SmpDeviceAdvertiser(context.applicationContext) }
 
     val lines = remember(packet) {
         packet?.lines
@@ -234,6 +236,11 @@ fun LocalLinkReceiverScreen(
 
     DisposableEffect(Unit) {
         onDispose { disconnect() }
+    }
+
+    DisposableEffect(advertiser) {
+        advertiser.start()
+        onDispose { advertiser.stop() }
     }
 
     LaunchedEffect(client, shouldStayConnected, host, portText) {
