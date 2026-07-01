@@ -195,6 +195,38 @@ Strict order:
 3. Validation
 4. Commit
 
+Architecture before implementation:
+
+Any strategic SMP evolution must exist as architecture before it exists as code.
+
+When a feature affects the global architecture, multiple modules, or creates a major new product capability, the work order becomes:
+
+Product vision
+↓
+UX reasoning
+↓
+Architecture
+↓
+Documentation
+↓
+Diagnosis
+↓
+Minimal patch
+↓
+Validation
+↓
+Commit
+
+Implementation starts only after the architecture has been validated.
+
+Bug fixes and micro-patches are not affected by this rule.
+
+This complements:
+- minimal patch;
+- stability before features;
+- targeted documentation;
+- architecture before refactor.
+
 Rules:
 - No manual code editing
 - No premature commit
