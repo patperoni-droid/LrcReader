@@ -1068,6 +1068,10 @@
     <string name="local_link_receiver_setup_hint">Same Wi-Fi or local hotspot. Internet is not required.</string>
     <string name="local_link_invalid_address">Invalid address or port.</string>
     <string name="local_link_connection_failed">Connection failed.</string>
+    <string name="second_screen_session_searching">Searching for an SMP session...</string>
+    <string name="second_screen_session_connecting">Connecting...</string>
+    <string name="second_screen_session_connected">✓ Connected</string>
+    <string name="second_screen_session_lost">Connection lost</string>
     <string name="local_link_no_lyrics">No lyrics received</string>
     <string name="local_link_waiting_for_clock">Waiting for clock…</string>
     <string name="local_link_time_value">%1$d ms</string>

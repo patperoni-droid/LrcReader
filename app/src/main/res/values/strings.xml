@@ -1076,6 +1076,10 @@
     <string name="local_link_receiver_setup_hint">Même Wi-Fi ou hotspot local. Internet n’est pas nécessaire.</string>
     <string name="local_link_invalid_address">Adresse ou port invalide.</string>
     <string name="local_link_connection_failed">Connexion impossible.</string>
+    <string name="second_screen_session_searching">Recherche d’une session SMP...</string>
+    <string name="second_screen_session_connecting">Connexion...</string>
+    <string name="second_screen_session_connected">✓ Connecté</string>
+    <string name="second_screen_session_lost">Connexion perdue</string>
     <string name="local_link_no_lyrics">Aucune parole reçue</string>
     <string name="local_link_waiting_for_clock">En attente de l’horloge…</string>
     <string name="local_link_time_value">%1$d ms</string>

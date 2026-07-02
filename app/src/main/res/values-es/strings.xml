@@ -986,6 +986,10 @@
     <string name="local_link_receiver_setup_hint">Misma Wi-Fi o hotspot local. No se necesita Internet.</string>
     <string name="local_link_invalid_address">Dirección o puerto inválido.</string>
     <string name="local_link_connection_failed">No se pudo conectar.</string>
+    <string name="second_screen_session_searching">Buscando una sesión SMP...</string>
+    <string name="second_screen_session_connecting">Conectando...</string>
+    <string name="second_screen_session_connected">✓ Conectado</string>
+    <string name="second_screen_session_lost">Conexión perdida</string>
     <string name="local_link_no_lyrics">No se han recibido letras</string>
     <string name="local_link_waiting_for_clock">Esperando reloj…</string>
     <string name="local_link_time_value">%1$d ms</string>

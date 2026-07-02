@@ -5,7 +5,6 @@ import android.content.Context
 import android.util.Log
 import android.view.WindowManager
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,6 +82,8 @@ fun LocalLinkReceiverScreen(
     var client by remember { mutableStateOf<LocalLinkClient?>(null) }
     var shouldStayConnected by remember { mutableStateOf(false) }
     var reconnecting by remember { mutableStateOf(false) }
+    var autoSessionEnabled by remember { mutableStateOf(true) }
+    var autoSessionState by remember { mutableStateOf(AutoSessionState.Discovering) }
     var packet by remember { mutableStateOf<LyricsPacketMessage?>(null) }
     var clock by remember { mutableStateOf<ClockMessage?>(null) }
     var activeSongId by remember { mutableStateOf<String?>(null) }
@@ -120,6 +121,7 @@ fun LocalLinkReceiverScreen(
         client?.close()
         client = null
         receiverState = ReceiverState.Disconnected
+        autoSessionState = AutoSessionState.Disconnected
     }
 
     fun handleMessage(message: LocalLinkMessage) {
@@ -181,6 +183,7 @@ fun LocalLinkReceiverScreen(
     }
 
     fun connectReceiver() {
+        autoSessionEnabled = false
         val port = portText.toIntOrNull()
         if (host.isBlank() || port == null) {
             statusMessageRes = R.string.local_link_invalid_address
@@ -241,11 +244,15 @@ fun LocalLinkReceiverScreen(
     }
 
     fun connectDiscoveredSession(device: SmpDiscoveredDevice) {
+        if (!autoSessionEnabled || autoSessionState == AutoSessionState.Connecting || autoSessionState == AutoSessionState.Connected) {
+            return
+        }
         val discoveredHost = device.hostAddress?.takeIf { it.isNotBlank() }
         if (discoveredHost == null || device.port !in 1..65535) {
             statusMessageRes = R.string.local_link_connection_failed
             statusDetail = null
             receiverState = ReceiverState.Disconnected
+            autoSessionState = AutoSessionState.Disconnected
             return
         }
         val nextClient = LocalLinkClient(
@@ -261,6 +268,7 @@ fun LocalLinkReceiverScreen(
         shouldStayConnected = false
         reconnecting = false
         receiverState = ReceiverState.Waiting
+        autoSessionState = AutoSessionState.Connecting
         statusMessageRes = null
         statusDetail = null
         scope.launch {
@@ -274,14 +282,20 @@ fun LocalLinkReceiverScreen(
             if (!connected) {
                 client = null
                 receiverState = ReceiverState.Disconnected
+                autoSessionState = AutoSessionState.Disconnected
                 statusMessageRes = R.string.local_link_connection_failed
                 statusDetail = null
                 Log.w(
                     LOCAL_LINK_DIAG_TAG,
                     "receiver_discovered_connect_failed host=$discoveredHost port=${device.port} name=${device.deviceName}"
                 )
+                delay(2_000L)
+                if (autoSessionEnabled && autoSessionState == AutoSessionState.Disconnected && client == null) {
+                    autoSessionState = AutoSessionState.Discovering
+                }
             } else {
                 receiverState = ReceiverState.Connected
+                autoSessionState = AutoSessionState.Connected
                 Log.d(
                     LOCAL_LINK_DIAG_TAG,
                     "receiver_discovered_connect_ok host=$discoveredHost port=${device.port} name=${device.deviceName}"
@@ -318,6 +332,47 @@ fun LocalLinkReceiverScreen(
         }
     }
 
+    LaunchedEffect(autoSessionEnabled, autoSessionState, discoveredDevices, client) {
+        if (!autoSessionEnabled || client != null || autoSessionState != AutoSessionState.Discovering) {
+            return@LaunchedEffect
+        }
+        val nextDevice = discoveredDevices.firstOrNull { device ->
+            !device.hostAddress.isNullOrBlank() && device.port in 1..65535
+        }
+        if (nextDevice != null) {
+            connectDiscoveredSession(nextDevice)
+        } else if (autoSessionState != AutoSessionState.Discovering) {
+            autoSessionState = AutoSessionState.Discovering
+        }
+    }
+
+    LaunchedEffect(autoSessionEnabled, autoSessionState, client) {
+        if (!autoSessionEnabled || autoSessionState != AutoSessionState.Connected) {
+            return@LaunchedEffect
+        }
+        while (autoSessionEnabled && autoSessionState == AutoSessionState.Connected) {
+            delay(1_000L)
+            val activeClient = client
+            if (activeClient == null || !activeClient.session.connected) {
+                activeClient?.close()
+                if (client === activeClient) {
+                    client = null
+                }
+                shouldStayConnected = false
+                reconnecting = false
+                receiverState = ReceiverState.Disconnected
+                autoSessionState = AutoSessionState.Disconnected
+                statusMessageRes = null
+                statusDetail = null
+                delay(1_000L)
+                if (autoSessionEnabled && autoSessionState == AutoSessionState.Disconnected) {
+                    autoSessionState = AutoSessionState.Discovering
+                }
+                break
+            }
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -348,6 +403,13 @@ fun LocalLinkReceiverScreen(
                         color = Color(0xFFBDBDBD)
                     )
                 }
+            }
+            if (autoSessionEnabled) {
+                Text(
+                    text = stringResource(autoSessionState.labelRes),
+                    color = autoSessionState.color,
+                    fontSize = 14.sp
+                )
             }
 
             if (packet == null || receiverState == ReceiverState.Disconnected || receiverState == ReceiverState.Desynced) {
@@ -425,8 +487,7 @@ fun LocalLinkReceiverScreen(
                 }
 
                 DiscoveredSessionsCard(
-                    devices = discoveredDevices,
-                    onDeviceClick = { device -> connectDiscoveredSession(device) }
+                    devices = discoveredDevices
                 )
             }
 
@@ -443,8 +504,7 @@ fun LocalLinkReceiverScreen(
 
 @Composable
 private fun DiscoveredSessionsCard(
-    devices: List<SmpDiscoveredDevice>,
-    onDeviceClick: (SmpDiscoveredDevice) -> Unit
+    devices: List<SmpDiscoveredDevice>
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = Color(0xFF121815)),
@@ -474,7 +534,6 @@ private fun DiscoveredSessionsCard(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onDeviceClick(device) }
                             .padding(vertical = 4.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -664,4 +723,11 @@ private enum class ReceiverState(val labelRes: Int) {
     Reconnecting(R.string.local_link_state_reconnecting),
     Desynced(R.string.local_link_state_desynced),
     Disconnected(R.string.local_link_state_disconnected)
+}
+
+private enum class AutoSessionState(val labelRes: Int, val color: Color) {
+    Discovering(R.string.second_screen_session_searching, Color(0xFFBDBDBD)),
+    Connecting(R.string.second_screen_session_connecting, Color(0xFF42A5F5)),
+    Connected(R.string.second_screen_session_connected, Color(0xFF66BB6A)),
+    Disconnected(R.string.second_screen_session_lost, Color(0xFFFFAB91))
 }
