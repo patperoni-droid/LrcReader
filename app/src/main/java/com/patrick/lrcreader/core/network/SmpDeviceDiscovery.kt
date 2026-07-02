@@ -28,7 +28,6 @@ data class SmpDiscoveredDevice(
 private const val SMP_NSD_TAG = "SMP_NSD"
 private const val SMP_SERVICE_TYPE = "_smp-locallink._tcp"
 private const val SMP_CAPABILITY_LYRICS = "lyrics"
-private const val SMP_DISCOVERY_ONLY_PORT = 1
 
 private object SmpDeviceIdentity {
     fun deviceId(context: Context): String {
@@ -57,12 +56,19 @@ class SmpDeviceAdvertiser(
     private var registrationListener: NsdManager.RegistrationListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
 
-    fun start() {
+    fun start(port: Int) {
+        if (port !in 1..65535) {
+            Log.w(SMP_NSD_TAG, "advertiser_invalid_port port=$port")
+            return
+        }
         if (registrationListener != null) return
         multicastLock = acquireMulticastLock(appContext, "SmpDeviceAdvertiser")
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
-                Log.d(SMP_NSD_TAG, "advertiser_registered name=${serviceInfo.serviceName}")
+                Log.d(
+                    SMP_NSD_TAG,
+                    "advertiser_registered name=${serviceInfo.serviceName} port=${serviceInfo.port}"
+                )
             }
 
             override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
@@ -81,7 +87,7 @@ class SmpDeviceAdvertiser(
         }
         registrationListener = listener
         runCatching {
-            nsdManager.registerService(buildServiceInfo(), NsdManager.PROTOCOL_DNS_SD, listener)
+            nsdManager.registerService(buildServiceInfo(port), NsdManager.PROTOCOL_DNS_SD, listener)
         }.onFailure { error ->
             Log.w(SMP_NSD_TAG, "advertiser_start_failed", error)
             registrationListener = null
@@ -96,12 +102,12 @@ class SmpDeviceAdvertiser(
         releaseMulticastLock()
     }
 
-    private fun buildServiceInfo(): NsdServiceInfo {
+    private fun buildServiceInfo(port: Int): NsdServiceInfo {
         val deviceName = SmpDeviceIdentity.deviceName()
         val serviceInfo = NsdServiceInfo()
         serviceInfo.serviceName = "SMP ${deviceName.take(40)}"
         serviceInfo.serviceType = SMP_SERVICE_TYPE
-        serviceInfo.port = SMP_DISCOVERY_ONLY_PORT
+        serviceInfo.port = port
         serviceInfo.setAttribute("deviceId", SmpDeviceIdentity.deviceId(appContext))
         serviceInfo.setAttribute("deviceName", deviceName)
         serviceInfo.setAttribute("protocolVersion", LocalLinkMessage.VERSION.toString())

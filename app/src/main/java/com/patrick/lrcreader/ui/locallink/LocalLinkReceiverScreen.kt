@@ -4,7 +4,9 @@ import android.app.Activity
 import android.content.Context
 import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,12 +23,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,7 +53,8 @@ import com.patrick.lrcreader.core.locallink.LocalLinkMessage
 import com.patrick.lrcreader.core.locallink.LyricsPacketMessage
 import com.patrick.lrcreader.core.locallink.ReceiverStatusMessage
 import com.patrick.lrcreader.core.locallink.UnknownMessage
-import com.patrick.lrcreader.core.network.SmpDeviceAdvertiser
+import com.patrick.lrcreader.core.network.SmpDeviceDiscovery
+import com.patrick.lrcreader.core.network.SmpDiscoveredDevice
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -87,7 +92,8 @@ fun LocalLinkReceiverScreen(
     var showAdvancedOptions by remember { mutableStateOf(false) }
     val receiverDeviceName = stringResource(R.string.local_link_receiver_device_name)
     val experimentalToken = stringResource(R.string.local_link_experimental_token)
-    val advertiser = remember(context) { SmpDeviceAdvertiser(context.applicationContext) }
+    val discovery = remember(context) { SmpDeviceDiscovery(context.applicationContext) }
+    val discoveredDevices by discovery.devices.collectAsState()
 
     val lines = remember(packet) {
         packet?.lines
@@ -237,10 +243,9 @@ fun LocalLinkReceiverScreen(
     DisposableEffect(Unit) {
         onDispose { disconnect() }
     }
-
-    DisposableEffect(advertiser) {
-        advertiser.start()
-        onDispose { advertiser.stop() }
+    DisposableEffect(discovery) {
+        discovery.start()
+        onDispose { discovery.stop() }
     }
 
     LaunchedEffect(client, shouldStayConnected, host, portText) {
@@ -352,6 +357,17 @@ fun LocalLinkReceiverScreen(
                         }
                     }
                 }
+
+                DiscoveredSessionsCard(
+                    devices = discoveredDevices,
+                    onDeviceClick = {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.second_screen_discovery_connect_later),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                )
             }
 
             LyricsWindow(
@@ -361,6 +377,60 @@ fun LocalLinkReceiverScreen(
                 next = lines.getOrNull(activeIndex + 1)?.text,
                 modifier = Modifier.weight(1f)
             )
+        }
+    }
+}
+
+@Composable
+private fun DiscoveredSessionsCard(
+    devices: List<SmpDiscoveredDevice>,
+    onDeviceClick: (SmpDiscoveredDevice) -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF121815)),
+        shape = RoundedCornerShape(10.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.second_screen_available_devices_title),
+                color = Color.White,
+                fontSize = 17.sp
+            )
+            if (devices.isEmpty()) {
+                Text(
+                    text = stringResource(R.string.second_screen_no_devices_found),
+                    color = Color(0xFFBDBDBD),
+                    fontSize = 14.sp
+                )
+            } else {
+                devices.forEachIndexed { index, device ->
+                    if (index > 0) {
+                        HorizontalDivider(color = Color(0xFF26342E))
+                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onDeviceClick(device) }
+                            .padding(vertical = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = device.deviceName,
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = stringResource(R.string.second_screen_device_available),
+                            color = Color(0xFF80CBC4),
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
         }
     }
 }
