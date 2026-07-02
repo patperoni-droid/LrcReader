@@ -288,6 +288,48 @@ fun LocalLinkTestSenderScreen(
         }
     }
 
+    fun sendTestSong() {
+        val activeServer = runtime.server ?: return
+        runtime.clockJob?.cancel()
+        runtime.clockJob = runtime.scope.launch {
+            val songId = "local-link-test-song"
+            activeServer.send(
+                testLyricsPacket(
+                    songId = songId,
+                    seq = runtime.seq++,
+                    title = testSongTitle,
+                    lineTexts = testSongLines
+                )
+            )
+            val startedAt = SystemClock.elapsedRealtime()
+            runtime.isClockRunning = true
+            while (isActive) {
+                val timeMs = SystemClock.elapsedRealtime() - startedAt
+                activeServer.send(
+                    ClockMessage(
+                        songId = songId,
+                        timeMs = timeMs,
+                        isPlaying = true,
+                        seq = runtime.seq++,
+                        sentAtMs = SystemClock.elapsedRealtime()
+                    )
+                )
+                if (timeMs >= 32_000L) break
+                delay(200L)
+            }
+            activeServer.send(
+                ClockMessage(
+                    songId = songId,
+                    timeMs = 32_000L,
+                    isPlaying = false,
+                    seq = runtime.seq++,
+                    sentAtMs = SystemClock.elapsedRealtime()
+                )
+            )
+            runtime.isClockRunning = false
+        }
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -323,76 +365,73 @@ fun LocalLinkTestSenderScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     InfoLine(
-                        label = stringResource(R.string.local_link_status_label),
+                        label = stringResource(R.string.local_link_session_status_label),
                         value = stringResource(runtime.statusRes)
                     )
-                    InfoLine(
-                        label = stringResource(R.string.local_link_remote_label),
-                        value = runtime.remoteStatus.ifBlank { emptyValue }
-                    )
-                    InfoLine(
-                        label = stringResource(R.string.local_link_current_song_label),
-                        value = runtime.currentSongTitle() ?: emptyValue
-                    )
-                    runtime.statusDetail?.let { detail ->
-                        Text(
-                            text = detail,
-                            color = Color(0xFFFFCCBC),
-                            fontSize = 12.sp
-                        )
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            enabled = runtime.server == null,
-                            onClick = {
-                                val nextServer = LocalLinkServer(
-                                    sessionId = "sender-${System.currentTimeMillis()}",
-                                    token = experimentalToken,
-                                    deviceName = senderDeviceName
-                                )
-                                runtime.server = nextServer
-                                runtime.statusDetail = null
-                                runtime.scope.launch {
-                                    runCatching {
-                                        nextServer.start(runtime.scope) { message ->
-                                            runtime.scope.launch { handleIncoming(message) }
-                                        }
-                                    }.onSuccess { startedPort ->
-                                        runtime.port = startedPort
-                                        runtime.statusRes = R.string.local_link_server_ready
-                                        advertiser.start(startedPort)
-                                        Log.d(
-                                            LOCAL_LINK_DIAG_TAG,
-                                            "sender_server_started port=$startedPort addresses=${findLocalIpv4Addresses().joinToString()}"
-                                        )
-                                    }.onFailure { error ->
-                                        Log.w(LOCAL_LINK_DIAG_TAG, "sender_server_start_failed", error)
-                                        advertiser.stop()
-                                        nextServer.close()
-                                        runtime.server = null
-                                        runtime.port = null
-                                        runtime.statusRes = R.string.local_link_server_start_failed
-                                        runtime.statusDetail = error.message ?: error::class.java.simpleName
+                    Button(
+                        enabled = runtime.server == null,
+                        onClick = {
+                            val nextServer = LocalLinkServer(
+                                sessionId = "sender-${System.currentTimeMillis()}",
+                                token = experimentalToken,
+                                deviceName = senderDeviceName
+                            )
+                            runtime.server = nextServer
+                            runtime.statusDetail = null
+                            runtime.scope.launch {
+                                runCatching {
+                                    nextServer.start(runtime.scope) { message ->
+                                        runtime.scope.launch { handleIncoming(message) }
                                     }
+                                }.onSuccess { startedPort ->
+                                    runtime.port = startedPort
+                                    runtime.statusRes = R.string.local_link_server_ready
+                                    advertiser.start(startedPort)
+                                    Log.d(
+                                        LOCAL_LINK_DIAG_TAG,
+                                        "sender_server_started port=$startedPort addresses=${findLocalIpv4Addresses().joinToString()}"
+                                    )
+                                }.onFailure { error ->
+                                    Log.w(LOCAL_LINK_DIAG_TAG, "sender_server_start_failed", error)
+                                    advertiser.stop()
+                                    nextServer.close()
+                                    runtime.server = null
+                                    runtime.port = null
+                                    runtime.statusRes = R.string.local_link_server_start_failed
+                                    runtime.statusDetail = error.message ?: error::class.java.simpleName
                                 }
                             }
-                        ) {
-                            Text(stringResource(R.string.local_link_start_server))
                         }
-                        TextButton(
-                            enabled = runtime.server != null,
-                            onClick = {
-                                advertiser.stop()
-                                runtime.closeServer()
-                            }
-                        ) {
-                            Text(stringResource(R.string.local_link_stop_server))
-                        }
+                    ) {
+                        Text(stringResource(R.string.local_link_start_server))
                     }
                     TextButton(onClick = { showAdvancedOptions = !showAdvancedOptions }) {
                         Text(stringResource(R.string.second_screen_advanced_title))
                     }
                     if (showAdvancedOptions) {
+                        runtime.statusDetail?.let { detail ->
+                            Text(
+                                text = detail,
+                                color = Color(0xFFFFCCBC),
+                                fontSize = 12.sp
+                            )
+                        }
+                        InfoLine(
+                            label = stringResource(R.string.local_link_remote_label),
+                            value = runtime.remoteStatus.ifBlank { emptyValue }
+                        )
+                        InfoLine(
+                            label = stringResource(R.string.local_link_current_song_label),
+                            value = runtime.currentSongTitle() ?: emptyValue
+                        )
+                        InfoLine(
+                            label = stringResource(R.string.local_link_shared_song_label),
+                            value = runtime.sharedSongTitle ?: emptyValue
+                        )
+                        InfoLine(
+                            label = stringResource(R.string.local_link_lines_sent_label),
+                            value = runtime.linesSent?.toString() ?: emptyValue
+                        )
                         Text(
                             text = stringResource(R.string.second_screen_local_info_title),
                             color = Color.White,
@@ -415,129 +454,50 @@ fun LocalLinkTestSenderScreen(
                             color = Color(0xFF9E9E9E),
                             fontSize = 13.sp
                         )
-                    }
-                }
-            }
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF111416)),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.local_link_test_song_title),
-                        color = Color.White,
-                        fontSize = 17.sp
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            enabled = runtime.server != null,
-                            onClick = {
-                                val activeServer = runtime.server ?: return@Button
-                                runtime.clockJob?.cancel()
-                                runtime.clockJob = runtime.scope.launch {
-                                    val songId = "local-link-test-song"
-                                    activeServer.send(
-                                        testLyricsPacket(
-                                            songId = songId,
-                                            seq = runtime.seq++,
-                                            title = testSongTitle,
-                                            lineTexts = testSongLines
-                                        )
-                                    )
-                                    val startedAt = SystemClock.elapsedRealtime()
-                                    runtime.isClockRunning = true
-                                    while (isActive) {
-                                        val timeMs = SystemClock.elapsedRealtime() - startedAt
-                                        activeServer.send(
-                                            ClockMessage(
-                                                songId = songId,
-                                                timeMs = timeMs,
-                                                isPlaying = true,
-                                                seq = runtime.seq++,
-                                                sentAtMs = SystemClock.elapsedRealtime()
-                                            )
-                                        )
-                                        if (timeMs >= 32_000L) break
-                                        delay(200L)
-                                    }
-                                    activeServer.send(
-                                        ClockMessage(
-                                            songId = songId,
-                                            timeMs = 32_000L,
-                                            isPlaying = false,
-                                            seq = runtime.seq++,
-                                            sentAtMs = SystemClock.elapsedRealtime()
-                                        )
-                                    )
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                enabled = runtime.server != null,
+                                onClick = { runtime.startLiveSharing(force = true) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.local_link_send_current_song))
+                            }
+                            Button(
+                                enabled = runtime.server != null,
+                                onClick = { sendTestSong() },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.local_link_send_test_song))
+                            }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(
+                                enabled = runtime.server != null,
+                                onClick = {
+                                    advertiser.stop()
+                                    runtime.closeServer()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.local_link_stop_server))
+                            }
+                            TextButton(
+                                enabled = runtime.isClockRunning,
+                                onClick = {
+                                    runtime.clockJob?.cancel()
+                                    runtime.clockJob = null
                                     runtime.isClockRunning = false
-                                }
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.local_link_stop_clock))
                             }
-                        ) {
-                            Text(stringResource(R.string.local_link_send_test_song))
                         }
-                        TextButton(
-                            enabled = runtime.isClockRunning,
-                            onClick = {
-                                runtime.clockJob?.cancel()
-                                runtime.clockJob = null
-                                runtime.isClockRunning = false
-                            }
-                        ) {
-                            Text(stringResource(R.string.local_link_stop_clock))
-                        }
-                    }
-                    Text(
-                        text = stringResource(R.string.local_link_clock_state, runtime.seq),
-                        color = Color(0xFF9E9E9E),
-                        fontSize = 13.sp
-                    )
-                }
-            }
-
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF101714)),
-                shape = RoundedCornerShape(10.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.local_link_live_song_title),
-                        color = Color.White,
-                        fontSize = 17.sp
-                    )
-                    InfoLine(
-                        label = stringResource(R.string.local_link_shared_song_label),
-                        value = runtime.sharedSongTitle ?: emptyValue
-                    )
-                    InfoLine(
-                        label = stringResource(R.string.local_link_lines_sent_label),
-                        value = runtime.linesSent?.toString() ?: emptyValue
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Button(
-                            enabled = runtime.server != null,
-                            onClick = { runtime.startLiveSharing(force = true) }
-                        ) {
-                            Text(stringResource(R.string.local_link_send_current_song))
-                        }
-                        TextButton(
-                            enabled = runtime.isClockRunning,
-                            onClick = {
-                                runtime.clockJob?.cancel()
-                                runtime.clockJob = null
-                                runtime.isClockRunning = false
-                            }
-                        ) {
-                            Text(stringResource(R.string.local_link_stop_clock))
-                        }
+                        Text(
+                            text = stringResource(R.string.local_link_clock_state, runtime.seq),
+                            color = Color(0xFF9E9E9E),
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }

@@ -1077,6 +1077,7 @@
     <string name="local_link_time_value">%1$d ms</string>
     <string name="local_link_no_clock">No clock</string>
     <string name="local_link_status_label">Status</string>
+    <string name="local_link_session_status_label">Session status</string>
     <string name="local_link_ip_label">Local IP</string>
     <string name="local_link_token_label">Token</string>
     <string name="local_link_remote_label">Second screen</string>
@@ -1085,7 +1086,7 @@
     <string name="local_link_lines_sent_label">Lines sent</string>
     <string name="local_link_empty_value">-</string>
     <string name="local_link_manual_pairing_hint">On the second screen, open advanced options and enter this IP and port.</string>
-    <string name="local_link_start_server">Start sharing</string>
+    <string name="local_link_start_server">Enable second screen</string>
     <string name="local_link_stop_server">Stop</string>
     <string name="local_link_server_ready">Sharing ready</string>
     <string name="local_link_server_stopped">Sharing stopped</string>
