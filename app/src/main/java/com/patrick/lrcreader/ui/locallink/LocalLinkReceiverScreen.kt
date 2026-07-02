@@ -16,8 +16,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -94,6 +94,7 @@ fun LocalLinkReceiverScreen(
     val experimentalToken = stringResource(R.string.local_link_experimental_token)
     val discovery = remember(context) { SmpDeviceDiscovery(context.applicationContext) }
     val discoveredDevices by discovery.devices.collectAsState()
+    val localIp = remember { findLocalIpv4Address() ?: "127.0.0.1" }
 
     val lines = remember(packet) {
         packet?.lines
@@ -312,6 +313,15 @@ fun LocalLinkReceiverScreen(
                             Text(stringResource(R.string.second_screen_advanced_title))
                         }
                         if (showAdvancedOptions) {
+                            Text(
+                                text = stringResource(R.string.second_screen_local_info_title),
+                                color = Color.White,
+                                fontSize = 15.sp
+                            )
+                            InfoLine(
+                                label = stringResource(R.string.local_link_ip_label),
+                                value = localIp
+                            )
                             OutlinedTextField(
                                 value = host,
                                 onValueChange = { host = it.trim() },
@@ -428,10 +438,70 @@ private fun DiscoveredSessionsCard(
                             color = Color(0xFF80CBC4),
                             fontSize = 13.sp
                         )
+                        Text(
+                            text = stringResource(R.string.second_screen_discovered_info_title),
+                            color = Color(0xFFBDBDBD),
+                            fontSize = 13.sp
+                        )
+                        DiagnosticInfoLine(
+                            label = stringResource(R.string.second_screen_device_name_label),
+                            value = device.deviceName
+                        )
+                        DiagnosticInfoLine(
+                            label = stringResource(R.string.second_screen_device_id_label),
+                            value = device.deviceId
+                        )
+                        DiagnosticInfoLine(
+                            label = stringResource(R.string.second_screen_nsd_ip_label),
+                            value = device.hostAddress?.takeIf { it.isNotBlank() }
+                                ?: stringResource(R.string.local_link_empty_value)
+                        )
+                        DiagnosticInfoLine(
+                            label = stringResource(R.string.second_screen_nsd_port_label),
+                            value = device.port.toString()
+                        )
+                        DiagnosticInfoLine(
+                            label = stringResource(R.string.second_screen_protocol_version_label),
+                            value = device.protocolVersion.toString()
+                        )
+                        DiagnosticInfoLine(
+                            label = stringResource(R.string.second_screen_capabilities_label),
+                            value = device.capabilities.joinToString()
+                                .takeIf { it.isNotBlank() }
+                                ?: stringResource(R.string.local_link_empty_value)
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun InfoLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, color = Color(0xFFB0BEC5), fontSize = 13.sp)
+        Text(text = value, color = Color.White, fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun DiagnosticInfoLine(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, color = Color(0xFF8FA59B), fontSize = 12.sp)
+        Text(
+            text = value,
+            color = Color(0xFFE0F2F1),
+            fontSize = 12.sp,
+            textAlign = TextAlign.End,
+            modifier = Modifier.padding(start = 12.dp)
+        )
     }
 }
 

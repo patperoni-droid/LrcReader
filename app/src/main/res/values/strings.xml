@@ -1049,6 +1049,14 @@
     <string name="second_screen_no_devices_found">Aucun appareil trouvé. Vérifiez que l’autre appareil est sur le même Wi-Fi et que l’écran \"Afficher les paroles\" est ouvert.</string>
     <string name="second_screen_device_available">Disponible</string>
     <string name="second_screen_discovery_connect_later">Connexion automatique prévue dans une prochaine version.</string>
+    <string name="second_screen_local_info_title">Informations locales</string>
+    <string name="second_screen_discovered_info_title">Informations de l’appareil découvert</string>
+    <string name="second_screen_device_name_label">Nom appareil</string>
+    <string name="second_screen_device_id_label">Device ID</string>
+    <string name="second_screen_nsd_ip_label">IP découverte par NSD</string>
+    <string name="second_screen_nsd_port_label">Port annoncé par NSD</string>
+    <string name="second_screen_protocol_version_label">Protocol version</string>
+    <string name="second_screen_capabilities_label">Capabilities</string>
     <string name="local_link_sender_title">Diffuser les paroles</string>
     <string name="local_link_receiver_title">Afficher les paroles</string>
     <string name="local_link_sender_device_name">Appareil principal</string>

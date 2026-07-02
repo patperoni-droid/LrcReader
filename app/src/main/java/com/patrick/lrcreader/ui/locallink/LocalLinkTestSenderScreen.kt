@@ -50,9 +50,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.net.Inet4Address
-import java.net.NetworkInterface
-import java.util.Collections
 
 private const val LOCAL_LINK_DIAG_TAG = "LOCAL_LINK_DIAG"
 
@@ -289,6 +286,11 @@ fun LocalLinkTestSenderScreen(
                         Text(stringResource(R.string.second_screen_advanced_title))
                     }
                     if (showAdvancedOptions) {
+                        Text(
+                            text = stringResource(R.string.second_screen_local_info_title),
+                            color = Color.White,
+                            fontSize = 15.sp
+                        )
                         InfoLine(
                             label = stringResource(R.string.local_link_ip_label),
                             value = localIp
@@ -622,48 +624,4 @@ private fun liveLyricsPacket(
         durationMs = durationMs?.takeIf { it > 0L },
         seq = seq
     )
-}
-
-private fun findLocalIpv4Address(): String? = findLocalIpv4Addresses().firstOrNull()
-
-private fun findLocalIpv4Addresses(): List<String> {
-    return runCatching {
-        Collections.list(NetworkInterface.getNetworkInterfaces())
-            .asSequence()
-            .filter { it.isUp && !it.isLoopback }
-            .flatMap { networkInterface ->
-                Collections.list(networkInterface.inetAddresses)
-                    .asSequence()
-                    .filterIsInstance<Inet4Address>()
-                    .filter { !it.isLoopbackAddress }
-                    .map { address -> networkInterface.name to address.hostAddress.orEmpty() }
-            }
-            .filter { (_, address) -> address.isNotBlank() }
-            .sortedWith(
-                compareBy<Pair<String, String>>(
-                    { (name, _) ->
-                        if (name.contains("wlan", ignoreCase = true) ||
-                            name.contains("ap", ignoreCase = true)
-                        ) {
-                            0
-                        } else {
-                            1
-                        }
-                    },
-                    { (_, address) ->
-                        if (address.startsWith("192.168.") ||
-                            address.startsWith("172.") ||
-                            address.startsWith("10.")
-                        ) {
-                            0
-                        } else {
-                            1
-                        }
-                    }
-                )
-            )
-            .map { (_, address) -> address }
-            .distinct()
-            .toList()
-    }.getOrDefault(emptyList())
 }

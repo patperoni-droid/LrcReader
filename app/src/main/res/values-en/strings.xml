@@ -1041,6 +1041,14 @@
     <string name="second_screen_no_devices_found">No device found. Check that the other device is on the same Wi-Fi and that the \"Show lyrics\" screen is open.</string>
     <string name="second_screen_device_available">Available</string>
     <string name="second_screen_discovery_connect_later">Automatic connection is planned for a future version.</string>
+    <string name="second_screen_local_info_title">Local information</string>
+    <string name="second_screen_discovered_info_title">Discovered device information</string>
+    <string name="second_screen_device_name_label">Device name</string>
+    <string name="second_screen_device_id_label">Device ID</string>
+    <string name="second_screen_nsd_ip_label">IP discovered by NSD</string>
+    <string name="second_screen_nsd_port_label">Port announced by NSD</string>
+    <string name="second_screen_protocol_version_label">Protocol version</string>
+    <string name="second_screen_capabilities_label">Capabilities</string>
     <string name="local_link_sender_title">Share lyrics</string>
     <string name="local_link_receiver_title">Show lyrics</string>
     <string name="local_link_sender_device_name">Main device</string>
