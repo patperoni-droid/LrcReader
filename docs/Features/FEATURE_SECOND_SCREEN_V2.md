@@ -8,7 +8,7 @@ L'utilisateur doit pouvoir :
 
 - ouvrir `Deuxième écran` ;
 - choisir `Diffuser les paroles` ou `Afficher les paroles` ;
-- voir les appareils SMP disponibles ;
+- voir les sessions SMP disponibles ;
 - connecter puis maintenir une session live sans manipuler d'IP, de port, de serveur, de client ou de LocalLink.
 
 LocalLink reste le moteur réseau.
@@ -50,6 +50,9 @@ V2.5 Synchronisation robuste
 - Aucun traitement bloquant sur le thread principal.
 - Aucune dépendance réseau obligatoire pour jouer.
 - ExoPlayer reste la référence temporelle.
+- `Diffuser les paroles` est le maître de la session réseau.
+- Le diffuseur héberge `LocalLinkServer` et annonce la session via NSD.
+- `Afficher les paroles` découvre les sessions disponibles et se connectera au diffuseur.
 - Les options avancées IP/port restent disponibles comme fallback.
 - Téléphone, tablette et split tablette doivent rester cohérents.
 
@@ -59,9 +62,11 @@ V2.5 Synchronisation robuste
 
 ### Objectif
 
-Les appareils SMP présents sur le même réseau local se voient automatiquement.
+Les sessions SMP présentes sur le même réseau local sont découvertes automatiquement.
 
-L'écran `Diffuser les paroles` affiche une liste d'appareils SMP disponibles.
+L'appareil `Diffuser les paroles` annonce une session SMP.
+
+Les appareils `Afficher les paroles` découvrent cette session.
 
 Exemples :
 
@@ -73,10 +78,11 @@ Téléphone de Patrick
 
 ### Périmètre
 
-- Ajouter la publication de présence côté appareil disponible.
-- Ajouter la recherche d'appareils côté appareil principal.
-- Afficher les appareils découverts dans l'interface.
-- Filtrer les appareils non compatibles.
+- Ajouter la publication de session côté diffuseur.
+- Annoncer le véritable endpoint LocalLink de cette session.
+- Ajouter la recherche de sessions côté deuxième écran.
+- Afficher les sessions découvertes dans l'interface.
+- Filtrer les sessions non compatibles.
 - Conserver le fallback manuel dans les options avancées.
 
 ### Exclusions Volontaires
@@ -91,8 +97,9 @@ Téléphone de Patrick
 
 ### Critères De Validation
 
-- Deux appareils SMP sur le même Wi-Fi se voient automatiquement.
-- La liste disparaît proprement quand l'autre appareil n'annonce plus sa présence.
+- Une session `Diffuser les paroles` est visible depuis un appareil `Afficher les paroles` sur le même Wi-Fi.
+- Le port annoncé correspond au port réel de `LocalLinkServer`.
+- La liste disparaît proprement quand le diffuseur n'annonce plus sa session.
 - Sortir de l'écran arrête la découverte ou l'annonce.
 - Rotation et recomposition ne créent pas de doublons.
 - Téléphone et tablette affichent le même comportement.
@@ -106,14 +113,14 @@ Téléphone de Patrick
 
 ### Objectif
 
-L'utilisateur sélectionne un appareil découvert et ouvre une connexion LocalLink existante.
+L'utilisateur sélectionne une session découverte et ouvre une connexion LocalLink vers le diffuseur.
 
 La connexion devient plus simple, mais elle ne crée pas encore d'appairage permanent.
 
 ### Périmètre
 
-- Permettre de sélectionner un appareil découvert.
-- Utiliser l'endpoint découvert pour ouvrir la connexion LocalLink.
+- Permettre de sélectionner une session découverte.
+- Utiliser le véritable endpoint LocalLink annoncé pour ouvrir la connexion.
 - Afficher un état clair : connexion, connecté, échec.
 - Garder la connexion limitée à la session courante.
 - Fermer proprement la connexion en quittant l'écran.
@@ -128,7 +135,7 @@ La connexion devient plus simple, mais elle ne crée pas encore d'appairage perm
 
 ### Critères De Validation
 
-- Un appareil découvert peut être sélectionné.
+- Une session découverte peut être sélectionnée.
 - La connexion utilise LocalLink existant.
 - Aucun champ IP/port n'est nécessaire dans le parcours principal.
 - En cas d'échec, l'utilisateur reçoit un message clair.

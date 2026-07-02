@@ -59,6 +59,18 @@ Une connexion entre deux appareils n'est qu'un cas particulier de cette architec
 
 La cible V2 doit donc raisonner en réseau d'appareils SMP, pas seulement en liaison ponctuelle. Cette vision prépare les évolutions futures : deuxième écran, SMP Sync, prompteur, accords, annotations, contrôle distant et autres services SMP.
 
+Le réseau SMP s'organise autour d'une session pilotée par l'appareil qui diffuse.
+
+Pour le deuxième écran, `Diffuser les paroles` est le maître de la session réseau :
+
+- il possède ExoPlayer ;
+- il possède la timeline ;
+- il pilote la lecture ;
+- il héberge `LocalLinkServer` ;
+- il annonce la session SMP sur le réseau via NSD.
+
+Les appareils `Afficher les paroles` ne publient pas de session de diffusion. Ils découvrent les sessions disponibles, les présentent à l'utilisateur, puis se connecteront au diffuseur lors des étapes suivantes.
+
 ---
 
 ## Architecture Générale
@@ -97,6 +109,24 @@ Les couches V2 ne doivent pas dupliquer le transport TCP. Elles doivent uniqueme
 - quand se reconnecter ;
 - quoi renvoyer pour restaurer une session stable.
 
+Pour le deuxième écran, le diffuseur est le serveur logique de la session.
+
+Schéma de principe :
+
+```text
+Diffuser les paroles
+↓
+Annonce NSD de la session SMP
+↓
+Découverte par les deuxièmes écrans
+↓
+Connexion LocalLink vers le diffuseur
+↓
+Synchronisation pilotée par ExoPlayer
+```
+
+Ce modèle respecte le moteur LocalLink existant : la connexion TCP est ouverte vers l'appareil qui possède déjà la source temporelle et le serveur `LocalLinkServer`.
+
 ---
 
 ## Méthode De Découverte
@@ -109,14 +139,22 @@ Service recommandé :
 _smp-locallink._tcp
 ```
 
-Chaque appareil SMP capable de recevoir une connexion publie un service local contenant :
+NSD / mDNS annonce une session de diffusion SMP, pas un simple appareil.
 
-- nom lisible de l'appareil ;
-- `deviceId` ;
-- rôle préféré ;
-- port TCP LocalLink ;
+Pour le deuxième écran, la session est publiée par l'appareil `Diffuser les paroles`, après ouverture du serveur LocalLink.
+
+Chaque session publiée contient :
+
+- nom lisible de la session ou de l'appareil diffuseur ;
+- `deviceId` du diffuseur ;
+- rôle de session ;
+- port TCP LocalLink réel ;
 - version de protocole ;
 - capacités disponibles.
+
+Le port annoncé doit correspondre au port réellement ouvert par `LocalLinkServer`.
+
+Les appareils `Afficher les paroles` découvrent ces sessions mais ne publient pas eux-mêmes une session de diffusion.
 
 Exemples de capacités :
 
@@ -131,7 +169,7 @@ remoteControl
 
 Un appareil SMP ne représente pas une fonctionnalité unique.
 
-Chaque appareil annonce les capacités qu'il sait fournir. Un téléphone peut par exemple diffuser les paroles et préparer SMP Sync, tandis qu'une tablette peut afficher les paroles, les accords ou un prompteur.
+Chaque session annonce les capacités qu'elle sait fournir. Un téléphone peut par exemple diffuser les paroles et préparer SMP Sync, tandis qu'une tablette peut afficher les paroles, les accords ou un prompteur.
 
 Cette approche permet d'ajouter de nouvelles fonctionnalités sans modifier l'architecture réseau. Les futures capacités deviennent des annonces et des sessions spécialisées au-dessus de la même couche de découverte, d'appairage et de supervision.
 
@@ -161,9 +199,9 @@ Après découverte, la connexion réelle continue d'utiliser LocalLink TCP.
 
 Responsabilité :
 
-- rechercher les appareils SMP disponibles sur le réseau local ;
-- exposer une liste d'appareils lisibles par l'UI ;
-- filtrer les appareils incompatibles ;
+- rechercher les sessions SMP disponibles sur le réseau local ;
+- exposer une liste de sessions lisibles par l'UI ;
+- filtrer les sessions incompatibles ;
 - rafraîchir la liste sans bloquer l'interface ;
 - s'arrêter proprement quand l'écran n'en a plus besoin.
 
@@ -180,17 +218,17 @@ Elle fournit seulement des candidats de connexion.
 
 Responsabilité :
 
-- publier l'appareil local sur le réseau via NSD / mDNS ;
-- annoncer le port LocalLink actuellement disponible ;
-- annoncer l'identité locale SMP ;
+- publier une session SMP sur le réseau via NSD / mDNS ;
+- annoncer le port LocalLink réellement disponible ;
+- annoncer l'identité du diffuseur ;
 - annoncer les capacités disponibles.
 
-Cette couche est active uniquement quand l'utilisateur rend l'appareil joignable.
+Cette couche est active uniquement quand l'utilisateur rend une session joignable.
 
 Exemples :
 
-- l'utilisateur ouvre `Afficher les paroles` ;
-- l'utilisateur ouvre `Recevoir` dans SMP Sync ;
+- l'utilisateur ouvre `Diffuser les paroles` et démarre une session de diffusion ;
+- l'utilisateur ouvre une future session d'envoi SMP Sync ;
 - une future option explicite active un mode joignable.
 
 Elle ne doit pas créer de service Android permanent dans une première version.
@@ -293,7 +331,11 @@ Parcours `Diffuser les paroles` :
 ```text
 Diffuser les paroles
 ↓
-Découverte automatique
+Ouverture du serveur LocalLink
+↓
+Annonce NSD de la session
+↓
+Découverte par le deuxième écran
 ↓
 Sélection appareil
 ↓
@@ -309,16 +351,18 @@ Synchronisation permanente
 Sur l'appareil principal :
 
 - l'utilisateur appuie sur `Diffuser les paroles` ;
-- l'application affiche les appareils SMP disponibles ;
-- l'utilisateur choisit un appareil ;
-- la connexion démarre après acceptation.
+- l'application ouvre une session de diffusion ;
+- le serveur LocalLink est l'endpoint réel de cette session ;
+- la session est annoncée sur le réseau via NSD ;
+- l'appareil principal reste maître de la lecture et de la timeline.
 
 Sur le deuxième appareil :
 
 - l'utilisateur appuie sur `Afficher les paroles` ;
-- l'appareil devient visible sur le réseau local ;
-- il affiche une demande d'autorisation quand un appareil veut se connecter ;
-- après acceptation, il mémorise l'appareil principal.
+- l'application découvre les sessions SMP disponibles ;
+- l'utilisateur choisit la session du diffuseur ;
+- il affiche une demande d'autorisation si l'étape d'appairage l'exige ;
+- après acceptation, il mémorise le diffuseur.
 
 Après appairage :
 
@@ -443,9 +487,9 @@ Mitigations :
 
 Objectif :
 
-- publier les appareils disponibles ;
-- découvrir les appareils SMP sur le réseau local ;
-- afficher une liste simple à l'utilisateur ;
+- publier les sessions de diffusion disponibles depuis l'appareil `Diffuser les paroles` ;
+- découvrir les sessions SMP sur le réseau local depuis les appareils `Afficher les paroles` ;
+- afficher une liste simple de sessions à l'utilisateur ;
 - conserver la connexion manuelle en fallback.
 
 LocalLink reste inchangé.
