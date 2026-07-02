@@ -34,9 +34,9 @@ V2.1 Découverte automatique
 ↓
 V2.2 Connexion en un clic
 ↓
-V2.3 Appairage
+V2.3 Gestion automatique de la session
 ↓
-V2.4 Reconnexion automatique
+V2.4 Appairage
 ↓
 V2.5 Synchronisation robuste
 ```
@@ -52,8 +52,10 @@ V2.5 Synchronisation robuste
 - ExoPlayer reste la référence temporelle.
 - `Diffuser les paroles` est le maître de la session réseau.
 - Le diffuseur héberge `LocalLinkServer` et annonce la session via NSD.
-- `Afficher les paroles` découvre les sessions disponibles et se connectera au diffuseur.
-- Les options avancées IP/port restent disponibles comme fallback.
+- `Afficher les paroles` découvre les sessions disponibles et se connecte au diffuseur.
+- À terme, ouvrir les deux écrans doit suffire : aucune coordination verbale entre musiciens ne doit être nécessaire.
+- Les options avancées IP/port restent disponibles comme fallback, outil de secours et diagnostic.
+- Aucune régression du moteur LocalLink existant n'est autorisée.
 - Téléphone, tablette et split tablette doivent rester cohérents.
 
 ---
@@ -145,7 +147,76 @@ La connexion devient plus simple, mais elle ne crée pas encore d'appairage perm
 
 ---
 
-## V2.3 — Appairage
+## V2.3 — Gestion Automatique De La Session
+
+### Objectif
+
+Le simple fait d'ouvrir les deux écrans doit suffire.
+
+Le musicien ne doit plus avoir à dire :
+
+```text
+Tu peux cliquer.
+```
+
+ou :
+
+```text
+Tu peux te connecter.
+```
+
+Parcours cible :
+
+```text
+Afficher les paroles
+↓
+Découverte automatique
+↓
+Session SMP compatible trouvée
+↓
+Connexion automatique
+↓
+Session connectée
+```
+
+Si la connexion est perdue, l'appareil revient automatiquement en attente, reprend la découverte, puis se reconnecte quand le diffuseur revient.
+
+### Périmètre
+
+- Démarrer la découverte dès l'ouverture de `Afficher les paroles`.
+- Connecter automatiquement la première session SMP compatible disponible.
+- Ne demander aucune action utilisateur pour établir la connexion.
+- Revenir en attente si la connexion est perdue.
+- Reprendre la découverte après perte de connexion.
+- Reconnecter automatiquement quand le diffuseur réapparaît.
+- Conserver le mode manuel IP/port dans les options avancées comme solution de secours et diagnostic.
+- Réutiliser exclusivement le moteur LocalLink existant.
+
+### Exclusions Volontaires
+
+- Aucun appairage permanent.
+- Aucune demande d'autorisation distante.
+- Aucune mémorisation durable d'appareil.
+- Aucun multi-appairage complexe.
+- Aucun mode cloud.
+- Aucun changement de moteur LocalLink.
+- Aucun changement du protocole LocalLink.
+
+### Critères De Validation
+
+- Ouvrir `Afficher les paroles` démarre automatiquement la découverte.
+- Une session compatible découverte déclenche une connexion automatique.
+- Aucun clic sur la session n'est nécessaire.
+- Une perte de connexion remet l'écran en attente sans bloquer l'interface.
+- La découverte reprend après perte de connexion.
+- Le retour du diffuseur déclenche une reconnexion automatique.
+- Le mode manuel IP/port reste disponible dans les options avancées.
+- Le moteur LocalLink existant n'est pas modifié.
+- Téléphone, tablette et split tablette restent cohérents.
+
+---
+
+## V2.4 — Appairage
 
 ### Objectif
 
@@ -163,8 +234,7 @@ Après acceptation, l'appareil est mémorisé.
 
 ### Exclusions Volontaires
 
-- Aucune reconnexion automatique avancée.
-- Aucun multi-appairage complexe.
+- Aucun appairage multiple complexe.
 - Aucun mode cloud.
 - Aucun changement de moteur LocalLink.
 
@@ -176,38 +246,6 @@ Après acceptation, l'appareil est mémorisé.
 - L'appareil mémorisé est reconnu au prochain lancement.
 - Un nouvel appareil ne remplace pas silencieusement l'ancien.
 - Oublier l'appareil remet l'état à zéro.
-
----
-
-## V2.4 — Reconnexion Automatique
-
-### Objectif
-
-Retrouver automatiquement un appareil déjà appairé quand les deux appareils sont disponibles sur le même réseau.
-
-### Périmètre
-
-- Tenter le dernier endpoint connu.
-- Relancer la découverte si l'endpoint connu échoue.
-- Reconnecter uniquement les appareils déjà appairés.
-- Afficher un état clair de reconnexion.
-- Garder la reconnexion non bloquante.
-
-### Exclusions Volontaires
-
-- Aucun appairage multiple avancé.
-- Aucun service permanent obligatoire.
-- Aucune reconnexion qui bloque le live.
-- Aucune suppression du fallback manuel.
-
-### Critères De Validation
-
-- Deux appareils déjà appairés se retrouvent sans saisie IP/port.
-- Une IP changée peut être retrouvée via découverte.
-- Une reconnexion échouée n'interrompt pas le Player.
-- Aucun doublon de connexion n'est créé.
-- Le statut utilisateur reste compréhensible.
-- Téléphone, tablette et split tablette restent cohérents.
 
 ---
 
