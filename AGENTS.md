@@ -229,7 +229,7 @@ This complements:
 
 Extended SMP workflow:
 
-This does not replace the existing workflow. It completes it with remote validation on GitHub.
+This does not replace the existing workflow. It clarifies the difference between local development history and remote validation on GitHub.
 
 Official order:
 
@@ -251,13 +251,17 @@ Validation / Tests
 ↓
 Commit
 ↓
+Patch completed
+
+For roadmap milestones, stabilized features, long interruptions, Google Play preparation, or when the creator explicitly asks to save remotely, the workflow continues with:
+
 Push GitHub
 ↓
 Remote repository verification
 ↓
 GitHub Actions check
 ↓
-Patch completed
+Milestone completed
 
 Local validation:
 
@@ -266,47 +270,79 @@ Before any commit:
 - required tests must pass;
 - functional validation must be done when needed.
 
+Commit:
+
+The commit is a daily development tool.
+
+It must be:
+- frequent;
+- small;
+- coherent;
+- easy to revert.
+
+Its purpose is to build a clean local history that makes it possible to return to any meaningful step.
+
 Remote validation:
 
-After the commit:
-- push to GitHub;
-- verify that the remote branch contains the latest commit;
-- verify the GitHub Actions result.
+Push GitHub is a remote validation step, not an automatic requirement after every micro-patch.
+
+It is recommended:
+- at the end of a roadmap step, such as V2.1 or V2.2;
+- when a feature is stabilized;
+- before a long development interruption;
+- before a Google Play publication;
+- when the creator explicitly asks: "on sauvegarde".
 
 Important:
 
 A failing GitHub workflow does not mean that the push failed.
 
-Final reports must clearly separate:
+For a micro-patch, expected final report format:
 
-- Push GitHub: successful
-- GitHub Actions: successful or failing
+Diagnosis: OK
 
-Expected final report format:
+Patch: OK
 
 Compilation: OK
 
-Local tests: OK
+Local validation: OK
 
 Commit: created
 
-Push GitHub: successful
+Push GitHub: not requested
 
-Remote branch: verified
+For a milestone, expected final report format:
 
-GitHub Actions:
-- OK, all tests green
-or
-- Warning, workflow failing, diagnosis required
+Diagnosis: OK
+
+Patch: OK
+
+Compilation: OK
+
+Local validation: OK
+
+Commit: created
+
+- Push GitHub: successful
+- Remote branch: verified
+- GitHub Actions: successful or failing
+
+Final reports must clearly separate:
+
+- Push GitHub: successful, not requested, or not attempted
+- GitHub Actions: successful, failing, or not checked
 
 Final principle:
 
-An SMP development is considered finished only when:
-- local validation is complete;
-- remote backup is confirmed;
-- GitHub Actions status is known.
+The commit is the development history.
 
-This rule reinforces project safety and ensures that every change is correctly backed up before it is considered complete.
+The push is the remote backup and validation of important milestones.
+
+Both are complementary, but they do not have the same role.
+
+An SMP micro-patch is considered complete when local validation is complete and a coherent commit exists.
+
+An SMP milestone is considered complete when local validation is complete, remote backup is confirmed, and GitHub Actions status is known.
 
 Rules:
 - No manual code editing
