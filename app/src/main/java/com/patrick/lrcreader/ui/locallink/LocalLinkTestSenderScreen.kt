@@ -65,6 +65,7 @@ object LocalLinkExperimentalSenderRuntime {
     var statusDetail by mutableStateOf<String?>(null)
     var linesSent by mutableStateOf<Int?>(null)
     var sharedSongTitle by mutableStateOf<String?>(null)
+    private var liveSharingSongId: String? = null
 
     private var currentSongIdProvider: () -> String? = { null }
     private var currentSongTitleProvider: () -> String? = { null }
@@ -106,10 +107,116 @@ object LocalLinkExperimentalSenderRuntime {
 
     suspend fun loadParsedLines(): List<LrcLine> = loadParsedLinesProvider()
 
+    fun startLiveSharing(force: Boolean = false) {
+        val activeServer = server ?: return
+        val songId = currentSongId()
+        if (songId == null) {
+            statusRes = R.string.local_link_no_current_song
+            return
+        }
+        if (!force && clockJob?.isActive == true && liveSharingSongId == songId) {
+            return
+        }
+        clockJob?.cancel()
+        liveSharingSongId = songId
+        clockJob = scope.launch {
+            Log.d(LOCAL_LINK_DIAG_TAG, "sender_sharing_active songId=$songId")
+            var packetSentForCurrentConnection = false
+            var lastConnectionState = activeServer.session.connected
+            var lastClockMs: Long? = null
+            isClockRunning = true
+            while (isActive && server === activeServer) {
+                val connected = activeServer.session.connected
+                if (!connected) {
+                    if (lastConnectionState) {
+                        packetSentForCurrentConnection = false
+                    }
+                    lastConnectionState = false
+                    statusRes = R.string.local_link_no_receiver_connected
+                    delay(200L)
+                    continue
+                }
+                if (!lastConnectionState) {
+                    packetSentForCurrentConnection = false
+                }
+                lastConnectionState = true
+
+                if (!packetSentForCurrentConnection) {
+                    val title = currentSongTitle() ?: songId
+                    val loadedLines = runCatching {
+                        loadParsedLines()
+                    }.onFailure { error ->
+                        Log.w(
+                            LOCAL_LINK_DIAG_TAG,
+                            "sender_live_lyrics_prepare_failed songId=$songId",
+                            error
+                        )
+                        statusDetail = error.message ?: error::class.java.simpleName
+                    }.getOrDefault(emptyList())
+                    val packet = liveLyricsPacket(
+                        songId = songId,
+                        title = title,
+                        lines = loadedLines,
+                        durationMs = currentDurationMs(),
+                        seq = seq++
+                    )
+                    val packetSent = activeServer.send(packet)
+                    if (packetSent) {
+                        Log.d(
+                            LOCAL_LINK_DIAG_TAG,
+                            "sender_auto_packet_sent songId=$songId lines=${loadedLines.size}"
+                        )
+                        packetSentForCurrentConnection = true
+                        sharedSongTitle = title
+                        linesSent = loadedLines.size
+                        statusDetail = null
+                        statusRes = if (loadedLines.isEmpty()) {
+                            R.string.local_link_no_live_lyrics
+                        } else {
+                            R.string.local_link_live_share_running
+                        }
+                    } else {
+                        statusRes = R.string.local_link_no_receiver_connected
+                        delay(200L)
+                        continue
+                    }
+                }
+
+                val currentTimeMs = currentPositionMs().coerceAtLeast(0L)
+                val previousClockMs = lastClockMs
+                if (previousClockMs != null && currentTimeMs + 1_000L < previousClockMs) {
+                    Log.d(
+                        LOCAL_LINK_DIAG_TAG,
+                        "sender_seek_or_restart songId=$songId from=$previousClockMs to=$currentTimeMs"
+                    )
+                }
+                val clockSent = activeServer.send(
+                    ClockMessage(
+                        songId = songId,
+                        timeMs = currentTimeMs,
+                        isPlaying = isPlaying(),
+                        seq = seq++,
+                        sentAtMs = SystemClock.elapsedRealtime()
+                    )
+                )
+                if (!clockSent) {
+                    packetSentForCurrentConnection = false
+                }
+                lastClockMs = currentTimeMs
+                delay(200L)
+            }
+            if (liveSharingSongId == songId) {
+                liveSharingSongId = null
+            }
+            isClockRunning = false
+        }
+    }
+
     fun closeServer() {
         Log.d(LOCAL_LINK_DIAG_TAG, "sender_server_stopped port=$port")
         clockJob?.cancel()
         clockJob = null
+        liveSharingSongId = null
         isClockRunning = false
         linesSent = null
         sharedSongTitle = null
@@ -417,147 +524,7 @@ fun LocalLinkTestSenderScreen(
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
                             enabled = runtime.server != null,
-                            onClick = {
-                                val activeServer = runtime.server ?: return@Button
-                                val initialSongId = runtime.currentSongId()
-                                if (initialSongId == null) {
-                                    runtime.statusRes = R.string.local_link_no_current_song
-                                    return@Button
-                                }
-                                runtime.clockJob?.cancel()
-                                runtime.clockJob = runtime.scope.launch {
-                                    Log.d(LOCAL_LINK_DIAG_TAG, "sender_sharing_active")
-                                    var lastPacketSongId: String? = null
-                                    var lastClockSongId: String? = null
-                                    var lastClockMs: Long? = null
-                                    runtime.isClockRunning = true
-                                    while (isActive) {
-                                        val songId = runtime.currentSongId()
-                                        var clockSentAfterPacket = false
-                                        if (!activeServer.session.connected) {
-                                            lastPacketSongId = null
-                                            runtime.statusRes = R.string.local_link_no_receiver_connected
-                                        }
-                                        if (songId == null) {
-                                            runtime.statusRes = R.string.local_link_no_current_song
-                                            runtime.linesSent = null
-                                            runtime.sharedSongTitle = null
-                                            delay(200L)
-                                            continue
-                                        }
-                                        val title = runtime.currentSongTitle() ?: songId
-                                        if (songId != lastPacketSongId) {
-                                            Log.d(
-                                                LOCAL_LINK_DIAG_TAG,
-                                                "sender_detected_song_change previous=$lastPacketSongId next=$songId"
-                                            )
-                                            val loadedLines = runCatching {
-                                                runtime.loadParsedLines()
-                                            }.onFailure { error ->
-                                                Log.w(
-                                                    LOCAL_LINK_DIAG_TAG,
-                                                    "sender_live_lyrics_prepare_failed songId=$songId",
-                                                    error
-                                                )
-                                                runtime.statusDetail = error.message ?: error::class.java.simpleName
-                                            }.getOrDefault(emptyList())
-                                            val safeLines = loadedLines
-                                            val packet = liveLyricsPacket(
-                                                songId = songId,
-                                                title = title,
-                                                lines = safeLines,
-                                                durationMs = runtime.currentDurationMs(),
-                                                seq = runtime.seq++
-                                            )
-                                            val packetSent = activeServer.send(packet)
-                                            if (packetSent) {
-                                                Log.d(
-                                                    LOCAL_LINK_DIAG_TAG,
-                                                    "sender_auto_packet_sent songId=$songId lines=${safeLines.size}"
-                                                )
-                                                if (safeLines.isEmpty()) {
-                                                    Log.d(LOCAL_LINK_DIAG_TAG, "sender_no_lyrics_for_current_song songId=$songId")
-                                                }
-                                                if (lastPacketSongId == null && activeServer.session.connected) {
-                                                    Log.d(LOCAL_LINK_DIAG_TAG, "sender_packet_resend_after_reconnect songId=$songId")
-                                                }
-                                                lastPacketSongId = songId
-                                                runtime.sharedSongTitle = title
-                                                runtime.linesSent = safeLines.size
-                                                runtime.statusDetail = null
-                                                runtime.statusRes = if (safeLines.isEmpty()) {
-                                                    R.string.local_link_no_live_lyrics
-                                                } else {
-                                                    R.string.local_link_live_share_running
-                                                }
-                                                val packetClockMs = runtime.currentPositionMs().coerceAtLeast(0L)
-                                                val packetClockSent = activeServer.send(
-                                                    ClockMessage(
-                                                        songId = songId,
-                                                        timeMs = packetClockMs,
-                                                        isPlaying = runtime.isPlaying(),
-                                                        seq = runtime.seq++,
-                                                        sentAtMs = SystemClock.elapsedRealtime()
-                                                    )
-                                                )
-                                                if (packetClockSent) {
-                                                    Log.d(
-                                                        LOCAL_LINK_DIAG_TAG,
-                                                        "sender_clock_sent_after_packet songId=$songId timeMs=$packetClockMs isPlaying=${runtime.isPlaying()}"
-                                                    )
-                                                    lastClockSongId = songId
-                                                    lastClockMs = packetClockMs
-                                                    clockSentAfterPacket = true
-                                                } else {
-                                                    lastPacketSongId = null
-                                                }
-                                            } else {
-                                                Log.w(
-                                                    LOCAL_LINK_DIAG_TAG,
-                                                    "sender_live_packet_not_sent songId=$songId connected=${activeServer.session.connected}"
-                                                )
-                                                lastPacketSongId = null
-                                                runtime.statusRes = R.string.local_link_no_receiver_connected
-                                            }
-                                        }
-
-                                        val currentTimeMs = runtime.currentPositionMs().coerceAtLeast(0L)
-                                        val previousClockMs = lastClockMs
-                                        if (lastClockSongId == songId &&
-                                            previousClockMs != null &&
-                                            currentTimeMs + 1_000L < previousClockMs
-                                        ) {
-                                            Log.d(
-                                                LOCAL_LINK_DIAG_TAG,
-                                                "sender_seek_or_restart songId=$songId from=$previousClockMs to=$currentTimeMs"
-                                            )
-                                        }
-                                        if (!clockSentAfterPacket) {
-                                            val clockSent = activeServer.send(
-                                                ClockMessage(
-                                                    songId = songId,
-                                                    timeMs = currentTimeMs,
-                                                    isPlaying = runtime.isPlaying(),
-                                                    seq = runtime.seq++,
-                                                    sentAtMs = SystemClock.elapsedRealtime()
-                                                )
-                                            )
-                                            if (!clockSent) {
-                                                lastPacketSongId = null
-                                            } else if (lastClockSongId != songId || currentTimeMs < 500L) {
-                                                Log.d(
-                                                    LOCAL_LINK_DIAG_TAG,
-                                                    "sender_clock_sent songId=$songId timeMs=$currentTimeMs isPlaying=${runtime.isPlaying()}"
-                                                )
-                                            }
-                                            lastClockSongId = songId
-                                            lastClockMs = currentTimeMs
-                                        }
-                                        delay(200L)
-                                    }
-                                    runtime.isClockRunning = false
-                                }
-                            }
+                            onClick = { runtime.startLiveSharing(force = true) }
                         ) {
                             Text(stringResource(R.string.local_link_send_current_song))
                         }

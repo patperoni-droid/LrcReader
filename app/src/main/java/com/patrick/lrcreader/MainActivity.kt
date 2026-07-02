@@ -3802,6 +3802,12 @@ class MainActivity : AppCompatActivity() {
                                         }
                                     }
                                 )
+                                val localLinkSenderPort = LocalLinkExperimentalSenderRuntime.port
+                                LaunchedEffect(currentPlayingSongId, localLinkSenderPort) {
+                                    if (localLinkSenderPort != null) {
+                                        LocalLinkExperimentalSenderRuntime.startLiveSharing()
+                                    }
+                                }
                                 fun prepareTabletSplitMenuNavigation() {
                                     isTabletSplitMenuOpen = false
                                     isTabletShortcutMoreOpen = false
