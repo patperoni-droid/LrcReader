@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.util.Log
 import android.view.WindowManager
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -241,6 +240,63 @@ fun LocalLinkReceiverScreen(
         }
     }
 
+    fun connectDiscoveredSession(device: SmpDiscoveredDevice) {
+        val discoveredHost = device.hostAddress?.takeIf { it.isNotBlank() }
+        if (discoveredHost == null || device.port !in 1..65535) {
+            statusMessageRes = R.string.local_link_connection_failed
+            statusDetail = null
+            receiverState = ReceiverState.Disconnected
+            return
+        }
+        val nextClient = LocalLinkClient(
+            host = discoveredHost,
+            port = device.port,
+            sessionId = "receiver-${System.currentTimeMillis()}",
+            token = experimentalToken,
+            deviceName = receiverDeviceName,
+            reconnectAttempts = 0
+        )
+        client?.close()
+        client = nextClient
+        shouldStayConnected = false
+        reconnecting = false
+        receiverState = ReceiverState.Waiting
+        statusMessageRes = null
+        statusDetail = null
+        scope.launch {
+            Log.d(
+                LOCAL_LINK_DIAG_TAG,
+                "receiver_discovered_connect_start host=$discoveredHost port=${device.port} name=${device.deviceName}"
+            )
+            val connected = nextClient.connect(scope) { message ->
+                scope.launch { handleMessage(message) }
+            }
+            if (!connected) {
+                client = null
+                receiverState = ReceiverState.Disconnected
+                statusMessageRes = R.string.local_link_connection_failed
+                statusDetail = null
+                Log.w(
+                    LOCAL_LINK_DIAG_TAG,
+                    "receiver_discovered_connect_failed host=$discoveredHost port=${device.port} name=${device.deviceName}"
+                )
+            } else {
+                receiverState = ReceiverState.Connected
+                Log.d(
+                    LOCAL_LINK_DIAG_TAG,
+                    "receiver_discovered_connect_ok host=$discoveredHost port=${device.port} name=${device.deviceName}"
+                )
+                nextClient.send(
+                    ReceiverStatusMessage(
+                        state = "ready",
+                        activeSongId = packet?.songId,
+                        seq = clock?.seq ?: 0L
+                    )
+                )
+            }
+        }
+    }
+
     DisposableEffect(Unit) {
         onDispose { disconnect() }
     }
@@ -370,13 +426,7 @@ fun LocalLinkReceiverScreen(
 
                 DiscoveredSessionsCard(
                     devices = discoveredDevices,
-                    onDeviceClick = {
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.second_screen_discovery_connect_later),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+                    onDeviceClick = { device -> connectDiscoveredSession(device) }
                 )
             }
 
