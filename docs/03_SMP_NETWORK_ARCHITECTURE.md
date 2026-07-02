@@ -40,11 +40,10 @@ Afficher les paroles sur un deuxième appareil.
 
 L'application doit ensuite :
 
-- découvrir les appareils SMP disponibles ;
-- proposer un choix lisible ;
-- demander une autorisation sur l'autre appareil ;
-- établir la connexion ;
+- découvrir les sessions SMP disponibles ;
+- établir la connexion adaptée à l'action demandée ;
 - maintenir la connexion ;
+- envoyer automatiquement les données nécessaires au live ;
 - se reconnecter sans intervention quand c'est possible.
 
 Principe SMP :
@@ -69,7 +68,7 @@ Pour le deuxième écran, `Diffuser les paroles` est le maître de la session r�
 - il héberge `LocalLinkServer` ;
 - il annonce la session SMP sur le réseau via NSD.
 
-Les appareils `Afficher les paroles` ne publient pas de session de diffusion. Ils découvrent les sessions disponibles, les présentent à l'utilisateur, puis se connecteront au diffuseur lors des étapes suivantes.
+Les appareils `Afficher les paroles` ne publient pas de session de diffusion. Ils découvrent les sessions disponibles et, depuis le deuxième écran V2.3, se connectent automatiquement au diffuseur dès qu'une session compatible est disponible.
 
 ---
 
@@ -120,7 +119,9 @@ Annonce NSD de la session SMP
 ↓
 Découverte par les deuxièmes écrans
 ↓
-Connexion LocalLink vers le diffuseur
+Connexion automatique LocalLink vers le diffuseur
+↓
+Envoi automatique du morceau courant et des changements de morceau
 ↓
 Synchronisation pilotée par ExoPlayer
 ```
@@ -337,11 +338,9 @@ Annonce NSD de la session
 ↓
 Découverte par le deuxième écran
 ↓
-Sélection appareil
+Connexion automatique
 ↓
-Demande d'autorisation
-↓
-Connexion
+Envoi automatique des morceaux depuis le Player
 ↓
 Reconnexion automatique
 ↓
@@ -350,19 +349,19 @@ Synchronisation permanente
 
 Sur l'appareil principal :
 
-- l'utilisateur appuie sur `Diffuser les paroles` ;
+- l'utilisateur active `Diffuser les paroles` avec `Activer Deuxième écran` ;
 - l'application ouvre une session de diffusion ;
 - le serveur LocalLink est l'endpoint réel de cette session ;
 - la session est annoncée sur le réseau via NSD ;
-- l'appareil principal reste maître de la lecture et de la timeline.
+- l'appareil principal reste maître de la lecture et de la timeline ;
+- les changements de morceau du Player envoient automatiquement les données nécessaires au deuxième écran.
 
 Sur le deuxième appareil :
 
 - l'utilisateur appuie sur `Afficher les paroles` ;
 - l'application découvre les sessions SMP disponibles ;
-- l'utilisateur choisit la session du diffuseur ;
-- il affiche une demande d'autorisation si l'étape d'appairage l'exige ;
-- après acceptation, il mémorise le diffuseur.
+- l'application se connecte automatiquement à la session compatible du diffuseur ;
+- la demande d'autorisation et la mémorisation appartiennent à l'étape future d'appairage.
 
 Après appairage :
 
@@ -494,7 +493,28 @@ Objectif :
 
 LocalLink reste inchangé.
 
-### V2.2 — Appairage
+### V2.2 — Connexion En Un Clic
+
+Objectif :
+
+- connecter une session découverte en utilisant son véritable endpoint LocalLink ;
+- supprimer la saisie manuelle IP/port du parcours principal ;
+- conserver les options avancées comme fallback et diagnostic.
+
+LocalLink reste inchangé.
+
+### V2.3 — Gestion Automatique De La Session
+
+Objectif :
+
+- connecter automatiquement le récepteur à la session compatible découverte ;
+- relancer la découverte si la connexion est perdue ;
+- envoyer automatiquement le morceau courant et les changements de morceau depuis le Player ;
+- conserver les commandes de test dans les options avancées.
+
+Cette étape est validée pour le deuxième écran V2.3.
+
+### V2.4 — Appairage
 
 Objectif :
 
@@ -504,18 +524,7 @@ Objectif :
 
 Le stockage d'identité existant doit être réutilisé autant que possible.
 
-### V2.3 — Reconnexion
-
-Objectif :
-
-- reconnecter automatiquement un appareil déjà appairé ;
-- essayer d'abord le dernier endpoint connu ;
-- relancer la découverte si l'endpoint ne répond plus ;
-- exposer un état utilisateur simple.
-
-La reconnexion doit être non bloquante.
-
-### V2.4 — Synchronisation Robuste
+### V2.5 — Synchronisation Robuste
 
 Objectif :
 
@@ -526,7 +535,7 @@ Objectif :
 
 Cette étape concerne directement le deuxième écran live.
 
-### V2.5 — Extensions SMP
+### Extensions SMP
 
 Objectif :
 

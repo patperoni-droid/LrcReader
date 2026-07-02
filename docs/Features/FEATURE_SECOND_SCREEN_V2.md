@@ -8,7 +8,7 @@ L'utilisateur doit pouvoir :
 
 - ouvrir `Deuxième écran` ;
 - choisir `Diffuser les paroles` ou `Afficher les paroles` ;
-- voir les sessions SMP disponibles ;
+- activer ou afficher un deuxième écran ;
 - connecter puis maintenir une session live sans manipuler d'IP, de port, de serveur, de client ou de LocalLink.
 
 LocalLink reste le moteur réseau.
@@ -52,8 +52,8 @@ V2.5 Synchronisation robuste
 - ExoPlayer reste la référence temporelle.
 - `Diffuser les paroles` est le maître de la session réseau.
 - Le diffuseur héberge `LocalLinkServer` et annonce la session via NSD.
-- `Afficher les paroles` découvre les sessions disponibles et se connecte au diffuseur.
-- À terme, ouvrir les deux écrans doit suffire : aucune coordination verbale entre musiciens ne doit être nécessaire.
+- `Afficher les paroles` découvre les sessions disponibles et se connecte automatiquement au diffuseur.
+- Ouvrir les deux écrans doit suffire : aucune coordination verbale entre musiciens ne doit être nécessaire.
 - Les options avancées IP/port restent disponibles comme fallback, outil de secours et diagnostic.
 - Aucune régression du moteur LocalLink existant n'est autorisée.
 - Téléphone, tablette et split tablette doivent rester cohérents.
@@ -149,6 +149,8 @@ La connexion devient plus simple, mais elle ne crée pas encore d'appairage perm
 
 ## V2.3 — Gestion Automatique De La Session
 
+Statut : implémentée et validée sur le terrain.
+
 ### Objectif
 
 Le simple fait d'ouvrir les deux écrans doit suffire.
@@ -165,9 +167,27 @@ ou :
 Tu peux te connecter.
 ```
 
+ni :
+
+```text
+J'envoie le morceau courant.
+```
+
 Parcours cible :
 
 ```text
+Diffuseur
+↓
+Activer Deuxième écran
+↓
+Retour Player
+↓
+Lecture ou changement de morceau
+↓
+Envoi automatique du morceau courant
+
+Récepteur
+↓
 Afficher les paroles
 ↓
 Découverte automatique
@@ -176,19 +196,25 @@ Session SMP compatible trouvée
 ↓
 Connexion automatique
 ↓
-Session connectée
+Réception automatique des morceaux et des paroles
 ```
 
 Si la connexion est perdue, l'appareil revient automatiquement en attente, reprend la découverte, puis se reconnecte quand le diffuseur revient.
+
+L'envoi automatique du morceau courant est piloté par le Player. Chaque changement réel de morceau déclenche le même mécanisme que le bouton manuel `Envoyer morceau courant`, sans changer le protocole LocalLink ni le format des messages.
 
 ### Périmètre
 
 - Démarrer la découverte dès l'ouverture de `Afficher les paroles`.
 - Connecter automatiquement la première session SMP compatible disponible.
 - Ne demander aucune action utilisateur pour établir la connexion.
+- Activer la session côté diffuseur avec le bouton utilisateur `Activer Deuxième écran`.
+- Envoyer automatiquement le morceau courant après retour au Player.
+- Envoyer automatiquement les changements de morceau au deuxième écran.
 - Revenir en attente si la connexion est perdue.
 - Reprendre la découverte après perte de connexion.
 - Reconnecter automatiquement quand le diffuseur réapparaît.
+- Conserver les commandes `Envoyer morceau courant` et `Envoyer morceau test` dans `Options avancées`.
 - Conserver le mode manuel IP/port dans les options avancées comme solution de secours et diagnostic.
 - Réutiliser exclusivement le moteur LocalLink existant.
 
@@ -207,6 +233,11 @@ Si la connexion est perdue, l'appareil revient automatiquement en attente, repre
 - Ouvrir `Afficher les paroles` démarre automatiquement la découverte.
 - Une session compatible découverte déclenche une connexion automatique.
 - Aucun clic sur la session n'est nécessaire.
+- `Activer Deuxième écran` démarre la session de diffusion côté diffuseur.
+- Après retour au Player, la lecture d'un morceau envoie automatiquement les paroles au deuxième écran.
+- Le passage au morceau suivant ou précédent envoie automatiquement le nouveau morceau.
+- Relancer le même morceau ne crée pas de doublon inutile.
+- Les commandes de test restent accessibles dans les options avancées.
 - Une perte de connexion remet l'écran en attente sans bloquer l'interface.
 - La découverte reprend après perte de connexion.
 - Le retour du diffuseur déclenche une reconnexion automatique.
