@@ -55,9 +55,9 @@ Ouvrir LEVELS
 ↓
 Choisir un morceau
 ↓
-Appui long sur Lecture
+Appui simple sur Lecture
 ↓
-Sélection rapide d'un passage fort
+Choisir le point d'écoute
 ↓
 Ouvrir le tiroir LEVEL
 ↓
@@ -104,9 +104,9 @@ Est-ce que ce morceau est au bon niveau par rapport aux autres ?
 
 ## Rôle Du Démarrage Rapide
 
-L'appui long sur `Lecture` est une fonction majeure de préparation.
+Le bouton `Lecture` ouvre directement le choix du point d'écoute.
 
-Il permet de rejoindre rapidement un passage utile, notamment un passage fort, afin de régler le niveau sans perdre de temps.
+Il permet de démarrer au début du morceau ou de rejoindre rapidement un passage utile, notamment un passage fort, afin de régler le niveau sans perdre de temps.
 
 Cette fonction doit être conservée dans `LEVELS`.
 
@@ -114,14 +114,21 @@ Elle fait partie du workflow principal de préparation du mix.
 
 ## Écoute Rapide (Quick Preview)
 
-Lorsqu'un morceau est affiché dans la liste des niveaux, un appui long sur le bouton `Lecture` permet d'ouvrir un petit menu proposant plusieurs points de départ :
+Lorsqu'un morceau est affiché dans la liste des niveaux, un appui simple sur le bouton `Lecture` ouvre directement un petit menu proposant plusieurs points de départ :
 
+- Début ;
 - 20 s ;
 - 40 s ;
 - 60 s ;
 - 90 s.
 
 Le morceau démarre directement au temps choisi.
+
+La fonction est donc directement accessible : aucune action cachée ni appui long n'est nécessaire.
+
+Le choix `Début` remplace implicitement `0 seconde`, avec un vocabulaire naturel pour un musicien.
+
+Cette évolution améliore la découvrabilité tout en conservant une interface simple : le bouton reste unique, mais il révèle immédiatement les départs utiles.
 
 Cette fonction permet d'éviter les introductions trop longues et d'écouter rapidement les passages les plus représentatifs d'un morceau.
 
@@ -217,9 +224,17 @@ Le comportement doit rester identique au Player.
 
 ### Étape 5 — Conserver Le Démarrage Rapide
 
-Conserver l'appui long sur `Lecture`.
+Conserver l'écoute rapide directement accessible depuis `Lecture`.
 
-Cette fonction permet de sélectionner rapidement un passage fort et accélère la préparation du mix.
+Un appui simple doit ouvrir le choix du point d'écoute :
+
+- `Début` ;
+- `20 s` ;
+- `40 s` ;
+- `60 s` ;
+- `90 s`.
+
+Cette fonction permet de sélectionner rapidement le début ou un passage fort et accélère la préparation du mix.
 
 Elle doit rester accessible dans le workflow principal.
 

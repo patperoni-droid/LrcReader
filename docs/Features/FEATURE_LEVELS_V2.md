@@ -139,7 +139,7 @@ Ce morceau est-il au bon niveau par rapport aux autres ?
 - Afficher la valeur réellement utilisée par le Player.
 - Mettre en avant les morceaux et leur niveau actuel.
 - Conserver les commandes de lecture utiles à la préparation.
-- Préserver l'écoute rapide par appui long sur `Lecture`.
+- Préserver l'écoute rapide directement accessible par appui simple sur `Lecture`.
 
 ### Exclusions
 
@@ -152,7 +152,7 @@ Ce morceau est-il au bon niveau par rapport aux autres ?
 
 - La liste affiche les morceaux avec leur `LEVEL` actuel.
 - La valeur affichée correspond au niveau réellement utilisé par le Player.
-- L'écoute rapide reste disponible avec les points de départ existants.
+- L'écoute rapide ouvre le choix `Début`, `20 s`, `40 s`, `60 s` et `90 s`.
 - L'écran reste lisible et simple.
 - Aucun vocabulaire LUFS n'est nécessaire pour utiliser la page.
 
