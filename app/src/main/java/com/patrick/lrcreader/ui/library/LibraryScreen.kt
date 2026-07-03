@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -645,6 +646,7 @@ fun LibraryScreen(
     val sLufsStatusHigh = stringResource(R.string.library_lufs_status_high)
     val sLufsValueMissing = stringResource(R.string.library_lufs_value_missing)
     val sLufsPreview = stringResource(R.string.library_lufs_preview)
+    val sLufsPreviewStop = stringResource(R.string.library_lufs_preview_stop)
     val sLufsPreviewStart = stringResource(R.string.library_lufs_preview_start)
     val sLufsPreviewOffsetSeconds = R.string.library_lufs_preview_offset_seconds
     val sLufsManualMinusShort = stringResource(R.string.library_lufs_manual_minus_short)
@@ -4449,19 +4451,32 @@ fun LibraryScreen(
                                                                     .clickable(
                                                                         enabled = audioUri != null && !isApplyingLufs,
                                                                         onClick = {
-                                                                            previewOffsetMenuExpanded = true
+                                                                            if (isPreviewing) {
+                                                                                previewOffsetMenuExpanded = false
+                                                                                stopQuickPlay()
+                                                                            } else {
+                                                                                previewOffsetMenuExpanded = true
+                                                                            }
                                                                         }
                                                                     ),
                                                                 contentAlignment = Alignment.Center
                                                             ) {
                                                                 Icon(
-                                                                    imageVector = Icons.Filled.PlayArrow,
-                                                                    contentDescription = sLufsPreview,
+                                                                    imageVector = if (isPreviewing) {
+                                                                        Icons.Filled.Stop
+                                                                    } else {
+                                                                        Icons.Filled.PlayArrow
+                                                                    },
+                                                                    contentDescription = if (isPreviewing) {
+                                                                        sLufsPreviewStop
+                                                                    } else {
+                                                                        sLufsPreview
+                                                                    },
                                                                     tint = if (isPreviewing) accent else titleColor
                                                                 )
                                                             }
                                                             androidx.compose.material3.DropdownMenu(
-                                                                expanded = previewOffsetMenuExpanded,
+                                                                expanded = previewOffsetMenuExpanded && !isPreviewing,
                                                                 onDismissRequest = { previewOffsetMenuExpanded = false }
                                                             ) {
                                                                 androidx.compose.material3.DropdownMenuItem(
