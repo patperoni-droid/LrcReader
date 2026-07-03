@@ -17,7 +17,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.*
@@ -646,7 +645,7 @@ fun LibraryScreen(
     val sLufsStatusHigh = stringResource(R.string.library_lufs_status_high)
     val sLufsValueMissing = stringResource(R.string.library_lufs_value_missing)
     val sLufsPreview = stringResource(R.string.library_lufs_preview)
-    val sLufsPreviewStop = stringResource(R.string.library_lufs_preview_stop)
+    val sLufsPreviewStart = stringResource(R.string.library_lufs_preview_start)
     val sLufsPreviewOffsetSeconds = R.string.library_lufs_preview_offset_seconds
     val sLufsManualMinusShort = stringResource(R.string.library_lufs_manual_minus_short)
     val sLufsManualPlusShort = stringResource(R.string.library_lufs_manual_plus_short)
@@ -4447,14 +4446,9 @@ fun LibraryScreen(
                                                             Box(
                                                                 modifier = Modifier
                                                                     .size(44.dp)
-                                                                    .combinedClickable(
+                                                                    .clickable(
                                                                         enabled = audioUri != null && !isApplyingLufs,
                                                                         onClick = {
-                                                                            audioUri?.let { uri ->
-                                                                                quickPlayToggle(uri, preparation.finalDb ?: song.volumeDb)
-                                                                            }
-                                                                        },
-                                                                        onLongClick = {
                                                                             previewOffsetMenuExpanded = true
                                                                         }
                                                                     ),
@@ -4462,7 +4456,7 @@ fun LibraryScreen(
                                                             ) {
                                                                 Icon(
                                                                     imageVector = Icons.Filled.PlayArrow,
-                                                                    contentDescription = if (isPreviewing) sLufsPreviewStop else sLufsPreview,
+                                                                    contentDescription = sLufsPreview,
                                                                     tint = if (isPreviewing) accent else titleColor
                                                                 )
                                                             }
@@ -4470,6 +4464,19 @@ fun LibraryScreen(
                                                                 expanded = previewOffsetMenuExpanded,
                                                                 onDismissRequest = { previewOffsetMenuExpanded = false }
                                                             ) {
+                                                                androidx.compose.material3.DropdownMenuItem(
+                                                                    text = { Text(text = sLufsPreviewStart) },
+                                                                    onClick = {
+                                                                        previewOffsetMenuExpanded = false
+                                                                        audioUri?.let { uri ->
+                                                                            quickPlayToggle(
+                                                                                uri = uri,
+                                                                                gainDb = preparation.finalDb ?: song.volumeDb,
+                                                                                startPositionMs = 0L
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                )
                                                                 LIBRARY_LUFS_PREVIEW_OFFSETS_SECONDS.forEach { seconds ->
                                                                     androidx.compose.material3.DropdownMenuItem(
                                                                         text = {
