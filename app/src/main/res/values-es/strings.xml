@@ -266,12 +266,12 @@
     <string name="library_view_mode_files">Archivos</string>
     <string name="library_view_mode_playlists">Lists</string>
     <string name="library_view_mode_prompters">Lyrics</string>
-    <string name="library_view_mode_lufs">LUFS</string>
+    <string name="library_view_mode_lufs">LEVELS</string>
     <string name="library_header_cd_storage">Acceso al almacenamiento</string>
     <string name="library_storage_header_title">Almacenamiento del dispositivo</string>
     <string name="library_storage_header_subtitle">Explora tus archivos de audio</string>
     <string name="library_full_mode_enabled">Modo completo activado</string>
-    <string name="library_lufs_active">LUFS activo</string>
+    <string name="library_lufs_active">LEVELS activo</string>
     <string name="library_lufs_apply">Aplicar LUFS</string>
     <string name="library_lufs_remove">Quitar LUFS</string>
     <string name="library_lufs_processing">Procesando LUFS...</string>
@@ -311,7 +311,7 @@
     <string name="library_help_message">Importante: para un funcionamiento óptimo, realiza todas las operaciones sobre tus canciones (importar, exportar, copiar, mover, eliminar) directamente en la aplicación.</string>
     <string name="library_help_understood">Entendido</string>
     <string name="library_help_do_not_show_again">No volver a mostrar</string>
-    <string name="library_lufs_lite_dialog_title">LUFS - Nivel uniforme</string>
+    <string name="library_lufs_lite_dialog_title">LEVELS</string>
     <string name="library_lufs_lite_dialog_message">Todas tus canciones al mismo volumen, automáticamente.\n\nDisponible en la versión Pro.</string>
     <string name="library_upgrade_to_pro">Pasar a Pro</string>
     <string name="export_pro_dialog_title">Función Pro</string>
