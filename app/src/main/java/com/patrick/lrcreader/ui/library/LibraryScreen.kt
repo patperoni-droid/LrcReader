@@ -4596,7 +4596,9 @@ fun LibraryScreen(
                                                     adjustLufsManualDb(song, deltaDb)
                                                 }
                                             },
-                                            modifier = Modifier.align(Alignment.CenterEnd)
+                                            modifier = Modifier
+                                                .align(Alignment.CenterEnd)
+                                                .padding(end = 10.dp, bottom = 96.dp)
                                         )
                                     }
                                 }
