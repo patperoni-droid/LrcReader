@@ -4314,8 +4314,8 @@ fun LibraryScreen(
                                 }
                             } else {
                                 val levelsGainSong = filteredSongItems.firstOrNull {
-                                    it.songId == levelsGainDrawerSongId && selectedSongIds.contains(it.songId)
-                                } ?: filteredSongItems.firstOrNull { selectedSongIds.contains(it.songId) }
+                                    it.songId == levelsGainDrawerSongId
+                                }
                                 val levelsGainPreparation = levelsGainSong?.let { song ->
                                     lufsPreparations[song.songId] ?: initialLufsPreparation(song)
                                 }
@@ -4445,13 +4445,7 @@ fun LibraryScreen(
                                                                     selectedSongIds + song.songId
                                                                 }
                                                                 selectedSongIds = nextSelection
-                                                                levelsGainDrawerSongId = if (!isSelected) {
-                                                                    song.songId
-                                                                } else if (levelsGainDrawerSongId == song.songId) {
-                                                                    nextSelection.firstOrNull()
-                                                                } else {
-                                                                    levelsGainDrawerSongId
-                                                                }
+                                                                levelsGainDrawerSongId = song.songId
                                                                 if (nextSelection.isEmpty()) {
                                                                     isLevelsGainDrawerOpen = false
                                                                 }
@@ -4499,6 +4493,7 @@ fun LibraryScreen(
                                                                     onClick = {
                                                                         previewOffsetMenuExpanded = false
                                                                         audioUri?.let { uri ->
+                                                                            levelsGainDrawerSongId = song.songId
                                                                             quickPlayToggle(
                                                                                 uri = uri,
                                                                                 gainDb = preparation.finalDb ?: song.volumeDb,
@@ -4520,6 +4515,7 @@ fun LibraryScreen(
                                                                         onClick = {
                                                                             previewOffsetMenuExpanded = false
                                                                             audioUri?.let { uri ->
+                                                                                levelsGainDrawerSongId = song.songId
                                                                                 quickPlayToggle(
                                                                                     uri = uri,
                                                                                     gainDb = preparation.finalDb ?: song.volumeDb,
@@ -4582,7 +4578,7 @@ fun LibraryScreen(
                                         }
                                     }
                                 }
-                                    if (levelsGainSong != null && !isApplyingLufs) {
+                                    if (!isApplyingLufs) {
                                         TrackGainDrawer(
                                             gainDb = levelsGainPreparation?.finalDb
                                                 ?: levelsGainSong?.volumeDb
