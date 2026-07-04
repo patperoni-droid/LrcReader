@@ -4319,13 +4319,6 @@ fun LibraryScreen(
                                 val levelsGainPreparation = levelsGainSong?.let { song ->
                                     lufsPreparations[song.songId] ?: initialLufsPreparation(song)
                                 }
-                                val levelsGainCanAdjust = levelsGainSong != null &&
-                                    levelsGainPreparation != null &&
-                                    !isApplyingLufs &&
-                                    !levelsGainPreparation.isLoading &&
-                                    levelsGainPreparation.measuredLufs != null &&
-                                    levelsGainPreparation.autoDb != null
-
                                 Box(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     Row(
@@ -4589,7 +4582,7 @@ fun LibraryScreen(
                                         }
                                     }
                                 }
-                                    if (levelsGainCanAdjust) {
+                                    if (levelsGainSong != null && !isApplyingLufs) {
                                         TrackGainDrawer(
                                             gainDb = levelsGainPreparation?.finalDb
                                                 ?: levelsGainSong?.volumeDb
