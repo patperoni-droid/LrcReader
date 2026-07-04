@@ -93,6 +93,7 @@ import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.clearPersistedUris
+import com.patrick.lrcreader.ui.TrackGainDrawer
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -649,8 +650,6 @@ fun LibraryScreen(
     val sLufsPreviewStop = stringResource(R.string.library_lufs_preview_stop)
     val sLufsPreviewStart = stringResource(R.string.library_lufs_preview_start)
     val sLufsPreviewOffsetSeconds = R.string.library_lufs_preview_offset_seconds
-    val sLufsManualMinusShort = stringResource(R.string.library_lufs_manual_minus_short)
-    val sLufsManualPlusShort = stringResource(R.string.library_lufs_manual_plus_short)
     val sLufsHintTitle = stringResource(R.string.library_lufs_hint_title)
     val sLufsHintMessage = stringResource(R.string.library_lufs_hint_message)
     val sLufsHintDoNotShowAgain = stringResource(R.string.library_lufs_hint_do_not_show_again)
@@ -1813,6 +1812,8 @@ fun LibraryScreen(
     var showLufsLiteDialog by remember { mutableStateOf(false) }
     var lufsHintDoNotShowAgainChecked by remember { mutableStateOf(false) }
     var selectedSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var levelsGainDrawerSongId by remember { mutableStateOf<String?>(null) }
+    var isLevelsGainDrawerOpen by rememberSaveable { mutableStateOf(false) }
     var pendingLufsBatchAction by remember { mutableStateOf<LufsBatchAction?>(null) }
     var isApplyingLufs by remember { mutableStateOf(false) }
     var lufsPreparations by remember { mutableStateOf<Map<String, LibraryLufsPreparation>>(emptyMap()) }
@@ -4312,6 +4313,20 @@ fun LibraryScreen(
                                     )
                                 }
                             } else {
+                                val levelsGainSong = filteredSongItems.firstOrNull {
+                                    it.songId == levelsGainDrawerSongId && selectedSongIds.contains(it.songId)
+                                } ?: filteredSongItems.firstOrNull { selectedSongIds.contains(it.songId) }
+                                val levelsGainPreparation = levelsGainSong?.let { song ->
+                                    lufsPreparations[song.songId] ?: initialLufsPreparation(song)
+                                }
+                                val levelsGainCanAdjust = levelsGainSong != null &&
+                                    levelsGainPreparation != null &&
+                                    !isApplyingLufs &&
+                                    !levelsGainPreparation.isLoading &&
+                                    levelsGainPreparation.measuredLufs != null &&
+                                    levelsGainPreparation.autoDb != null
+
+                                Box(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
@@ -4410,10 +4425,6 @@ fun LibraryScreen(
                                                 displayLufsBaseText
                                             }
                                             val highGain = (preparation.finalDb ?: 0) >= LIBRARY_LUFS_WARNING_DB
-                                            val canAdjust = !isApplyingLufs &&
-                                                !preparation.isLoading &&
-                                                preparation.measuredLufs != null &&
-                                                preparation.autoDb != null
                                             val audioUri = song.song.audioPath
                                                 ?.takeIf { it.isNotBlank() }
                                                 ?.let { Uri.fromFile(File(it)) }
@@ -4435,10 +4446,21 @@ fun LibraryScreen(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
                                                             .clickable(enabled = !isApplyingLufs) {
-                                                                selectedSongIds = if (isSelected) {
+                                                                val nextSelection = if (isSelected) {
                                                                     selectedSongIds - song.songId
                                                                 } else {
                                                                     selectedSongIds + song.songId
+                                                                }
+                                                                selectedSongIds = nextSelection
+                                                                levelsGainDrawerSongId = if (!isSelected) {
+                                                                    song.songId
+                                                                } else if (levelsGainDrawerSongId == song.songId) {
+                                                                    nextSelection.firstOrNull()
+                                                                } else {
+                                                                    levelsGainDrawerSongId
+                                                                }
+                                                                if (nextSelection.isEmpty()) {
+                                                                    isLevelsGainDrawerOpen = false
                                                                 }
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically,
@@ -4544,47 +4566,45 @@ fun LibraryScreen(
                                                         }
                                                     }
 
-                                                    if (isSelected) {
+                                                    if (isSelected && highGain) {
                                                         Row(
                                                             modifier = Modifier.fillMaxWidth(),
                                                             verticalAlignment = Alignment.CenterVertically,
                                                             horizontalArrangement = Arrangement.spacedBy(7.dp)
                                                         ) {
                                                             Spacer(Modifier.width(52.dp))
-                                                            if (highGain) {
-                                                                Text(
-                                                                    text = sLufsStatusHigh,
-                                                                    color = Color(0xFFE53935),
-                                                                    fontSize = 11.sp,
-                                                                    maxLines = 1,
-                                                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                                )
-                                                            }
+                                                            Text(
+                                                                text = sLufsStatusHigh,
+                                                                color = Color(0xFFE53935),
+                                                                fontSize = 11.sp,
+                                                                maxLines = 1,
+                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                            )
                                                             Spacer(Modifier.weight(1f))
-                                                            androidx.compose.material3.TextButton(
-                                                                onClick = { adjustLufsManualDb(song, -1) },
-                                                                enabled = canAdjust,
-                                                                modifier = Modifier
-                                                                    .height(40.dp)
-                                                                    .widthIn(min = 42.dp)
-                                                            ) {
-                                                                Text(sLufsManualMinusShort, fontSize = 13.sp)
-                                                            }
-                                                            androidx.compose.material3.TextButton(
-                                                                onClick = { adjustLufsManualDb(song, 1) },
-                                                                enabled = canAdjust,
-                                                                modifier = Modifier
-                                                                    .height(40.dp)
-                                                                    .widthIn(min = 42.dp)
-                                                            ) {
-                                                                Text(sLufsManualPlusShort, fontSize = 13.sp)
-                                                            }
                                                         }
                                                     }
                                                 }
                                                 androidx.compose.material3.HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
                                             }
                                         }
+                                    }
+                                }
+                                    if (levelsGainCanAdjust) {
+                                        TrackGainDrawer(
+                                            gainDb = levelsGainPreparation?.finalDb
+                                                ?: levelsGainSong?.volumeDb
+                                                ?: 0,
+                                            isOpen = isLevelsGainDrawerOpen,
+                                            onToggleOpen = {
+                                                isLevelsGainDrawerOpen = !isLevelsGainDrawerOpen
+                                            },
+                                            onGainDelta = { deltaDb ->
+                                                levelsGainSong?.let { song ->
+                                                    adjustLufsManualDb(song, deltaDb)
+                                                }
+                                            },
+                                            modifier = Modifier.align(Alignment.CenterEnd)
+                                        )
                                     }
                                 }
                             }
