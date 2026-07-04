@@ -16,10 +16,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,8 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Stop
@@ -1250,106 +1244,80 @@ fun DjScreen(
         }
         }
 
-        Column(
+        GainDrawer(
+            isOpen = isDjVolumeFaderOpen,
+            onToggleOpen = { isDjVolumeFaderOpen = !isDjVolumeFaderOpen },
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .padding(end = blockPaddingEnd, bottom = 16.dp)
                 .zIndex(9999f),
-            horizontalAlignment = Alignment.CenterHorizontally
+            faderHeight = sliderHeight,
+            faderWidth = sliderWidth,
+            drawerWidth = sliderWidth + overhangRight + 9.dp,
+            endPadding = blockPaddingEnd,
+            bottomPadding = 16.dp,
+            buttonSize = 40.dp,
+            buttonOffsetX = buttonOffsetX,
+            buttonOffsetY = buttonOffsetY
         ) {
-            Spacer(modifier = Modifier.weight(1f))
-
-            Box(
-                modifier = Modifier
-                    .height(sliderHeight)
-                    .width(sliderWidth + overhangRight + 9.dp),
-                contentAlignment = Alignment.CenterEnd
-            ) {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isDjVolumeFaderOpen,
-                    enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-                    exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
-                ) {
-                    VerticalTransparentSpeedSlider(
-                        value = djUiLevel.coerceIn(0f, 1f),
-                        onValueChange = { DjBusController.setUiLevel(it.coerceIn(0f, 1f)) },
-                        valueRange = 0f..1f,
-                        height = sliderHeight,
-                        width = sliderWidth,
-                        trackThickness = 4.dp,
-                        trackVerticalPadding = 24.dp,
-                        trackColor = SplColors.Outline.copy(alpha = 0.35f),
-                        filledTrackColor = SplColors.Accent.copy(alpha = 0.78f),
-                        centeredFilledTrack = true,
-                        thumbColor = Color.White.copy(alpha = 0.94f),
-                        thumbShadowElevation = 4.dp,
-                        thumbContent = {
-                            Text(
-                                text = djLevelPercent.toString(),
-                                color = Color(0xFF111111),
-                                fontSize = 11.sp
-                            )
-                        },
-                        bottomLabel = stringResource(R.string.track_mix_level),
-                        bottomLabelColor = SplColors.SubText.copy(alpha = 0.90f),
-                        overhangRight = overhangRight
+            VerticalTransparentSpeedSlider(
+                value = djUiLevel.coerceIn(0f, 1f),
+                onValueChange = { DjBusController.setUiLevel(it.coerceIn(0f, 1f)) },
+                valueRange = 0f..1f,
+                height = sliderHeight,
+                width = sliderWidth,
+                trackThickness = 4.dp,
+                trackVerticalPadding = 24.dp,
+                trackColor = SplColors.Outline.copy(alpha = 0.35f),
+                filledTrackColor = SplColors.Accent.copy(alpha = 0.78f),
+                centeredFilledTrack = true,
+                thumbColor = Color.White.copy(alpha = 0.94f),
+                thumbShadowElevation = 4.dp,
+                thumbContent = {
+                    Text(
+                        text = djLevelPercent.toString(),
+                        color = Color(0xFF111111),
+                        fontSize = 11.sp
                     )
-                }
-            }
+                },
+                bottomLabel = stringResource(R.string.track_mix_level),
+                bottomLabelColor = SplColors.SubText.copy(alpha = 0.90f),
+                overhangRight = overhangRight
+            )
+        }
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            FilledTonalIconButton(
-                onClick = { isDjVolumeFaderOpen = !isDjVolumeFaderOpen },
-                modifier = Modifier
-                    .size(40.dp)
-                    .offset(x = buttonOffsetX, y = buttonOffsetY)
-            ) {
-                Icon(
-                    imageVector = if (isDjVolumeFaderOpen) {
-                        Icons.Filled.KeyboardArrowRight
-                    } else {
-                        Icons.Filled.KeyboardArrowLeft
-                    },
-                    contentDescription = stringResource(R.string.common_cd_toggle_slider)
-                )
-            }
-
-            if (djState.showLiteAutoPlayLimitDialog) {
-                AlertDialog(
-                    onDismissRequest = { DjEngine.consumeLiteAutoLimitDialog() },
-                    title = {
-                        Text(
-                            text = sDjLiteLimitTitle,
-                            color = onBg
-                        )
-                    },
-                    text = {
-                        Text(
-                            text = sDjLiteLimitMessage,
-                            color = sub
-                        )
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                DjEngine.consumeLiteAutoLimitDialog()
-                                openUpgradeToPro()
-                            }
-                        ) {
-                            Text(sUpgradeToPro)
+        if (djState.showLiteAutoPlayLimitDialog) {
+            AlertDialog(
+                onDismissRequest = { DjEngine.consumeLiteAutoLimitDialog() },
+                title = {
+                    Text(
+                        text = sDjLiteLimitTitle,
+                        color = onBg
+                    )
+                },
+                text = {
+                    Text(
+                        text = sDjLiteLimitMessage,
+                        color = sub
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            DjEngine.consumeLiteAutoLimitDialog()
+                            openUpgradeToPro()
                         }
-                    },
-                    dismissButton = {
-                        TextButton(
-                            onClick = { DjEngine.consumeLiteAutoLimitDialog() }
-                        ) {
-                            Text(stringResource(R.string.common_close))
-                        }
+                    ) {
+                        Text(sUpgradeToPro)
                     }
-                )
-            }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = { DjEngine.consumeLiteAutoLimitDialog() }
+                    ) {
+                        Text(stringResource(R.string.common_close))
+                    }
+                }
+            )
         }
     }
 }

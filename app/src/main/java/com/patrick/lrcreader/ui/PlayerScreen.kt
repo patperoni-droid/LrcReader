@@ -32,22 +32,15 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
-import androidx.compose.material.icons.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -127,7 +120,6 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import kotlin.math.pow
 
 private const val DEFAULT_TIMELINE_LIGHT_CUE_ARGB = 0xFFFF0000L
@@ -3130,7 +3122,7 @@ fun PlayerScreen(
                             }
 
                             if (showLiveGainControls && liveGainControlsEnabled) {
-                                TabletLyricsGainFader(
+                                TrackGainFader(
                                     gainDb = currentTrackGainDb,
                                     onGainDelta = onLiveGainDelta,
                                     modifier = Modifier
@@ -3140,7 +3132,7 @@ fun PlayerScreen(
                             }
 
                             if (showPhoneLiveGainDrawer && liveGainControlsEnabled) {
-                                PhoneLyricsGainDrawer(
+                                TrackGainDrawer(
                                     gainDb = currentTrackGainDb,
                                     isOpen = isPhoneLiveGainDrawerOpen,
                                     onToggleOpen = {
@@ -3556,151 +3548,6 @@ private fun CompactLyricsModeButton(
             fontSize = 12.sp,
             maxLines = 1
         )
-    }
-}
-
-@Composable
-private fun TabletLyricsGainFader(
-    gainDb: Int,
-    onGainDelta: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-    faderHeight: Dp = 390.dp,
-    faderWidth: Dp = 52.dp,
-    inactiveBoostZoneHeight: Dp = 58.dp
-) {
-    val minGainDb = -24
-    val maxActiveGainDb = 6
-    val visualMaxGainDb = 12
-    var localGainDb by rememberSaveable { mutableIntStateOf(gainDb.coerceIn(minGainDb, maxActiveGainDb)) }
-    LaunchedEffect(gainDb) {
-        localGainDb = gainDb.coerceIn(minGainDb, maxActiveGainDb)
-    }
-
-    Box(
-        modifier = modifier
-            .width(faderWidth)
-            .height(faderHeight)
-    ) {
-        VerticalTransparentSpeedSlider(
-            value = localGainDb.toFloat(),
-            onValueChange = { rawValue ->
-                val targetDb = rawValue.roundToInt().coerceIn(minGainDb, maxActiveGainDb)
-                if (targetDb != localGainDb) {
-                    val delta = targetDb - localGainDb
-                    localGainDb = targetDb
-                    onGainDelta(delta)
-                }
-            },
-            valueRange = minGainDb.toFloat()..visualMaxGainDb.toFloat(),
-            modifier = Modifier.align(Alignment.Center),
-            height = faderHeight,
-            width = faderWidth,
-            sliderOffsetX = 0.dp,
-            contentOffsetX = 0.dp,
-            decorOffsetX = 0.dp,
-            panelTintAlpha = 0.34f,
-            overhangRight = 0.dp,
-            decorOverhangLeft = 0.dp,
-            decorOverhangRight = 0.dp,
-            corner = 12.dp,
-            trackThickness = 4.dp,
-            trackVerticalPadding = 18.dp,
-            trackColor = Color.White.copy(alpha = 0.22f),
-            filledTrackColor = Color(0xFFFFC107).copy(alpha = 0.76f),
-            centeredFilledTrack = true,
-            thumbHeight = 28.dp,
-            thumbWidth = 50.dp,
-            thumbCorner = 8.dp,
-            thumbColor = Color.White.copy(alpha = 0.94f),
-            thumbShadowElevation = 4.dp,
-            thumbContent = {
-                Text(
-                    text = stringResource(R.string.library_lufs_db_value, localGainDb),
-                    color = Color(0xFF111111),
-                    fontSize = 10.sp,
-                    maxLines = 1
-                )
-            },
-            borderThickness = 1.dp,
-            borderAlpha = 0.36f
-        )
-
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .width(faderWidth)
-                .height(inactiveBoostZoneHeight)
-                .background(
-                    Color(0xFF90A4AE).copy(alpha = 0.30f),
-                    RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
-                )
-                .border(
-                    width = 1.dp,
-                    color = Color.White.copy(alpha = 0.18f),
-                    shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
-                )
-        )
-    }
-}
-
-@Composable
-private fun PhoneLyricsGainDrawer(
-    gainDb: Int,
-    isOpen: Boolean,
-    onToggleOpen: () -> Unit,
-    onGainDelta: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val faderHeight = 320.dp
-    val faderWidth = 52.dp
-
-    Column(
-        modifier = modifier
-            .fillMaxHeight()
-            .padding(end = 4.dp, bottom = 8.dp)
-            .zIndex(9999f),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Spacer(modifier = Modifier.weight(1f))
-
-        Box(
-            modifier = Modifier
-                .height(faderHeight)
-                .width(faderWidth),
-            contentAlignment = Alignment.CenterEnd
-        ) {
-            androidx.compose.animation.AnimatedVisibility(
-                visible = isOpen,
-                enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-                exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
-            ) {
-                TabletLyricsGainFader(
-                    gainDb = gainDb,
-                    onGainDelta = onGainDelta,
-                    faderHeight = faderHeight,
-                    faderWidth = faderWidth,
-                    inactiveBoostZoneHeight = 48.dp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        FilledTonalIconButton(
-            onClick = onToggleOpen,
-            modifier = Modifier
-                .size(38.dp)
-                .offset(x = 6.dp)
-        ) {
-            Icon(
-                imageVector = if (isOpen) {
-                    Icons.Filled.KeyboardArrowRight
-                } else {
-                    Icons.Filled.KeyboardArrowLeft
-                },
-                contentDescription = stringResource(R.string.common_cd_toggle_slider)
-            )
-        }
     }
 }
 
