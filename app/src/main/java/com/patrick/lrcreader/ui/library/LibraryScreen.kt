@@ -1820,6 +1820,17 @@ fun LibraryScreen(
     var lufsProgressCurrent by remember { mutableIntStateOf(0) }
     var lufsProgressTotal by remember { mutableIntStateOf(0) }
     var lufsProgressTitle by remember { mutableStateOf("") }
+    val lufsPreparationLibraryKey = remember(songItems) {
+        songItems.joinToString(separator = "|") { item ->
+            listOf(
+                item.songId,
+                item.song.audioPath.orEmpty(),
+                item.lufsMeasured?.toString().orEmpty(),
+                item.lufsTarget?.toString().orEmpty(),
+                item.lufsAutoDb?.toString().orEmpty()
+            ).joinToString(separator = ":")
+        }
+    }
     val playlistRepoVersion = PlaylistRepository.version.value
     val titleAliasVersion = TitleAliasesStore.version.intValue
     data class SearchableLibraryEntry(
@@ -1844,7 +1855,7 @@ fun LibraryScreen(
         }
     }
 
-    LaunchedEffect(isLufsViewMode, songItems) {
+    LaunchedEffect(isLufsViewMode, lufsPreparationLibraryKey) {
         if (!isLufsViewMode) return@LaunchedEffect
         val initial = songItems.associate { item ->
             item.songId to initialLufsPreparation(item)
