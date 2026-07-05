@@ -9,7 +9,15 @@ Sa mission est de permettre de régler rapidement le gain d'un morceau sans quit
 Le musicien doit pouvoir ajuster le niveau réel du morceau pendant qu'il travaille, sans changer d'écran ni interrompre son flux.
 
 ---
+## Historique
 
+Le `GainDrawer` est né dans le mode **DJ**, où il a été conçu pour permettre un réglage rapide du gain pendant les performances.
+
+Son ergonomie s'étant révélée particulièrement efficace, il a ensuite été adopté par le **Lecteur Audio / Paroles**.
+
+Il est désormais destiné à être utilisé également dans **LEVELS**.
+
+Cette évolution confirme que le `GainDrawer` n'appartient plus à un écran particulier : il devient un composant officiel et transversal de Stage Music Player.
 ## Philosophie
 
 Le `GainDrawer` doit offrir exactement la même expérience utilisateur dans tous les écrans.
@@ -20,6 +28,10 @@ Il doit conserver :
 - la même animation ;
 - la même ergonomie ;
 - la même gestuelle.
+
+La hauteur ergonomique officielle du fader est `450.dp`.
+
+Cette hauteur est commune à tous les écrans qui utilisent le `GainDrawer` afin que le musicien retrouve la même amplitude de geste dans DJ, le Lecteur Audio / Paroles et LEVELS.
 
 L'utilisateur ne doit jamais avoir à réapprendre son fonctionnement selon l'écran dans lequel il se trouve.
 
@@ -34,7 +46,7 @@ Il n'existe qu'un seul `GainDrawer` officiel.
 Toutes les évolutions doivent être effectuées sur ce composant unique.
 
 Aucune duplication n'est autorisée.
-
+Le `GainDrawer` constitue la référence ergonomique officielle de SMP pour tout réglage manuel de gain.
 Un écran peut décider quand afficher le `GainDrawer`, mais il ne doit pas créer sa propre variante locale du composant.
 
 ---
@@ -43,7 +55,7 @@ Un écran peut décider quand afficher le `GainDrawer`, mais il ne doit pas cré
 
 Usages actuels :
 
-- DJ ;
+- DJ ;(origine du composant)
 - Lecteur Audio / Paroles.
 
 Usage prévu :
@@ -71,6 +83,7 @@ Le `GainDrawer` pourra évoluer.
 
 En revanche, son comportement devra rester cohérent dans toute l'application.
 
-Les nouvelles fonctionnalités devront bénéficier automatiquement à tous les écrans qui l'utilisent.
+Toute amélioration du `GainDrawer` bénéficie automatiquement à tous les écrans qui l'utilisent.
 
+Cette règle garantit une expérience utilisateur homogène dans toute l'application.
 Toute évolution du `GainDrawer` doit donc être pensée comme une évolution de composant SMP, pas comme une correction locale d'écran.

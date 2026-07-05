@@ -220,7 +220,7 @@ fun TrackGainDrawer(
     onGainDelta: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val faderHeight = 320.dp
+    val faderHeight = 450.dp
     val faderWidth = 52.dp
 
     GainDrawer(
