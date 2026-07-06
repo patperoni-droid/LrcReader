@@ -26,6 +26,10 @@ En pratique, la préparation fiable se fait à l'oreille, morceau par morceau, a
 
 `LEVELS` devient une page de travail pour préparer le mix réel du concert.
 
+Après validation en utilisation réelle, le workflow manuel est la philosophie définitive de `LEVELS`.
+
+Les traitements automatiques LUFS ne font plus partie du parcours `LEVELS`.
+
 ---
 
 ## Source De Vérité
@@ -43,6 +47,8 @@ Il correspond au niveau choisi par le musicien avec le fader du tiroir `LEVEL`.
 La notion LUFS ne doit plus être exposée à l'utilisateur dans ce module.
 
 Les anciennes données ou analyses LUFS peuvent rester internes si elles existent encore, mais elles ne sont plus la vérité produit et ne doivent plus piloter l'UX principale.
+
+Le réglage des niveaux repose exclusivement sur l'écoute du musicien et l'ajustement manuel via le `GainDrawer`.
 
 ---
 
@@ -69,6 +75,18 @@ Passer au morceau suivant
 ```
 
 Le travail consiste à préparer le mix du concert, pas à corriger automatiquement des valeurs d'analyse.
+
+Le parcours normal devient :
+
+```text
+Choisir un morceau
+↓
+Écouter
+↓
+Ajuster
+↓
+Morceau suivant
+```
 
 ---
 
@@ -191,7 +209,9 @@ Supprimer de l'interface utilisateur principale :
 
 Ces actions ne correspondent plus au workflow réel.
 
-Elles peuvent être supprimées ou déplacées hors parcours principal si un besoin de diagnostic interne existe encore, mais elles ne doivent plus structurer l'expérience utilisateur.
+Elles doivent être retirées du workflow `LEVELS`.
+
+La sélection de morceaux dédiée à ces actions n'est plus nécessaire dans cette page.
 
 ### Étape 3 — Remplacer La Colonne LUFS Par LEVEL
 
@@ -284,3 +304,5 @@ Les futures modifications devront respecter les règles SMP :
 La vérité n'est plus une mesure LUFS.
 
 La vérité est le niveau réellement choisi par le musicien pour chaque morceau.
+
+Les traitements automatiques LUFS ne sont plus une fonction utilisateur de `LEVELS`.

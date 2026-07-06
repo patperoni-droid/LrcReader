@@ -185,11 +185,6 @@ private val importedSmpEffectPerfCounter = AtomicInteger(0)
 private val uiEntriesSnapshotPerfCounter = AtomicInteger(0)
 private val buildSmpEntriesTraceCounter = AtomicInteger(0)
 
-private enum class LufsBatchAction {
-    APPLY,
-    REMOVE
-}
-
 private data class LibraryScreenUiSnapshot(
     val currentFolderUri: Uri?,
     val folderStack: List<Uri>,
@@ -640,11 +635,7 @@ fun LibraryScreen(
     val sPlaylistsEmpty = stringResource(R.string.all_playlists_empty)
     val sPrompterEmptyState = stringResource(R.string.library_prompter_empty_state)
     val sLufsActive = stringResource(R.string.library_lufs_active)
-    val sApplyLufs = stringResource(R.string.library_lufs_apply)
-    val sRemoveLufs = stringResource(R.string.library_lufs_remove)
-    val sLufsProcessing = stringResource(R.string.library_lufs_processing)
     val sLufsStatusLoading = stringResource(R.string.library_lufs_status_loading)
-    val sLufsStatusHigh = stringResource(R.string.library_lufs_status_high)
     val sLufsValueMissing = stringResource(R.string.library_lufs_value_missing)
     val sLufsPreview = stringResource(R.string.library_lufs_preview)
     val sLufsPreviewStop = stringResource(R.string.library_lufs_preview_stop)
@@ -1811,15 +1802,9 @@ fun LibraryScreen(
     var showLufsHintDialog by remember { mutableStateOf(false) }
     var showLufsLiteDialog by remember { mutableStateOf(false) }
     var lufsHintDoNotShowAgainChecked by remember { mutableStateOf(false) }
-    var selectedSongIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var levelsGainDrawerSongId by remember { mutableStateOf<String?>(null) }
     var isLevelsGainDrawerOpen by rememberSaveable { mutableStateOf(false) }
-    var pendingLufsBatchAction by remember { mutableStateOf<LufsBatchAction?>(null) }
-    var isApplyingLufs by remember { mutableStateOf(false) }
     var lufsPreparations by remember { mutableStateOf<Map<String, LibraryLufsPreparation>>(emptyMap()) }
-    var lufsProgressCurrent by remember { mutableIntStateOf(0) }
-    var lufsProgressTotal by remember { mutableIntStateOf(0) }
-    var lufsProgressTitle by remember { mutableStateOf("") }
     val lufsPreparationLibraryKey = remember(songItems) {
         songItems.joinToString(separator = "|") { item ->
             listOf(
@@ -2699,185 +2684,6 @@ fun LibraryScreen(
                     autoDb = auto,
                     manualDb = manual
                 )
-            }
-        }
-    }
-
-    fun applyLufsToSelectedSongs(selection: Set<String>) {
-        if (selection.isEmpty() || isApplyingLufs) return
-
-        scope.launch {
-            val songIds = selection.toList()
-            isApplyingLufs = true
-            lufsProgressCurrent = 0
-            lufsProgressTotal = songIds.size
-            lufsProgressTitle = ""
-            var processedCount = 0
-            val processedSongIds = mutableSetOf<String>()
-            val processedPreparations = mutableMapOf<String, LibraryLufsPreparation>()
-
-            try {
-                songIds.forEachIndexed { index, songId ->
-                    val songTitle = songItems.firstOrNull { it.songId == songId }?.displayTitle ?: songId
-                    lufsProgressCurrent = index + 1
-                    lufsProgressTitle = songTitle
-
-                    val processed = withContext(Dispatchers.IO) {
-                        runCatching {
-                            val song = smpLibraryScanner.findSongById(songId) ?: return@runCatching false
-                            val runtimeTrackUri = SongIdKeyResolver.resolveRuntimeTrackUri(context, songId)
-                                ?: return@runCatching false
-                            val trackUri = Uri.parse(runtimeTrackUri)
-                            val durationMs = queryWaveformDurationMs(trackUri)
-                            if (durationMs <= 0) return@runCatching false
-                            val peaks = WaveformPeaksCache.getOrCompute(
-                                context = context,
-                                uri = trackUri,
-                                targetPoints = 20_000,
-                                durationMs = durationMs
-                            ) {
-                                WaveformExtractor.extractNormalizedPeaks(
-                                    context = context,
-                                    uri = trackUri,
-                                    targetPoints = 20_000
-                                )
-                            }
-                            val measured = estimateLufsFromPeaksForLibrary(peaks.toFloatArray())
-                                ?: return@runCatching false
-                            val target = LIBRARY_LUFS_TARGET
-                            val auto = target - measured
-                            val manual = SmpConfig.readPlaybackFromSongUnit(song)?.lufsManualDb
-                                ?.coerceIn(LIBRARY_LUFS_MANUAL_MIN_DB, LIBRARY_LUFS_MANUAL_MAX_DB)
-                                ?: 0
-                            val volumeDb = finalLufsDb(auto, manual)
-                            TrackVolumePrefs.saveLufsDb(
-                                context = context,
-                                uri = runtimeTrackUri,
-                                db = volumeDb,
-                                measuredLufs = measured,
-                                targetLufs = target,
-                                autoDb = auto,
-                                manualDb = manual
-                            )
-                            processedPreparations[songId] = LibraryLufsPreparation(
-                                measuredLufs = measured,
-                                targetLufs = target,
-                                autoDb = auto,
-                                manualDb = manual,
-                                finalDb = volumeDb
-                            )
-                            true
-                        }.getOrElse { error ->
-                            Log.w("LIBRARY_LUFS", "applyLufs failed songId=$songId", error)
-                            false
-                        }
-                    }
-
-                    if (processed) {
-                        processedCount += 1
-                        processedSongIds += songId
-                    }
-                }
-            } finally {
-                if (processedSongIds.isNotEmpty()) {
-                    songItems = songItems.map { item ->
-                        if (item.songId in processedSongIds) {
-                            val preparation = processedPreparations[item.songId]
-                            item.copy(
-                                volumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS,
-                                volumeDb = preparation?.finalDb ?: item.volumeDb,
-                                lufsMeasured = preparation?.measuredLufs ?: item.lufsMeasured,
-                                lufsTarget = preparation?.targetLufs ?: item.lufsTarget,
-                                lufsAutoDb = preparation?.autoDb ?: item.lufsAutoDb,
-                                lufsManualDb = preparation?.manualDb ?: item.lufsManualDb
-                            )
-                        } else {
-                            item
-                        }
-                    }
-                    lufsPreparations = lufsPreparations.toMutableMap().apply {
-                        processedPreparations.forEach { (songId, preparation) ->
-                            put(songId, preparation)
-                        }
-                    }
-                    selectedSongIds = selectedSongIds - processedSongIds
-                }
-                isApplyingLufs = false
-                lufsProgressCurrent = 0
-                lufsProgressTotal = 0
-                lufsProgressTitle = ""
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.library_lufs_apply_done, processedCount),
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-    }
-
-    fun removeLufsFromSelectedSongs(selection: Set<String>) {
-        if (selection.isEmpty() || isApplyingLufs) return
-
-        scope.launch {
-            val songIds = selection.toList()
-            isApplyingLufs = true
-            lufsProgressCurrent = 0
-            lufsProgressTotal = songIds.size
-            lufsProgressTitle = ""
-            var processedCount = 0
-            val processedSongIds = mutableSetOf<String>()
-
-            try {
-                songIds.forEachIndexed { index, songId ->
-                    val songTitle = songItems.firstOrNull { it.songId == songId }?.displayTitle ?: songId
-                    lufsProgressCurrent = index + 1
-                    lufsProgressTitle = songTitle
-
-                    val processed = withContext(Dispatchers.IO) {
-                        runCatching {
-                            val song = smpLibraryScanner.findSongById(songId) ?: return@runCatching false
-                            val runtimeTrackUri = SongIdKeyResolver.resolveRuntimeTrackUri(context, songId)
-                                ?: return@runCatching false
-                            val currentVolumeDb = TrackVolumePrefs.getDb(context, runtimeTrackUri)
-                                ?: SmpConfig.readPlaybackFromSongUnit(song)?.volumeDb
-                                ?: return@runCatching false
-                            TrackVolumePrefs.saveDb(
-                                context = context,
-                                uri = runtimeTrackUri,
-                                db = currentVolumeDb,
-                                source = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
-                            )
-                            true
-                        }.getOrElse { error ->
-                            Log.w("LIBRARY_LUFS", "removeLufs failed songId=$songId", error)
-                            false
-                        }
-                    }
-
-                    if (processed) {
-                        processedCount += 1
-                        processedSongIds += songId
-                    }
-                }
-            } finally {
-                if (processedSongIds.isNotEmpty()) {
-                    songItems = songItems.map { item ->
-                        if (item.songId in processedSongIds) {
-                            item.copy(volumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL)
-                        } else {
-                            item
-                        }
-                    }
-                }
-                isApplyingLufs = false
-                lufsProgressCurrent = 0
-                lufsProgressTotal = 0
-                lufsProgressTitle = ""
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.library_lufs_remove_done, processedCount),
-                    Toast.LENGTH_SHORT
-                ).show()
             }
         }
     }
@@ -4332,76 +4138,11 @@ fun LibraryScreen(
                                 }
                                 Box(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            androidx.compose.material3.TextButton(
-                                                onClick = { pendingLufsBatchAction = LufsBatchAction.APPLY },
-                                                enabled = selectedSongIds.isNotEmpty() && !isApplyingLufs
-                                            ) {
-                                                Text(sApplyLufs)
-                                            }
-                                            androidx.compose.material3.TextButton(
-                                                onClick = { pendingLufsBatchAction = LufsBatchAction.REMOVE },
-                                                enabled = selectedSongIds.isNotEmpty() && !isApplyingLufs
-                                            ) {
-                                                Text(sRemoveLufs)
-                                            }
-                                        }
-                                        if (isApplyingLufs && lufsProgressTotal > 0) {
-                                            Text(
-                                                text = "${lufsProgressCurrent} / ${lufsProgressTotal}",
-                                                color = subtitleColor,
-                                                fontSize = 12.sp
-                                            )
-                                        }
-                                    }
-
-                                    if (isApplyingLufs) {
-                                        Spacer(Modifier.height(6.dp))
-                                        Text(
-                                            text = sLufsProcessing,
-                                            color = titleColor,
-                                            fontSize = 13.sp
-                                        )
-                                        Spacer(Modifier.height(6.dp))
-                                        if (lufsProgressTotal > 0) {
-                                            LinearProgressIndicator(
-                                                progress = { (lufsProgressCurrent.toFloat() / lufsProgressTotal.toFloat()).coerceIn(0f, 1f) },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                color = accent
-                                            )
-                                        } else {
-                                            LinearProgressIndicator(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                color = accent
-                                            )
-                                        }
-                                        if (lufsProgressTitle.isNotBlank()) {
-                                            Spacer(Modifier.height(6.dp))
-                                            Text(
-                                                text = lufsProgressTitle,
-                                                color = subtitleColor,
-                                                fontSize = 12.sp,
-                                                maxLines = 1
-                                            )
-                                        }
-                                        Spacer(Modifier.height(8.dp))
-                                    }
-
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize()
                                     ) {
                                         items(filteredSongItems, key = { it.songId }) { song ->
-                                            val isSelected = selectedSongIds.contains(song.songId)
                                             val preparation = lufsPreparations[song.songId] ?: initialLufsPreparation(song)
-                                            val highGain = (preparation.finalDb ?: 0) >= LIBRARY_LUFS_WARNING_DB
                                             val audioUri = song.song.audioPath
                                                 ?.takeIf { it.isNotBlank() }
                                                 ?.let { Uri.fromFile(File(it)) }
@@ -4413,26 +4154,14 @@ fun LibraryScreen(
                                                 Column(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .background(
-                                                            if (isSelected) accent.copy(alpha = 0.10f) else Color.Transparent
-                                                        )
                                                         .padding(horizontal = 10.dp, vertical = 7.dp),
                                                     verticalArrangement = Arrangement.spacedBy(5.dp)
                                                 ) {
                                                     Row(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .clickable(enabled = !isApplyingLufs) {
-                                                                val nextSelection = if (isSelected) {
-                                                                    selectedSongIds - song.songId
-                                                                } else {
-                                                                    selectedSongIds + song.songId
-                                                                }
-                                                                selectedSongIds = nextSelection
+                                                            .clickable {
                                                                 levelsGainDrawerSongId = song.songId
-                                                                if (nextSelection.isEmpty()) {
-                                                                    isLevelsGainDrawerOpen = false
-                                                                }
                                                             },
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -4442,7 +4171,7 @@ fun LibraryScreen(
                                                                 modifier = Modifier
                                                                     .size(44.dp)
                                                                     .clickable(
-                                                                        enabled = audioUri != null && !isApplyingLufs,
+                                                                        enabled = audioUri != null,
                                                                         onClick = {
                                                                             if (isPreviewing) {
                                                                                 previewOffsetMenuExpanded = false
@@ -4513,7 +4242,7 @@ fun LibraryScreen(
                                                         }
                                                         Text(
                                                             text = song.displayTitle,
-                                                            color = if (isSelected) accent else titleColor,
+                                                            color = titleColor,
                                                             fontSize = 16.sp,
                                                             maxLines = 1,
                                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -4535,55 +4264,36 @@ fun LibraryScreen(
                                                                     R.string.library_lufs_db_value,
                                                                     preparation.finalDb ?: song.volumeDb ?: 0
                                                                 ),
-                                                                color = if (isSelected) accent else titleColor,
+                                                                color = titleColor,
                                                                 fontSize = 12.sp,
                                                                 maxLines = 1
                                                             )
                                                         }
                                                     }
 
-                                                    if (isSelected && highGain) {
-                                                        Row(
-                                                            modifier = Modifier.fillMaxWidth(),
-                                                            verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(7.dp)
-                                                        ) {
-                                                            Spacer(Modifier.width(52.dp))
-                                                            Text(
-                                                                text = sLufsStatusHigh,
-                                                                color = Color(0xFFE53935),
-                                                                fontSize = 11.sp,
-                                                                maxLines = 1,
-                                                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
-                                                            )
-                                                            Spacer(Modifier.weight(1f))
-                                                        }
-                                                    }
                                                 }
                                                 androidx.compose.material3.HorizontalDivider(color = rowBorder.copy(alpha = 0.5f))
                                             }
                                         }
                                     }
                                 }
-                                    if (!isApplyingLufs) {
-                                        TrackGainDrawer(
-                                            gainDb = levelsGainPreparation?.finalDb
-                                                ?: levelsGainSong?.volumeDb
-                                                ?: 0,
-                                            isOpen = isLevelsGainDrawerOpen,
-                                            onToggleOpen = {
-                                                isLevelsGainDrawerOpen = !isLevelsGainDrawerOpen
-                                            },
-                                            onGainDelta = { deltaDb ->
-                                                levelsGainSong?.let { song ->
-                                                    adjustLufsManualDb(song, deltaDb)
-                                                }
-                                            },
-                                            modifier = Modifier
-                                                .align(Alignment.CenterEnd)
-                                                .padding(end = 10.dp, bottom = 96.dp)
-                                        )
-                                    }
+                                    TrackGainDrawer(
+                                        gainDb = levelsGainPreparation?.finalDb
+                                            ?: levelsGainSong?.volumeDb
+                                            ?: 0,
+                                        isOpen = isLevelsGainDrawerOpen,
+                                        onToggleOpen = {
+                                            isLevelsGainDrawerOpen = !isLevelsGainDrawerOpen
+                                        },
+                                        onGainDelta = { deltaDb ->
+                                            levelsGainSong?.let { song ->
+                                                adjustLufsManualDb(song, deltaDb)
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .align(Alignment.CenterEnd)
+                                            .padding(end = 10.dp, bottom = 96.dp)
+                                    )
                                 }
                             }
                         } else {
@@ -5047,53 +4757,6 @@ fun LibraryScreen(
                             }
                         ) {
                             Text(sLibraryHelpDoNotShowAgain)
-                        }
-                    }
-                )
-            }
-            if (pendingLufsBatchAction != null) {
-                val batchAction = pendingLufsBatchAction!!
-                val confirmTitle = when (batchAction) {
-                    LufsBatchAction.APPLY -> sApplyLufs
-                    LufsBatchAction.REMOVE -> sRemoveLufs
-                }
-                val confirmMessage = context.getString(
-                    when (batchAction) {
-                        LufsBatchAction.APPLY -> R.string.library_lufs_apply_confirm
-                        LufsBatchAction.REMOVE -> R.string.library_lufs_remove_confirm
-                    },
-                    selectedSongIds.size
-                )
-                androidx.compose.material3.AlertDialog(
-                    onDismissRequest = {
-                        if (isApplyingLufs) return@AlertDialog
-                        pendingLufsBatchAction = null
-                    },
-                    title = { Text(text = confirmTitle, color = titleColor) },
-                    text = {
-                        Text(
-                            text = confirmMessage,
-                            color = subtitleColor
-                        )
-                    },
-                    confirmButton = {
-                        androidx.compose.material3.TextButton(
-                            onClick = {
-                                pendingLufsBatchAction = null
-                                when (batchAction) {
-                                    LufsBatchAction.APPLY -> applyLufsToSelectedSongs(selectedSongIds)
-                                    LufsBatchAction.REMOVE -> removeLufsFromSelectedSongs(selectedSongIds)
-                                }
-                            }
-                        ) {
-                            Text(confirmTitle)
-                        }
-                    },
-                    dismissButton = {
-                        androidx.compose.material3.TextButton(
-                            onClick = { pendingLufsBatchAction = null }
-                        ) {
-                            Text(stringResource(R.string.common_cancel))
                         }
                     }
                 )
