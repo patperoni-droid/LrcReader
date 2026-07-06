@@ -4401,33 +4401,6 @@ fun LibraryScreen(
                                         items(filteredSongItems, key = { it.songId }) { song ->
                                             val isSelected = selectedSongIds.contains(song.songId)
                                             val preparation = lufsPreparations[song.songId] ?: initialLufsPreparation(song)
-                                            val displayLufsNumber = when {
-                                                preparation.isLoading -> sLufsStatusLoading
-                                                preparation.measuredLufs == null -> sLufsValueMissing
-                                                else -> formatLufsNumber(effectiveLufsForDisplay(song, preparation)!!)
-                                            }
-                                            val displayLufsBaseText = if (
-                                                isSelected &&
-                                                displayLufsNumber != sLufsStatusLoading &&
-                                                displayLufsNumber != sLufsValueMissing
-                                            ) {
-                                                context.getString(R.string.library_lufs_measured_value, displayLufsNumber)
-                                            } else {
-                                                displayLufsNumber
-                                            }
-                                            val displayLufsText = if (
-                                                song.isLufsActive &&
-                                                displayLufsNumber != sLufsStatusLoading &&
-                                                displayLufsNumber != sLufsValueMissing
-                                            ) {
-                                                context.getString(
-                                                    R.string.library_lufs_adjusted_value,
-                                                    displayLufsBaseText,
-                                                    context.getString(R.string.library_lufs_adjusted_marker)
-                                                )
-                                            } else {
-                                                displayLufsBaseText
-                                            }
                                             val highGain = (preparation.finalDb ?: 0) >= LIBRARY_LUFS_WARNING_DB
                                             val audioUri = song.song.audioPath
                                                 ?.takeIf { it.isNotBlank() }
@@ -4558,7 +4531,10 @@ fun LibraryScreen(
                                                             contentAlignment = Alignment.Center
                                                         ) {
                                                             Text(
-                                                                text = displayLufsText,
+                                                                text = context.getString(
+                                                                    R.string.library_lufs_db_value,
+                                                                    preparation.finalDb ?: song.volumeDb ?: 0
+                                                                ),
                                                                 color = if (isSelected) accent else titleColor,
                                                                 fontSize = 12.sp,
                                                                 maxLines = 1
