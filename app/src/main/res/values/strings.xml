@@ -307,6 +307,8 @@
     <string name="library_lufs_final_value">Final %1$s LUFS</string>
     <string name="library_lufs_correction_value">Correction %1$s</string>
     <string name="library_lufs_db_value">%1$+d dB</string>
+    <string name="playback_control_gain_decrease">-</string>
+    <string name="playback_control_gain_increase">+</string>
     <string name="library_lufs_hint_title">Uniformisation du volume</string>
     <string name="library_lufs_hint_message">Ici, vous pouvez harmoniser le volume de vos morceaux.\n\nCela permet d’éviter les différences de niveau entre les titres, pour un rendu plus confortable et professionnel en live.\n\nNous utilisons une référence proche de -14 LUFS, un standard largement utilisé.\n\nVous pouvez appliquer ou retirer ce réglage à tout moment.</string>
     <string name="library_lufs_hint_do_not_show_again">Ne plus afficher</string>

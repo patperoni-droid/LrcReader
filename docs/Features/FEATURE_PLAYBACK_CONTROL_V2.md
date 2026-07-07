@@ -28,22 +28,24 @@ Le `Playback Control` devient progressivement le centre de contrôle compact et 
 
 ---
 
-## V2.1 — Créer Le Composant Officiel Dans Le Player
+## V2.1 — Prototype Visuel Dans Le Player
 
 ### Objectif
 
-Créer le `Playback Control` officiel dans le Lecteur Audio / Paroles.
+Valider l'ergonomie du futur `Playback Control` dans le Lecteur Audio / Paroles avant toute extraction en composant partagé.
 
 ### Périmètre
 
-- intégrer le composant dans le contexte Player ;
+- prototyper le layout dans le contexte Player ;
 - conserver le Player comme écran complet ;
 - respecter la composition V1 du composant ;
+- conserver les comportements existants ;
 - conserver la stabilité live ;
 - conserver le comportement musical attendu.
 
 ### Exclusions
 
+- aucune création de composant partagé ;
 - aucun déploiement dans les autres écrans ;
 - aucun changement dans DJ ;
 - aucune décision concernant Arrangement ;
@@ -56,6 +58,10 @@ Créer le `Playback Control` officiel dans le Lecteur Audio / Paroles.
 - le Player conserve ses fonctions avancées ;
 - la lecture reste stable ;
 - l'ergonomie téléphone est prioritaire et validée.
+
+### Etat
+
+Prototype visuel engagé dans le Player.
 
 ---
 

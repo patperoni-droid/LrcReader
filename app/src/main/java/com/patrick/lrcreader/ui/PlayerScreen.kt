@@ -3222,6 +3222,7 @@ fun PlayerScreen(
                                 PlaybackCoordinator.onFillerStart()
                                 runCatching { FillerSoundManager.startIfConfigured(context) }
                             },
+                            gainDb = currentTrackGainDb,
                             compact = compactTabletLayout
                         )
                     }

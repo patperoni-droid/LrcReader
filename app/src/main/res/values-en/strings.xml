@@ -313,6 +313,8 @@
     <string name="library_lufs_final_value">Final %1$s LUFS</string>
     <string name="library_lufs_correction_value">Correction %1$s</string>
     <string name="library_lufs_db_value">%1$+d dB</string>
+    <string name="playback_control_gain_decrease">-</string>
+    <string name="playback_control_gain_increase">+</string>
     <string name="library_lufs_hint_title">Volume normalization</string>
     <string name="library_lufs_hint_message">Here you can balance the volume of your tracks.\n\nThis helps avoid large level differences between songs, for a more comfortable and professional live experience.\n\nWe use a reference close to -14 LUFS, a widely used standard.\n\nYou can apply or remove this setting at any time.</string>
     <string name="library_lufs_hint_do_not_show_again">Do not show again</string>
