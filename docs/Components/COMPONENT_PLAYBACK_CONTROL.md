@@ -108,6 +108,14 @@ Sa mission est uniquement de gérer la position.
 
 Il ne modifie jamais l'état Lecture / Pause.
 
+Comportement attendu :
+
+- si le morceau est en lecture, le bouton revient à `0:00` et la lecture continue ;
+- si le morceau est en pause, le bouton revient à `0:00` et le Player reste en pause ;
+- si aucun morceau n'est chargé, le bouton ne fait rien.
+
+Le bouton Retour ne déclenche jamais une lecture, une pause ou une reprise.
+
 ---
 
 ## Réglage Rapide Du Gain

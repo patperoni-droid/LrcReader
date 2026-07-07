@@ -3199,18 +3199,16 @@ fun PlayerScreen(
                                     }
                                 }
                             },
-                            onPrev = {
+                            onPrev = onPrev@{
+                                val trackUri = currentTrackUri ?: return@onPrev
+                                if (durationMs <= 0) return@onPrev
                                 seekToMs(0L)
                                 timelineLightPreviewPositionMs = null
-                                if (currentTrackUri != null && hasLightCues) {
+                                if (hasLightCues) {
                                     LightCueDispatcher.syncToPosition(
-                                        trackUri = currentTrackUri,
+                                        trackUri = trackUri,
                                         positionMs = 0L
                                     )
-                                }
-                                if (!isPlaying) {
-                                    PlaybackCoordinator.onPlayerStart()
-                                    onIsPlayingChange(true)
                                 }
                                 centerCurrentLineLazy(listState)
                             },
