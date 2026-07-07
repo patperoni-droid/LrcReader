@@ -3143,7 +3143,7 @@ fun PlayerScreen(
                                 )
                             }
                         }
-                        TimeBar(
+                        PlaybackControl(
                             positionMs = if (isDragging) dragPosMs else positionMs,
                             durationMs = durationMs,
                             onSeekLivePreview = { newPos ->
@@ -3164,10 +3164,6 @@ fun PlayerScreen(
                                 }
                             },
                             highlightColor = highlightColor,
-                            compact = compactTabletLayout
-                        )
-
-                        PlayerControls(
                             isPlaying = isPlaying,
                             onPlayPause = {
                                 if (isPlaying) {
