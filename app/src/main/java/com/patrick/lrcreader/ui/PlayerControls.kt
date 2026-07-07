@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,7 +27,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.exo.R
-import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 
 @Composable
 fun PlayerControls(
@@ -37,22 +37,24 @@ fun PlayerControls(
     gainDb: Int = 4,
     compact: Boolean = false
 ) {
-    val adaptiveTokens = rememberSmpAdaptiveTokens()
-    val controlButtonSize = if (compact) 48.dp else adaptiveTokens.playerControlButtonSize
-    val primaryButtonWidth = if (compact) 88.dp else 112.dp
-    val primaryButtonHeight = if (compact) 48.dp else 58.dp
-    val primaryIconSize = if (compact) 25.dp else 30.dp
-    val gainButtonSize = if (compact) 34.dp else 40.dp
-    val verticalPadding = if (compact) 0.dp else 4.dp
-    val buttonShape = RoundedCornerShape(8.dp)
+    val controlButtonSize = if (compact) 42.dp else 48.dp
+    val controlIconSize = if (compact) 31.dp else 36.dp
+    val primaryButtonWidth = if (compact) 98.dp else 126.dp
+    val primaryButtonHeight = if (compact) 43.dp else 50.dp
+    val primaryIconSize = if (compact) 23.dp else 27.dp
+    val gainButtonSize = if (compact) 32.dp else 36.dp
+    val verticalPadding = 0.dp
+    val itemSpacing = if (compact) 6.dp else 8.dp
+    val buttonShape = RoundedCornerShape(7.dp)
     val consoleGreen = Color(0xFF18B857)
     val gainButtonBackground = Color.White.copy(alpha = 0.10f)
+    val controlBorder = Color.White.copy(alpha = 0.22f)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = verticalPadding),
-        horizontalArrangement = Arrangement.SpaceEvenly,
+        horizontalArrangement = Arrangement.spacedBy(itemSpacing, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
@@ -60,6 +62,7 @@ fun PlayerControls(
                 .width(primaryButtonWidth)
                 .height(primaryButtonHeight)
                 .background(consoleGreen, buttonShape)
+                .border(1.dp, controlBorder, buttonShape)
                 .clickable(onClick = onPlayPause),
             contentAlignment = Alignment.Center
         ) {
@@ -79,14 +82,15 @@ fun PlayerControls(
                 imageVector = Icons.Filled.SkipPrevious,
                 contentDescription = stringResource(R.string.player_cd_prev),
                 tint = Color.White,
-                modifier = Modifier.size(controlButtonSize)
+                modifier = Modifier.size(controlIconSize)
             )
         }
 
         Box(
             modifier = Modifier
                 .size(gainButtonSize)
-                .background(gainButtonBackground, buttonShape),
+                .background(gainButtonBackground, buttonShape)
+                .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -107,7 +111,8 @@ fun PlayerControls(
         Box(
             modifier = Modifier
                 .size(gainButtonSize)
-                .background(gainButtonBackground, buttonShape),
+                .background(gainButtonBackground, buttonShape)
+                .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
