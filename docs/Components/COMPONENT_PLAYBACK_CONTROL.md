@@ -60,6 +60,24 @@ Cette composition représente le premier périmètre fonctionnel du composant.
 
 ---
 
+## Positionnement
+
+Le `Playback Control` est un composant ancré.
+
+Son emplacement fait partie de son identité.
+
+Le `Playback Control` doit toujours être positionné au même endroit que dans le Lecteur Audio / Paroles.
+
+Le but est de conserver une mémoire musculaire identique dans tous les écrans.
+
+Les écrans doivent s'adapter au `Playback Control`.
+
+Le `Playback Control` ne doit pas être repositionné en fonction de la mise en page locale.
+
+Cette règle provient des essais réalisés en situation réelle de concert.
+
+---
+
 ## Règle Du Bouton Principal
 
 Le bouton principal est un carré.
