@@ -3221,6 +3221,7 @@ fun PlayerScreen(
                                 runCatching { FillerSoundManager.startIfConfigured(context) }
                             },
                             gainDb = currentTrackGainDb,
+                            onGainDelta = onLiveGainDelta,
                             compact = compactTabletLayout
                         )
                     }

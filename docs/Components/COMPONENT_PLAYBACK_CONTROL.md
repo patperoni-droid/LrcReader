@@ -134,6 +134,12 @@ Le `Playback Control` sert à corriger vite.
 
 Le `GainDrawer` sert à ajuster finement.
 
+Le réglage rapide du `Playback Control` pilote exactement la même valeur de gain que le `GainDrawer`.
+
+Il n'existe pas de gain propre au `Playback Control`.
+
+Chaque appui sur `[-]` ou `[+]` applique un pas de `1 dB` via la logique officielle de réglage du gain du morceau courant.
+
 ---
 
 ## Premier Périmètre

@@ -36,6 +36,7 @@ fun PlayerControls(
     onPrev: () -> Unit,
     onNext: () -> Unit,
     gainDb: Int = 4,
+    onGainDelta: (Int) -> Unit = {},
     compact: Boolean = false
 ) {
     val controlButtonSize = if (compact) 42.dp else 48.dp
@@ -93,7 +94,8 @@ fun PlayerControls(
             modifier = Modifier
                 .size(gainButtonSize)
                 .background(gainButtonBackground, buttonShape)
-                .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape),
+                .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
+                .clickable { onGainDelta(-1) },
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -115,7 +117,8 @@ fun PlayerControls(
             modifier = Modifier
                 .size(gainButtonSize)
                 .background(gainButtonBackground, buttonShape)
-                .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape),
+                .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
+                .clickable { onGainDelta(1) },
             contentAlignment = Alignment.Center
         ) {
             Text(
