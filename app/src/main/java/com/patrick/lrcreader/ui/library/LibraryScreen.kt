@@ -93,6 +93,7 @@ import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.clearPersistedUris
+import com.patrick.lrcreader.ui.PlaybackControl
 import com.patrick.lrcreader.ui.TrackGainDrawer
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.Dispatchers
@@ -2498,6 +2499,10 @@ fun LibraryScreen(
     val quickPlayer = remember { ExoPlayer.Builder(context).build() }
     var quickNowUri by remember { mutableStateOf<Uri?>(null) }
     var quickIsPlaying by remember { mutableStateOf(false) }
+    var quickPositionMs by remember { mutableIntStateOf(0) }
+    var quickDurationMs by remember { mutableIntStateOf(0) }
+    var quickIsDragging by remember { mutableStateOf(false) }
+    var quickDragPositionMs by remember { mutableIntStateOf(0) }
 
     DisposableEffect(quickPlayer) {
         val listener = object : Player.Listener {
@@ -2523,6 +2528,25 @@ fun LibraryScreen(
         onDispose {
             quickPlayer.removeListener(listener)
             quickPlayer.release()
+        }
+    }
+
+    LaunchedEffect(isLufsViewMode, quickNowUri, quickIsPlaying) {
+        if (!isLufsViewMode || quickNowUri == null) return@LaunchedEffect
+        while (true) {
+            val position = runCatching { quickPlayer.currentPosition }.getOrDefault(0L)
+            val duration = runCatching { quickPlayer.duration }.getOrDefault(0L)
+            if (!quickIsDragging) {
+                quickPositionMs = position
+                    .coerceIn(0L, Int.MAX_VALUE.toLong())
+                    .toInt()
+            }
+            quickDurationMs = if (duration > 0L) {
+                duration.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+            } else {
+                0
+            }
+            delay(if (quickIsPlaying) 250L else 500L)
         }
     }
 
@@ -4136,8 +4160,63 @@ fun LibraryScreen(
                                 val levelsGainPreparation = levelsGainSong?.let { song ->
                                     lufsPreparations[song.songId] ?: initialLufsPreparation(song)
                                 }
+                                val levelsGainAudioUri = levelsGainSong
+                                    ?.song
+                                    ?.audioPath
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let { Uri.fromFile(File(it)) }
+                                val isLevelsPlaybackActive = levelsGainAudioUri != null &&
+                                    quickNowUri == levelsGainAudioUri
                                 Box(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.fillMaxSize()) {
+                                    PlaybackControl(
+                                        positionMs = if (isLevelsPlaybackActive) {
+                                            if (quickIsDragging) quickDragPositionMs else quickPositionMs
+                                        } else {
+                                            0
+                                        },
+                                        durationMs = if (isLevelsPlaybackActive) quickDurationMs else 0,
+                                        onSeekLivePreview = { newPos ->
+                                            if (isLevelsPlaybackActive && quickDurationMs > 0) {
+                                                quickIsDragging = true
+                                                quickDragPositionMs = newPos
+                                            }
+                                        },
+                                        onSeekCommit = onSeekCommit@{ newPos ->
+                                            if (!isLevelsPlaybackActive || quickDurationMs <= 0) {
+                                                quickIsDragging = false
+                                                return@onSeekCommit
+                                            }
+                                            val safe = newPos.coerceIn(0, quickDurationMs)
+                                            quickIsDragging = false
+                                            quickPositionMs = safe
+                                            runCatching { quickPlayer.seekTo(safe.toLong()) }
+                                        },
+                                        highlightColor = accent,
+                                        isPlaying = isLevelsPlaybackActive && quickIsPlaying,
+                                        onPlayPause = onPlayPause@{
+                                            val song = levelsGainSong ?: return@onPlayPause
+                                            val uri = levelsGainAudioUri ?: return@onPlayPause
+                                            quickPlayToggle(
+                                                uri = uri,
+                                                gainDb = levelsGainPreparation?.finalDb ?: song.volumeDb
+                                            )
+                                        },
+                                        onPrev = onPrev@{
+                                            if (!isLevelsPlaybackActive || quickDurationMs <= 0) return@onPrev
+                                            quickPositionMs = 0
+                                            quickDragPositionMs = 0
+                                            runCatching { quickPlayer.seekTo(0L) }
+                                        },
+                                        onNext = {},
+                                        gainDb = levelsGainPreparation?.finalDb
+                                            ?: levelsGainSong?.volumeDb
+                                            ?: 0,
+                                        onGainDelta = onGainDelta@{ deltaDb ->
+                                            val song = levelsGainSong ?: return@onGainDelta
+                                            adjustLufsManualDb(song, deltaDb)
+                                        }
+                                    )
                                     LazyColumn(
                                         modifier = Modifier.fillMaxSize()
                                     ) {
