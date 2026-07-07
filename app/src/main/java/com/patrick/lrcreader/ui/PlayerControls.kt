@@ -54,7 +54,7 @@ fun PlayerControls(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = verticalPadding),
-        horizontalArrangement = Arrangement.spacedBy(itemSpacing, Alignment.CenterHorizontally),
+        horizontalArrangement = Arrangement.spacedBy(itemSpacing, Alignment.Start),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
