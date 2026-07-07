@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -61,6 +62,7 @@ import com.patrick.lrcreader.core.PlayerBusController
 import com.patrick.lrcreader.core.PlayerVolumePrefs
 import com.patrick.lrcreader.core.TunerEngine
 import com.patrick.lrcreader.core.TunerState
+import kotlinx.coroutines.delay
 import java.util.Locale
 
 /**
@@ -79,7 +81,15 @@ fun MixerHomePreviewScreen(
     onOpenTuner: () -> Unit = {},// appelé par l’icône Accordeur
     openNotesSignal: Int = 0,
     showBackButton: Boolean = true,
-    compactTabletMode: Boolean = false
+    compactTabletMode: Boolean = false,
+    isPlayerPlaying: Boolean = false,
+    currentTrackGainDb: Int = 0,
+    liveGainControlsEnabled: Boolean = false,
+    onLiveGainDelta: (Int) -> Unit = {},
+    getPositionMs: () -> Long = { 0L },
+    getEffectiveDurationMs: () -> Long = { 0L },
+    seekToMs: (Long) -> Unit = {},
+    onPlaybackControlPlayPause: () -> Unit = {}
 ) {
 
     val context = LocalContext.current
@@ -157,6 +167,28 @@ fun MixerHomePreviewScreen(
     val hasFreshPlayerPcm by MeterManager.hasFreshPlayerPcm.collectAsState()
     val hasFreshFillerPcm by MeterManager.hasFreshFillerPcm.collectAsState()
     val hasFreshDjPcm by MeterManager.hasFreshDjPcm.collectAsState()
+    var playbackPositionMs by remember { mutableIntStateOf(0) }
+    var playbackDurationMs by remember { mutableIntStateOf(0) }
+    var playbackDragging by remember { mutableStateOf(false) }
+    var playbackDragPositionMs by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(isPlayerPlaying) {
+        while (true) {
+            val position = getPositionMs()
+            val duration = getEffectiveDurationMs()
+            if (!playbackDragging) {
+                playbackPositionMs = position
+                    .coerceIn(0L, Int.MAX_VALUE.toLong())
+                    .toInt()
+            }
+            playbackDurationMs = if (duration > 0L) {
+                duration.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+            } else {
+                0
+            }
+            delay(if (isPlayerPlaying) 250L else 500L)
+        }
+    }
 
     val backgroundBrush = Brush.verticalGradient(
         listOf(
@@ -386,6 +418,39 @@ fun MixerHomePreviewScreen(
                     }
                 }
             }
+
+            PlaybackControl(
+                positionMs = if (playbackDragging) playbackDragPositionMs else playbackPositionMs,
+                durationMs = playbackDurationMs,
+                onSeekLivePreview = { newPos ->
+                    if (playbackDurationMs > 0) {
+                        playbackDragging = true
+                        playbackDragPositionMs = newPos
+                    }
+                },
+                onSeekCommit = { newPos ->
+                    val safe = newPos.coerceIn(0, playbackDurationMs.coerceAtLeast(0))
+                    playbackDragging = false
+                    playbackPositionMs = safe
+                    seekToMs(safe.toLong())
+                },
+                highlightColor = Color(0xFFFFC107),
+                isPlaying = isPlayerPlaying,
+                onPlayPause = onPlaybackControlPlayPause,
+                onPrev = {
+                    playbackPositionMs = 0
+                    playbackDragPositionMs = 0
+                    seekToMs(0L)
+                },
+                onNext = {},
+                gainDb = currentTrackGainDb,
+                onGainDelta = { deltaDb ->
+                    if (liveGainControlsEnabled) {
+                        onLiveGainDelta(deltaDb)
+                    }
+                },
+                compact = compactTabletMode
+            )
 
             Spacer(Modifier.height(8.dp))
 

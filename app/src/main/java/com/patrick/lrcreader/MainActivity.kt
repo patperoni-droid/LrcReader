@@ -1320,6 +1320,73 @@ class MainActivity : AppCompatActivity() {
                 var djMasterLevel by remember { mutableStateOf(1f) }
                 var fillerMasterLevel by remember { mutableStateOf(0.6f) }
 
+                fun currentLufsPlaybackConfig(): SmpConfig.PlaybackConfig? {
+                    currentPlayingUri
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { TrackVolumePrefs.getPlaybackConfig(ctx, it) }
+                        ?.let { return it }
+                    val songId = currentPlayingSongId?.takeIf { it.isNotBlank() } ?: return null
+                    val song = smpSongsById[songId] ?: return null
+                    return SmpConfig.readPlaybackFromSongUnit(song)
+                }
+
+                fun canAdjustLiveGain(): Boolean {
+                    if (currentPlayingUri.isNullOrBlank()) return false
+                    return !currentPlayingSongId.isNullOrBlank()
+                }
+
+                fun adjustLiveGain(deltaDb: Int) {
+                    val sourceUri = currentPlayingUri ?: return
+                    val playback = currentLufsPlaybackConfig()
+                    val currentFinalDb = playback?.volumeDb ?: currentTrackGainDb
+                    val safeDb = (currentFinalDb + deltaDb).coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
+                    currentTrackGainDb = safeDb
+                    AudioEngine.applyTrackGainDb(safeDb)
+
+                    val measured = playback?.lufsMeasured
+                    val target = playback?.lufsTarget
+                    val auto = if (measured != null && target != null) {
+                        playback.lufsAutoDb ?: (target - measured)
+                    } else {
+                        null
+                    }
+
+                    if (measured != null && target != null && auto != null) {
+                        val manual = ((measured + safeDb) - target)
+                            .roundToInt()
+                            .coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
+                        currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
+                        scope.launch {
+                            withContext(Dispatchers.IO) {
+                                TrackVolumePrefs.saveLufsDb(
+                                    context = ctx,
+                                    uri = sourceUri,
+                                    db = safeDb,
+                                    measuredLufs = measured,
+                                    targetLufs = target,
+                                    autoDb = auto,
+                                    manualDb = manual
+                                )
+                            }
+                        }
+                        return
+                    }
+
+                    currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
+                    scope.launch {
+                        withContext(Dispatchers.IO) {
+                            TrackVolumePrefs.saveDb(ctx, sourceUri, safeDb)
+                        }
+                    }
+                }
+
+                fun togglePlaybackFromMainBus() {
+                    if (manualCrossfadeTransitionTitle != null) return
+                    val shouldPlay = !isPlaying
+                    isPlaying = shouldPlay
+                    if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
+                }
+
                 var isMixerPreviewOpen by remember { mutableStateOf(false) }
                 var textPrompterId by remember { mutableStateOf<String?>(null) }
 
@@ -3673,7 +3740,23 @@ class MainActivity : AppCompatActivity() {
                             onOpenTuner = {
                                 isMixerPreviewOpen = false
                                 setTabAndPersist(BottomTab.Tuner, reason = "mixerPreviewOpenTuner")
-                            }
+                            },
+                            isPlayerPlaying = isPlaying,
+                            currentTrackGainDb = currentTrackGainDb,
+                            liveGainControlsEnabled = canAdjustLiveGain(),
+                            onLiveGainDelta = ::adjustLiveGain,
+                            getPositionMs = { exoPlayer.currentPosition },
+                            getEffectiveDurationMs = {
+                                resolveEffectiveDurationMs(
+                                    requestedUri = currentPlayingUri,
+                                    activeUri = exoPlayer.currentMediaItem
+                                        ?.localConfiguration
+                                        ?.uri
+                                        ?.toString()
+                                )
+                            },
+                            seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                            onPlaybackControlPlayPause = ::togglePlaybackFromMainBus
                         )
                     } else if (isFillerSettingsOpen) {
                         Box(modifier = tabletCockpitDestinationContentModifier.fillMaxSize()) {
@@ -3910,66 +3993,6 @@ class MainActivity : AppCompatActivity() {
 
                                 fun openTabletShortcutTuner() {
                                     openTabletSplitTuner()
-                                }
-
-                                fun currentLufsPlaybackConfig(): SmpConfig.PlaybackConfig? {
-                                    currentPlayingUri
-                                        ?.takeIf { it.isNotBlank() }
-                                        ?.let { TrackVolumePrefs.getPlaybackConfig(ctx, it) }
-                                        ?.let { return it }
-                                    val songId = currentPlayingSongId?.takeIf { it.isNotBlank() } ?: return null
-                                    val song = smpSongsById[songId] ?: return null
-                                    return SmpConfig.readPlaybackFromSongUnit(song)
-                                }
-
-                                fun canAdjustTabletLiveGain(): Boolean {
-                                    if (currentPlayingUri.isNullOrBlank()) return false
-                                    return !currentPlayingSongId.isNullOrBlank()
-                                }
-
-                                fun adjustTabletLiveGain(deltaDb: Int) {
-                                    val sourceUri = currentPlayingUri ?: return
-                                    val playback = currentLufsPlaybackConfig()
-                                    val currentFinalDb = playback?.volumeDb ?: currentTrackGainDb
-                                    val safeDb = clampTrackDb(currentFinalDb + deltaDb)
-                                    currentTrackGainDb = safeDb
-                                    AudioEngine.applyTrackGainDb(safeDb)
-
-                                    val measured = playback?.lufsMeasured
-                                    val target = playback?.lufsTarget
-                                    val auto = if (measured != null && target != null) {
-                                        playback.lufsAutoDb ?: (target - measured)
-                                    } else {
-                                        null
-                                    }
-
-                                    if (measured != null && target != null && auto != null) {
-                                        val manual = ((measured + safeDb) - target)
-                                            .roundToInt()
-                                            .coerceIn(MIN_TRACK_DB, MAX_TRACK_DB)
-                                        currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
-                                        scope.launch {
-                                            withContext(Dispatchers.IO) {
-                                                TrackVolumePrefs.saveLufsDb(
-                                                    context = ctx,
-                                                    uri = sourceUri,
-                                                    db = safeDb,
-                                                    measuredLufs = measured,
-                                                    targetLufs = target,
-                                                    autoDb = auto,
-                                                    manualDb = manual
-                                                )
-                                            }
-                                        }
-                                        return
-                                    }
-
-                                    currentTrackVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
-                                    scope.launch {
-                                        withContext(Dispatchers.IO) {
-                                            TrackVolumePrefs.saveDb(ctx, sourceUri, safeDb)
-                                        }
-                                    }
                                 }
 
                                 @Composable
@@ -4327,8 +4350,8 @@ class MainActivity : AppCompatActivity() {
                                             tabletExperimentalModeEnabled,
                                         showAutoReturnButton = false,
                                         showLiveGainControls = true,
-                                        liveGainControlsEnabled = canAdjustTabletLiveGain(),
-                                        onLiveGainDelta = ::adjustTabletLiveGain,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        onLiveGainDelta = ::adjustLiveGain,
                                         onTabletFocusEditingChange = { tabletLyricsEditorFocusMode = it },
                                         stableTabletLyricsEditorSession = true,
                                         readerHeaderEndContent = {}
@@ -4655,7 +4678,23 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         openNotesSignal = openNotesSignal,
                                         showBackButton = false,
-                                        compactTabletMode = true
+                                        compactTabletMode = true,
+                                        isPlayerPlaying = isPlaying,
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        onLiveGainDelta = ::adjustLiveGain,
+                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getEffectiveDurationMs = {
+                                            resolveEffectiveDurationMs(
+                                                requestedUri = currentPlayingUri,
+                                                activeUri = exoPlayer.currentMediaItem
+                                                    ?.localConfiguration
+                                                    ?.uri
+                                                    ?.toString()
+                                            )
+                                        },
+                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onPlaybackControlPlayPause = ::togglePlaybackFromMainBus
                                     )
                                 }
 
@@ -5022,7 +5061,23 @@ class MainActivity : AppCompatActivity() {
                                                 },
                                                 onOpenTuner = {
                                                     setTabAndPersist(BottomTab.Tuner, reason = "homeOpenTuner")
-                                                }
+                                                },
+                                                isPlayerPlaying = isPlaying,
+                                                currentTrackGainDb = currentTrackGainDb,
+                                                liveGainControlsEnabled = canAdjustLiveGain(),
+                                                onLiveGainDelta = ::adjustLiveGain,
+                                                getPositionMs = { exoPlayer.currentPosition },
+                                                getEffectiveDurationMs = {
+                                                    resolveEffectiveDurationMs(
+                                                        requestedUri = currentPlayingUri,
+                                                        activeUri = exoPlayer.currentMediaItem
+                                                            ?.localConfiguration
+                                                            ?.uri
+                                                            ?.toString()
+                                                    )
+                                                },
+                                                seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                                onPlaybackControlPlayPause = ::togglePlaybackFromMainBus
                                             )
                                         } else {
                                             HomeScreen(
@@ -5261,8 +5316,8 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         },
                                         seekToMs = { ms -> exoPlayer.seekTo(ms) },
-                                        liveGainControlsEnabled = canAdjustTabletLiveGain(),
-                                        onLiveGainDelta = ::adjustTabletLiveGain,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        onLiveGainDelta = ::adjustLiveGain,
                                         showPhoneLiveGainDrawer = !adaptiveTokens.tabletMode
                                     )
 
