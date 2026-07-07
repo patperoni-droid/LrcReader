@@ -4169,56 +4169,10 @@ fun LibraryScreen(
                                     quickNowUri == levelsGainAudioUri
                                 Box(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.fillMaxSize()) {
-                                    PlaybackControl(
-                                        positionMs = if (isLevelsPlaybackActive) {
-                                            if (quickIsDragging) quickDragPositionMs else quickPositionMs
-                                        } else {
-                                            0
-                                        },
-                                        durationMs = if (isLevelsPlaybackActive) quickDurationMs else 0,
-                                        onSeekLivePreview = { newPos ->
-                                            if (isLevelsPlaybackActive && quickDurationMs > 0) {
-                                                quickIsDragging = true
-                                                quickDragPositionMs = newPos
-                                            }
-                                        },
-                                        onSeekCommit = onSeekCommit@{ newPos ->
-                                            if (!isLevelsPlaybackActive || quickDurationMs <= 0) {
-                                                quickIsDragging = false
-                                                return@onSeekCommit
-                                            }
-                                            val safe = newPos.coerceIn(0, quickDurationMs)
-                                            quickIsDragging = false
-                                            quickPositionMs = safe
-                                            runCatching { quickPlayer.seekTo(safe.toLong()) }
-                                        },
-                                        highlightColor = accent,
-                                        isPlaying = isLevelsPlaybackActive && quickIsPlaying,
-                                        onPlayPause = onPlayPause@{
-                                            val song = levelsGainSong ?: return@onPlayPause
-                                            val uri = levelsGainAudioUri ?: return@onPlayPause
-                                            quickPlayToggle(
-                                                uri = uri,
-                                                gainDb = levelsGainPreparation?.finalDb ?: song.volumeDb
-                                            )
-                                        },
-                                        onPrev = onPrev@{
-                                            if (!isLevelsPlaybackActive || quickDurationMs <= 0) return@onPrev
-                                            quickPositionMs = 0
-                                            quickDragPositionMs = 0
-                                            runCatching { quickPlayer.seekTo(0L) }
-                                        },
-                                        onNext = {},
-                                        gainDb = levelsGainPreparation?.finalDb
-                                            ?: levelsGainSong?.volumeDb
-                                            ?: 0,
-                                        onGainDelta = onGainDelta@{ deltaDb ->
-                                            val song = levelsGainSong ?: return@onGainDelta
-                                            adjustLufsManualDb(song, deltaDb)
-                                        }
-                                    )
                                     LazyColumn(
-                                        modifier = Modifier.fillMaxSize()
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .weight(1f)
                                     ) {
                                         items(filteredSongItems, key = { it.songId }) { song ->
                                             val preparation = lufsPreparations[song.songId] ?: initialLufsPreparation(song)
@@ -4355,6 +4309,54 @@ fun LibraryScreen(
                                             }
                                         }
                                     }
+                                    PlaybackControl(
+                                        positionMs = if (isLevelsPlaybackActive) {
+                                            if (quickIsDragging) quickDragPositionMs else quickPositionMs
+                                        } else {
+                                            0
+                                        },
+                                        durationMs = if (isLevelsPlaybackActive) quickDurationMs else 0,
+                                        onSeekLivePreview = { newPos ->
+                                            if (isLevelsPlaybackActive && quickDurationMs > 0) {
+                                                quickIsDragging = true
+                                                quickDragPositionMs = newPos
+                                            }
+                                        },
+                                        onSeekCommit = onSeekCommit@{ newPos ->
+                                            if (!isLevelsPlaybackActive || quickDurationMs <= 0) {
+                                                quickIsDragging = false
+                                                return@onSeekCommit
+                                            }
+                                            val safe = newPos.coerceIn(0, quickDurationMs)
+                                            quickIsDragging = false
+                                            quickPositionMs = safe
+                                            runCatching { quickPlayer.seekTo(safe.toLong()) }
+                                        },
+                                        highlightColor = accent,
+                                        isPlaying = isLevelsPlaybackActive && quickIsPlaying,
+                                        onPlayPause = onPlayPause@{
+                                            val song = levelsGainSong ?: return@onPlayPause
+                                            val uri = levelsGainAudioUri ?: return@onPlayPause
+                                            quickPlayToggle(
+                                                uri = uri,
+                                                gainDb = levelsGainPreparation?.finalDb ?: song.volumeDb
+                                            )
+                                        },
+                                        onPrev = onPrev@{
+                                            if (!isLevelsPlaybackActive || quickDurationMs <= 0) return@onPrev
+                                            quickPositionMs = 0
+                                            quickDragPositionMs = 0
+                                            runCatching { quickPlayer.seekTo(0L) }
+                                        },
+                                        onNext = {},
+                                        gainDb = levelsGainPreparation?.finalDb
+                                            ?: levelsGainSong?.volumeDb
+                                            ?: 0,
+                                        onGainDelta = onGainDelta@{ deltaDb ->
+                                            val song = levelsGainSong ?: return@onGainDelta
+                                            adjustLufsManualDb(song, deltaDb)
+                                        }
+                                    )
                                 }
                                     TrackGainDrawer(
                                         gainDb = levelsGainPreparation?.finalDb
