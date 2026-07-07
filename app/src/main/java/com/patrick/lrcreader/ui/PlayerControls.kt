@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
@@ -47,6 +48,8 @@ fun PlayerControls(
     val itemSpacing = if (compact) 6.dp else 8.dp
     val buttonShape = RoundedCornerShape(7.dp)
     val consoleGreen = Color(0xFF18B857)
+    val consoleRed = Color(0xFFD93636)
+    val primaryButtonColor = if (isPlaying) consoleRed else consoleGreen
     val gainButtonBackground = Color.White.copy(alpha = 0.10f)
     val controlBorder = Color.White.copy(alpha = 0.22f)
 
@@ -61,13 +64,13 @@ fun PlayerControls(
             modifier = Modifier
                 .width(primaryButtonWidth)
                 .height(primaryButtonHeight)
-                .background(consoleGreen, buttonShape)
+                .background(primaryButtonColor, buttonShape)
                 .border(1.dp, controlBorder, buttonShape)
                 .clickable(onClick = onPlayPause),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = Icons.Filled.PlayArrow,
+                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = stringResource(R.string.player_cd_play_pause),
                 tint = Color.White,
                 modifier = Modifier.size(primaryIconSize)
