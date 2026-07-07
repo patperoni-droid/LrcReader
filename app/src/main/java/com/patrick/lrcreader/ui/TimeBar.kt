@@ -45,7 +45,7 @@ fun TimeBar(
     val textSize = if (compact) 10.sp else 12.sp
     val sidePadding = if (compact) 4.dp else 6.dp
     val sliderHeight = if (compact) 14.dp else 20.dp
-    val bottomPadding = if (compact) 0.dp else 4.dp
+    val bottomPadding = 0.dp
 
     Row(
         modifier = Modifier

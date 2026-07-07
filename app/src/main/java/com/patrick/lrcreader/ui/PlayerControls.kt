@@ -32,7 +32,7 @@ fun PlayerControls(
     val adaptiveTokens = rememberSmpAdaptiveTokens()
     val controlButtonSize = if (compact) 48.dp else adaptiveTokens.playerControlButtonSize
     val primaryButtonSize = if (compact) 60.dp else adaptiveTokens.playerPrimaryButtonSize
-    val verticalPadding = if (compact) 4.dp else 14.dp
+    val verticalPadding = if (compact) 0.dp else 4.dp
 
     Row(
         modifier = Modifier
