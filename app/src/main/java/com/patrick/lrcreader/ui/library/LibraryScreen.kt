@@ -2531,8 +2531,8 @@ fun LibraryScreen(
         }
     }
 
-    LaunchedEffect(isLufsViewMode, quickNowUri, quickIsPlaying) {
-        if (!isLufsViewMode || quickNowUri == null) return@LaunchedEffect
+    LaunchedEffect(isSongViewMode, isLufsViewMode, quickNowUri, quickIsPlaying) {
+        if ((!isSongViewMode && !isLufsViewMode) || quickNowUri == null) return@LaunchedEffect
         while (true) {
             val position = runCatching { quickPlayer.currentPosition }.getOrDefault(0L)
             val duration = runCatching { quickPlayer.duration }.getOrDefault(0L)
@@ -2547,6 +2547,38 @@ fun LibraryScreen(
                 0
             }
             delay(if (quickIsPlaying) 250L else 500L)
+        }
+    }
+
+    fun adjustLibrarySongGainDb(song: LibrarySongItem, deltaDb: Int) {
+        val nextDb = ((song.volumeDb ?: 0) + deltaDb).coerceIn(LIBRARY_LUFS_MIN_DB, LIBRARY_LUFS_MAX_DB)
+        songItems = songItems.map { item ->
+            if (item.songId == song.songId) {
+                item.copy(volumeDb = nextDb)
+            } else {
+                item
+            }
+        }
+        onLufsManualGainChanged(song.songId, nextDb)
+        runCatching {
+            SongIdKeyResolver.resolveRuntimeTrackUri(context, song.songId)
+                ?.let(Uri::parse)
+                ?.takeIf { uri -> quickNowUri == uri }
+                ?.let {
+                    quickPlayer.volume = libraryDbToLinearGain(nextDb)
+                }
+        }
+
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                val runtimeTrackUri = SongIdKeyResolver.resolveRuntimeTrackUri(context, song.songId)
+                    ?: return@withContext
+                TrackVolumePrefs.saveDb(
+                    context = context,
+                    uri = runtimeTrackUri,
+                    db = nextDb
+                )
+            }
         }
     }
 
@@ -4075,67 +4107,131 @@ fun LibraryScreen(
                                     )
                                 }
                             } else {
-                                LibrarySongsList(
-                                    songs = filteredSongItems,
-                                    listState = songListState,
-                                    currentPlayingSongId = currentPlayingSongId,
-                                    keyboardSelectedSongId = keyboardSelectedSongId,
-                                    cardBg = cardBg,
-                                    rowBorder = rowBorder,
-                                    accent = accent,
-                                    bottomPadding = selectionBottomPadding,
-                                    showRichIndicators = isLibraryFullModeEnabled,
-                                    selectedSongs = selectedSongs,
-                                    onToggleSelect = { uri ->
-                                        toggleSelection(uri)
-                                    },
-                                    onKeyboardSelectedSongChange = { songId ->
-                                        keyboardSelectedSongId = songId
-                                    },
-                                    onOpenPlayer = { song ->
-                                        keyboardSelectedSongId = song.songId
-                                        closeLibrarySearch()
-                                        stopQuickPlay()
-                                        onPlayFromLibrary(song.playbackItem, isLibraryFullModeEnabled)
-                                    },
-                                    onPreviewToggle = { song ->
-                                        keyboardSelectedSongId = song.songId
-                                        song.song.audioPath
-                                            ?.takeIf { it.isNotBlank() }
-                                            ?.let { Uri.fromFile(File(it)) }
-                                            ?.let { uri -> quickPlayToggle(uri, song.volumeDb) }
-                                    },
-                                    onAssignOne = { uri ->
-                                        selectedSongs = setOf(uri)
-                                        showAssignDialog = true
-                                    },
-                                    onAssignFamily = { family ->
-                                        selectedSongs = setOf(
-                                            Uri.parse(
-                                                buildVariantFamilyItem(
-                                                    familyId = family.id,
-                                                    title = family.title,
-                                                    songIds = family.songIds
+                                val songsPlaybackSong = filteredSongItems.firstOrNull { song ->
+                                    song.song.audioPath
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?.let { Uri.fromFile(File(it)) } == quickNowUri
+                                } ?: keyboardSelectedSongId?.let { selectedSongId ->
+                                    filteredSongItems.firstOrNull { it.songId == selectedSongId }
+                                }
+                                val songsPlaybackAudioUri = songsPlaybackSong
+                                    ?.song
+                                    ?.audioPath
+                                    ?.takeIf { it.isNotBlank() }
+                                    ?.let { Uri.fromFile(File(it)) }
+                                val isSongsPlaybackActive = songsPlaybackAudioUri != null &&
+                                    quickNowUri == songsPlaybackAudioUri
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f)
+                                ) {
+                                    LibrarySongsList(
+                                        songs = filteredSongItems,
+                                        listState = songListState,
+                                        currentPlayingSongId = currentPlayingSongId,
+                                        keyboardSelectedSongId = keyboardSelectedSongId,
+                                        cardBg = cardBg,
+                                        rowBorder = rowBorder,
+                                        accent = accent,
+                                        bottomPadding = selectionBottomPadding,
+                                        showRichIndicators = isLibraryFullModeEnabled,
+                                        selectedSongs = selectedSongs,
+                                        onToggleSelect = { uri ->
+                                            toggleSelection(uri)
+                                        },
+                                        onKeyboardSelectedSongChange = { songId ->
+                                            keyboardSelectedSongId = songId
+                                        },
+                                        onOpenPlayer = { song ->
+                                            keyboardSelectedSongId = song.songId
+                                            closeLibrarySearch()
+                                            stopQuickPlay()
+                                            onPlayFromLibrary(song.playbackItem, isLibraryFullModeEnabled)
+                                        },
+                                        onPreviewToggle = { song ->
+                                            keyboardSelectedSongId = song.songId
+                                            song.song.audioPath
+                                                ?.takeIf { it.isNotBlank() }
+                                                ?.let { Uri.fromFile(File(it)) }
+                                                ?.let { uri -> quickPlayToggle(uri, song.volumeDb) }
+                                        },
+                                        onAssignOne = { uri ->
+                                            selectedSongs = setOf(uri)
+                                            showAssignDialog = true
+                                        },
+                                        onAssignFamily = { family ->
+                                            selectedSongs = setOf(
+                                                Uri.parse(
+                                                    buildVariantFamilyItem(
+                                                        familyId = family.id,
+                                                        title = family.title,
+                                                        songIds = family.songIds
+                                                    )
                                                 )
                                             )
-                                        )
-                                        showAssignDialog = true
+                                            showAssignDialog = true
+                                        },
+                                        onShareOne = { uri ->
+                                            shareSmpSong(uri)
+                                        },
+                                        onRenameOne = { song ->
+                                            beginAliasRename(
+                                                entry = LibraryEntry(
+                                                    uri = Uri.parse(song.playbackItem),
+                                                    name = song.fallbackTitle,
+                                                    isDirectory = false
+                                                ),
+                                                initialTitle = song.displayTitle
+                                            )
+                                        },
+                                        onDeleteOne = { uri ->
+                                            pendingDeleteSmpUri = uri
+                                        }
+                                    )
+                                }
+                                PlaybackControl(
+                                    positionMs = if (isSongsPlaybackActive) {
+                                        if (quickIsDragging) quickDragPositionMs else quickPositionMs
+                                    } else {
+                                        0
                                     },
-                                    onShareOne = { uri ->
-                                        shareSmpSong(uri)
+                                    durationMs = if (isSongsPlaybackActive) quickDurationMs else 0,
+                                    onSeekLivePreview = { newPos ->
+                                        if (isSongsPlaybackActive && quickDurationMs > 0) {
+                                            quickIsDragging = true
+                                            quickDragPositionMs = newPos
+                                        }
                                     },
-                                    onRenameOne = { song ->
-                                        beginAliasRename(
-                                            entry = LibraryEntry(
-                                                uri = Uri.parse(song.playbackItem),
-                                                name = song.fallbackTitle,
-                                                isDirectory = false
-                                            ),
-                                            initialTitle = song.displayTitle
-                                        )
+                                    onSeekCommit = onSeekCommit@{ newPos ->
+                                        if (!isSongsPlaybackActive || quickDurationMs <= 0) {
+                                            quickIsDragging = false
+                                            return@onSeekCommit
+                                        }
+                                        val safe = newPos.coerceIn(0, quickDurationMs)
+                                        quickIsDragging = false
+                                        quickPositionMs = safe
+                                        runCatching { quickPlayer.seekTo(safe.toLong()) }
                                     },
-                                    onDeleteOne = { uri ->
-                                        pendingDeleteSmpUri = uri
+                                    highlightColor = accent,
+                                    isPlaying = isSongsPlaybackActive && quickIsPlaying,
+                                    onPlayPause = onPlayPause@{
+                                        val song = songsPlaybackSong ?: return@onPlayPause
+                                        val uri = songsPlaybackAudioUri ?: return@onPlayPause
+                                        keyboardSelectedSongId = song.songId
+                                        quickPlayToggle(uri, song.volumeDb)
+                                    },
+                                    onPrev = onPrev@{
+                                        if (!isSongsPlaybackActive || quickDurationMs <= 0) return@onPrev
+                                        quickPositionMs = 0
+                                        quickDragPositionMs = 0
+                                        runCatching { quickPlayer.seekTo(0L) }
+                                    },
+                                    onNext = {},
+                                    gainDb = songsPlaybackSong?.volumeDb ?: 0,
+                                    onGainDelta = onGainDelta@{ deltaDb ->
+                                        val song = songsPlaybackSong ?: return@onGainDelta
+                                        adjustLibrarySongGainDb(song, deltaDb)
                                     }
                                 )
                             }
