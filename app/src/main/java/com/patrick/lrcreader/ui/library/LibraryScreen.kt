@@ -2632,42 +2632,44 @@ fun LibraryScreen(
         onPlayPause: () -> Unit,
         onGainDelta: (Int) -> Unit
     ) {
-        PlaybackControl(
-            positionMs = if (isPlaybackActive) {
-                if (quickIsDragging) quickDragPositionMs else quickPositionMs
-            } else {
-                0
-            },
-            durationMs = if (isPlaybackActive) quickDurationMs else 0,
-            onSeekLivePreview = { newPos ->
-                if (isPlaybackActive && quickDurationMs > 0) {
-                    quickIsDragging = true
-                    quickDragPositionMs = newPos
-                }
-            },
-            onSeekCommit = onSeekCommit@{ newPos ->
-                if (!isPlaybackActive || quickDurationMs <= 0) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            PlaybackControl(
+                positionMs = if (isPlaybackActive) {
+                    if (quickIsDragging) quickDragPositionMs else quickPositionMs
+                } else {
+                    0
+                },
+                durationMs = if (isPlaybackActive) quickDurationMs else 0,
+                onSeekLivePreview = { newPos ->
+                    if (isPlaybackActive && quickDurationMs > 0) {
+                        quickIsDragging = true
+                        quickDragPositionMs = newPos
+                    }
+                },
+                onSeekCommit = onSeekCommit@{ newPos ->
+                    if (!isPlaybackActive || quickDurationMs <= 0) {
+                        quickIsDragging = false
+                        return@onSeekCommit
+                    }
+                    val safe = newPos.coerceIn(0, quickDurationMs)
                     quickIsDragging = false
-                    return@onSeekCommit
-                }
-                val safe = newPos.coerceIn(0, quickDurationMs)
-                quickIsDragging = false
-                quickPositionMs = safe
-                runCatching { quickPlayer.seekTo(safe.toLong()) }
-            },
-            highlightColor = accent,
-            isPlaying = isPlaybackActive && quickIsPlaying,
-            onPlayPause = onPlayPause,
-            onPrev = onPrev@{
-                if (!isPlaybackActive || quickDurationMs <= 0) return@onPrev
-                quickPositionMs = 0
-                quickDragPositionMs = 0
-                runCatching { quickPlayer.seekTo(0L) }
-            },
-            onNext = {},
-            gainDb = gainDb,
-            onGainDelta = onGainDelta
-        )
+                    quickPositionMs = safe
+                    runCatching { quickPlayer.seekTo(safe.toLong()) }
+                },
+                highlightColor = accent,
+                isPlaying = isPlaybackActive && quickIsPlaying,
+                onPlayPause = onPlayPause,
+                onPrev = onPrev@{
+                    if (!isPlaybackActive || quickDurationMs <= 0) return@onPrev
+                    quickPositionMs = 0
+                    quickDragPositionMs = 0
+                    runCatching { quickPlayer.seekTo(0L) }
+                },
+                onNext = {},
+                gainDb = gainDb,
+                onGainDelta = onGainDelta
+            )
+        }
     }
 
     fun readTextFromUri(uri: Uri): String? {
