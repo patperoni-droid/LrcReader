@@ -2284,7 +2284,8 @@ class MainActivity : AppCompatActivity() {
                     uriString: String,
                     playlistName: String?,
                     playlistItemKey: String? = null,
-                    openPlayerScreen: Boolean = true
+                    openPlayerScreen: Boolean = true,
+                    startPositionMs: Long? = null
                 ) {
                     if (manualCrossfadeTransitionTitle != null) {
                         return
@@ -2605,6 +2606,9 @@ class MainActivity : AppCompatActivity() {
                                         runCatching { playbackPlayer.seekTo(trimConfig.entryMs) }
                                     }
                                     trimAppliedForThisTrack = true
+                                }
+                                startPositionMs?.let { requestedStartMs ->
+                                    runCatching { playbackPlayer.seekTo(requestedStartMs.coerceAtLeast(0L)) }
                                 }
                                 val trimExitMs = trimConfig.exitMs
                                 if (trimConfig.mode == "seek-stop" && trimExitMs != null && trimExitMs > 0L) {
@@ -4375,6 +4379,23 @@ class MainActivity : AppCompatActivity() {
                                         workspaceSnapshot = workspaceSnapshot,
                                         workspaceVersion = setupTick,
                                         currentPlayingSongId = currentPlayingSongId,
+                                        activePlaybackUri = currentPlayingUri,
+                                        isActivePlaybackPlaying = isPlaying,
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        getActivePlaybackPositionMs = { exoPlayer.currentPosition },
+                                        getActivePlaybackDurationMs = {
+                                            resolveEffectiveDurationMs(
+                                                requestedUri = currentPlayingUri,
+                                                activeUri = exoPlayer.currentMediaItem
+                                                    ?.localConfiguration
+                                                    ?.uri
+                                                    ?.toString()
+                                            )
+                                        },
+                                        seekActivePlaybackToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onActivePlaybackPlayPause = ::togglePlaybackFromMainBus,
+                                        onActivePlaybackGainDelta = ::adjustLiveGain,
                                         reselectRootSignal = libraryTabReselectSignal,
                                         openStorageSignal = tabletLibraryOpenStorageSignal,
                                         searchToggleSignal = tabletLibrarySearchToggleSignal,
@@ -4433,9 +4454,11 @@ class MainActivity : AppCompatActivity() {
                                                 AudioEngine.applyTrackGainDb(safeDb)
                                             }
                                         },
-                                        onPlayFromLibrary = { uriString, openRichPlayer ->
-                                            isTabletCockpitDestinationOpen = false
-                                            tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                        onPlayFromLibrary = { uriString, openRichPlayer, startPositionMs ->
+                                            if (openRichPlayer) {
+                                                isTabletCockpitDestinationOpen = false
+                                                tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                            }
                                             Log.d(
                                                 SMP_PLAY_TRACE_TAG,
                                                 "LIBRARY_TAP item=$uriString"
@@ -4483,7 +4506,8 @@ class MainActivity : AppCompatActivity() {
                                                             uriString = resolvedTarget.uri,
                                                             playlistName = resolvedTarget.playlist,
                                                             playlistItemKey = null,
-                                                            openPlayerScreen = openRichPlayer
+                                                            openPlayerScreen = openRichPlayer,
+                                                            startPositionMs = startPositionMs
                                                         )
                                                     }
                                                     currentLyricsColor = Color.White
@@ -5516,6 +5540,23 @@ class MainActivity : AppCompatActivity() {
                                         workspaceSnapshot = workspaceSnapshot,
                                         workspaceVersion = setupTick,
                                         currentPlayingSongId = currentPlayingSongId,
+                                        activePlaybackUri = currentPlayingUri,
+                                        isActivePlaybackPlaying = isPlaying,
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        getActivePlaybackPositionMs = { exoPlayer.currentPosition },
+                                        getActivePlaybackDurationMs = {
+                                            resolveEffectiveDurationMs(
+                                                requestedUri = currentPlayingUri,
+                                                activeUri = exoPlayer.currentMediaItem
+                                                    ?.localConfiguration
+                                                    ?.uri
+                                                    ?.toString()
+                                            )
+                                        },
+                                        seekActivePlaybackToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onActivePlaybackPlayPause = ::togglePlaybackFromMainBus,
+                                        onActivePlaybackGainDelta = ::adjustLiveGain,
                                         reselectRootSignal = libraryTabReselectSignal,
                                         searchToggleSignal = librarySearchToggleSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
@@ -5569,7 +5610,7 @@ class MainActivity : AppCompatActivity() {
                                                 AudioEngine.applyTrackGainDb(safeDb)
                                             }
                                         },
-                                        onPlayFromLibrary = { uriString, openRichPlayer ->
+                                        onPlayFromLibrary = { uriString, openRichPlayer, startPositionMs ->
                                             Log.d(
                                                 SMP_PLAY_TRACE_TAG,
                                                 "LIBRARY_TAP item=$uriString"
@@ -5617,7 +5658,8 @@ class MainActivity : AppCompatActivity() {
                                                             uriString = resolvedTarget.uri,
                                                             playlistName = resolvedTarget.playlist,
                                                             playlistItemKey = null,
-                                                            openPlayerScreen = openRichPlayer
+                                                            openPlayerScreen = openRichPlayer,
+                                                            startPositionMs = startPositionMs
                                                         )
                                                     }
                                                     currentLyricsColor = Color.White

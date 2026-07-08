@@ -48,9 +48,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import androidx.documentfile.provider.DocumentFile
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.BackupFolderPrefs
 import com.patrick.lrcreader.core.BackupFolderPrefsInternal
 import com.patrick.lrcreader.core.BackupFolderPrefsSaf
@@ -562,7 +559,16 @@ fun LibraryScreen(
     onKeyboardNavigationAvailabilityChange: (Boolean) -> Unit = {},
     onOpenPlaylistFromLibrary: (String) -> Unit = {},
     onLufsManualGainChanged: (String, Int) -> Unit = { _, _ -> },
-    onPlayFromLibrary: (String, Boolean) -> Unit,
+    activePlaybackUri: String? = null,
+    isActivePlaybackPlaying: Boolean = false,
+    currentTrackGainDb: Int = 0,
+    liveGainControlsEnabled: Boolean = false,
+    getActivePlaybackPositionMs: () -> Long = { 0L },
+    getActivePlaybackDurationMs: () -> Long = { 0L },
+    seekActivePlaybackToMs: (Long) -> Unit = {},
+    onActivePlaybackPlayPause: () -> Unit = {},
+    onActivePlaybackGainDelta: (Int) -> Unit = {},
+    onPlayFromLibrary: (String, Boolean, Long?) -> Unit,
     hardwareCommandToken: Int = 0,
     hardwareCommand: HardwareListCommand = HardwareListCommand.ACTIVATE,
     hardwareReturnToCurrentToken: Int = 0,
@@ -2495,70 +2501,48 @@ fun LibraryScreen(
 
     val bottomBarHeight = 56.dp
 
-    // ✅ QUICK PLAY (sans ouvrir le lecteur)
-    val quickPlayer = remember { ExoPlayer.Builder(context).build() }
-    var quickNowUri by remember { mutableStateOf<Uri?>(null) }
-    var quickIsPlaying by remember { mutableStateOf(false) }
-    var quickPositionMs by remember { mutableIntStateOf(0) }
-    var quickDurationMs by remember { mutableIntStateOf(0) }
-    var quickIsDragging by remember { mutableStateOf(false) }
-    var quickDragPositionMs by remember { mutableIntStateOf(0) }
-
-    DisposableEffect(quickPlayer) {
-        val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                quickIsPlaying = isPlaying
-                if (isPlaying) {
-                    val session = runCatching { quickPlayer.audioSessionId }.getOrDefault(0)
-                    Log.d(
-                        "METER",
-                        "PLAY_START engine=Other.LibraryQuickPlayer sessionId=$session isPlaying=$isPlaying"
-                    )
-                }
-            }
-
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED) {
-                    quickIsPlaying = false
-                }
-            }
-        }
-        quickPlayer.addListener(listener)
-
-        onDispose {
-            quickPlayer.removeListener(listener)
-            quickPlayer.release()
-        }
-    }
+    var playbackPositionMs by remember { mutableIntStateOf(0) }
+    var playbackDurationMs by remember { mutableIntStateOf(0) }
+    var playbackIsDragging by remember { mutableStateOf(false) }
+    var playbackDragPositionMs by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(
         isSongViewMode,
         isLufsViewMode,
         isPlaylistsViewMode,
         isPrompterViewMode,
-        quickNowUri,
-        quickIsPlaying
+        activePlaybackUri,
+        isActivePlaybackPlaying
     ) {
         if ((!isSongViewMode && !isLufsViewMode && !isPlaylistsViewMode && !isPrompterViewMode) ||
-            quickNowUri == null
+            activePlaybackUri.isNullOrBlank()
         ) {
             return@LaunchedEffect
         }
         while (true) {
-            val position = runCatching { quickPlayer.currentPosition }.getOrDefault(0L)
-            val duration = runCatching { quickPlayer.duration }.getOrDefault(0L)
-            if (!quickIsDragging) {
-                quickPositionMs = position
+            val position = runCatching { getActivePlaybackPositionMs() }.getOrDefault(0L)
+            val duration = runCatching { getActivePlaybackDurationMs() }.getOrDefault(0L)
+            if (!playbackIsDragging) {
+                playbackPositionMs = position
                     .coerceIn(0L, Int.MAX_VALUE.toLong())
                     .toInt()
             }
-            quickDurationMs = if (duration > 0L) {
+            playbackDurationMs = if (duration > 0L) {
                 duration.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
             } else {
                 0
             }
-            delay(if (quickIsPlaying) 250L else 500L)
+            delay(if (isActivePlaybackPlaying) 250L else 500L)
         }
+    }
+
+    fun isActivePlaybackUri(uri: Uri?): Boolean {
+        val active = activePlaybackUri?.takeIf { it.isNotBlank() } ?: return false
+        val candidate = uri?.toString() ?: return false
+        if (active == candidate) return true
+        return runCatching {
+            Uri.parse(active).path == uri.path
+        }.getOrDefault(false)
     }
 
     fun adjustLibrarySongGainDb(song: LibrarySongItem, deltaDb: Int) {
@@ -2571,14 +2555,6 @@ fun LibraryScreen(
             }
         }
         onLufsManualGainChanged(song.songId, nextDb)
-        runCatching {
-            SongIdKeyResolver.resolveRuntimeTrackUri(context, song.songId)
-                ?.let(Uri::parse)
-                ?.takeIf { uri -> quickNowUri == uri }
-                ?.let {
-                    quickPlayer.volume = libraryDbToLinearGain(nextDb)
-                }
-        }
 
         scope.launch {
             withContext(Dispatchers.IO) {
@@ -2594,34 +2570,15 @@ fun LibraryScreen(
     }
 
     fun quickPlayToggle(
-        uri: Uri,
+        playbackItem: String,
         gainDb: Int? = null,
         startPositionMs: Long? = null
     ) {
-        try {
-            val shouldSeekBeforePlay = startPositionMs != null
-            if (quickNowUri == null || quickNowUri != uri) {
-                quickNowUri = uri
-                quickPlayer.volume = gainDb?.let(::libraryDbToLinearGain) ?: 1f
-                quickPlayer.setMediaItem(MediaItem.fromUri(uri))
-                quickPlayer.prepare()
-                if (shouldSeekBeforePlay) {
-                    quickPlayer.seekTo(startPositionMs.coerceAtLeast(0L))
-                }
-                quickPlayer.playWhenReady = true
-                return
-            }
-            quickPlayer.volume = gainDb?.let(::libraryDbToLinearGain) ?: 1f
-            if (shouldSeekBeforePlay) {
-                quickPlayer.seekTo(startPositionMs.coerceAtLeast(0L))
-                quickPlayer.play()
-            } else if (quickPlayer.isPlaying) {
-                quickPlayer.pause()
-            } else {
-                quickPlayer.play()
-            }
-        } catch (e: Exception) {
-            Log.e("LibraryQuickPlay", "Erreur quick play", e)
+        val targetUri = runCatching { Uri.parse(playbackItem) }.getOrNull()
+        if (startPositionMs == null && isActivePlaybackUri(targetUri)) {
+            onActivePlaybackPlayPause()
+        } else {
+            onPlayFromLibrary(playbackItem, false, startPositionMs)
         }
     }
 
@@ -2635,35 +2592,35 @@ fun LibraryScreen(
         Column(modifier = Modifier.fillMaxWidth()) {
             PlaybackControl(
                 positionMs = if (isPlaybackActive) {
-                    if (quickIsDragging) quickDragPositionMs else quickPositionMs
+                    if (playbackIsDragging) playbackDragPositionMs else playbackPositionMs
                 } else {
                     0
                 },
-                durationMs = if (isPlaybackActive) quickDurationMs else 0,
+                durationMs = if (isPlaybackActive) playbackDurationMs else 0,
                 onSeekLivePreview = { newPos ->
-                    if (isPlaybackActive && quickDurationMs > 0) {
-                        quickIsDragging = true
-                        quickDragPositionMs = newPos
+                    if (isPlaybackActive && playbackDurationMs > 0) {
+                        playbackIsDragging = true
+                        playbackDragPositionMs = newPos
                     }
                 },
                 onSeekCommit = onSeekCommit@{ newPos ->
-                    if (!isPlaybackActive || quickDurationMs <= 0) {
-                        quickIsDragging = false
+                    if (!isPlaybackActive || playbackDurationMs <= 0) {
+                        playbackIsDragging = false
                         return@onSeekCommit
                     }
-                    val safe = newPos.coerceIn(0, quickDurationMs)
-                    quickIsDragging = false
-                    quickPositionMs = safe
-                    runCatching { quickPlayer.seekTo(safe.toLong()) }
+                    val safe = newPos.coerceIn(0, playbackDurationMs)
+                    playbackIsDragging = false
+                    playbackPositionMs = safe
+                    seekActivePlaybackToMs(safe.toLong())
                 },
                 highlightColor = accent,
-                isPlaying = isPlaybackActive && quickIsPlaying,
+                isPlaying = isPlaybackActive && isActivePlaybackPlaying,
                 onPlayPause = onPlayPause,
                 onPrev = onPrev@{
-                    if (!isPlaybackActive || quickDurationMs <= 0) return@onPrev
-                    quickPositionMs = 0
-                    quickDragPositionMs = 0
-                    runCatching { quickPlayer.seekTo(0L) }
+                    if (!isPlaybackActive || playbackDurationMs <= 0) return@onPrev
+                    playbackPositionMs = 0
+                    playbackDragPositionMs = 0
+                    seekActivePlaybackToMs(0L)
                 },
                 onNext = {},
                 gainDb = gainDb,
@@ -2702,11 +2659,7 @@ fun LibraryScreen(
     }
 
     fun stopQuickPlay() {
-        try {
-            if (quickPlayer.isPlaying) quickPlayer.pause()
-        } catch (_: Exception) {
-        }
-        quickIsPlaying = false
+        // Playback is now global. Leaving a Library sub-view must not stop it.
     }
 
     LaunchedEffect(hardwareCommandToken, filteredSongItems, isSongViewMode) {
@@ -2728,7 +2681,7 @@ fun LibraryScreen(
                 val targetSong = filteredSongItems.firstOrNull { it.songId == targetSongId } ?: return@LaunchedEffect
                 closeLibrarySearch()
                 stopQuickPlay()
-                onPlayFromLibrary(targetSong.playbackItem, isLibraryFullModeEnabled)
+                onPlayFromLibrary(targetSong.playbackItem, isLibraryFullModeEnabled, null)
             }
         }
     }
@@ -2776,14 +2729,6 @@ fun LibraryScreen(
             }
         }
         onLufsManualGainChanged(song.songId, finalDb)
-        runCatching {
-            SongIdKeyResolver.resolveRuntimeTrackUri(context, song.songId)
-                ?.let(Uri::parse)
-                ?.takeIf { uri -> quickNowUri == uri }
-                ?.let {
-                    quickPlayer.volume = libraryDbToLinearGain(finalDb)
-                }
-        }
 
         scope.launch {
             withContext(Dispatchers.IO) {
@@ -4095,16 +4040,16 @@ fun LibraryScreen(
                                 .align(androidx.compose.ui.Alignment.BottomCenter)
                                 .zIndex(10f)
                         ) {
-                            val isLibraryPlaybackActive = quickNowUri != null
+                            val isLibraryPlaybackActive = !activePlaybackUri.isNullOrBlank()
                             LibraryPlaybackControl(
                                 isPlaybackActive = isLibraryPlaybackActive,
-                                gainDb = 0,
-                                onPlayPause = {
-                                    quickNowUri?.let { uri ->
-                                        quickPlayToggle(uri)
+                                gainDb = currentTrackGainDb,
+                                onPlayPause = onActivePlaybackPlayPause,
+                                onGainDelta = { deltaDb ->
+                                    if (liveGainControlsEnabled) {
+                                        onActivePlaybackGainDelta(deltaDb)
                                     }
-                                },
-                                onGainDelta = {}
+                                }
                             )
                         }
                     }
@@ -4189,17 +4134,12 @@ fun LibraryScreen(
                                 val songsPlaybackSong = filteredSongItems.firstOrNull { song ->
                                     song.song.audioPath
                                         ?.takeIf { it.isNotBlank() }
-                                        ?.let { Uri.fromFile(File(it)) } == quickNowUri
+                                        ?.let { Uri.fromFile(File(it)) }
+                                        ?.let(::isActivePlaybackUri) == true
                                 } ?: keyboardSelectedSongId?.let { selectedSongId ->
                                     filteredSongItems.firstOrNull { it.songId == selectedSongId }
                                 }
-                                val songsPlaybackAudioUri = songsPlaybackSong
-                                    ?.song
-                                    ?.audioPath
-                                    ?.takeIf { it.isNotBlank() }
-                                    ?.let { Uri.fromFile(File(it)) }
-                                val isSongsPlaybackActive = songsPlaybackAudioUri != null &&
-                                    quickNowUri == songsPlaybackAudioUri
+                                val isSongsPlaybackActive = !activePlaybackUri.isNullOrBlank()
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -4226,14 +4166,11 @@ fun LibraryScreen(
                                             keyboardSelectedSongId = song.songId
                                             closeLibrarySearch()
                                             stopQuickPlay()
-                                            onPlayFromLibrary(song.playbackItem, isLibraryFullModeEnabled)
+                                            onPlayFromLibrary(song.playbackItem, isLibraryFullModeEnabled, null)
                                         },
                                         onPreviewToggle = { song ->
                                             keyboardSelectedSongId = song.songId
-                                            song.song.audioPath
-                                                ?.takeIf { it.isNotBlank() }
-                                                ?.let { Uri.fromFile(File(it)) }
-                                                ?.let { uri -> quickPlayToggle(uri, song.volumeDb) }
+                                            quickPlayToggle(song.playbackItem, song.volumeDb)
                                         },
                                         onAssignOne = { uri ->
                                             selectedSongs = setOf(uri)
@@ -4271,14 +4208,25 @@ fun LibraryScreen(
                                 }
                                 LibraryPlaybackControl(
                                     isPlaybackActive = isSongsPlaybackActive,
-                                    gainDb = songsPlaybackSong?.volumeDb ?: 0,
+                                    gainDb = if (isSongsPlaybackActive) {
+                                        currentTrackGainDb
+                                    } else {
+                                        songsPlaybackSong?.volumeDb ?: 0
+                                    },
                                     onPlayPause = onPlayPause@{
+                                        if (isSongsPlaybackActive) {
+                                            onActivePlaybackPlayPause()
+                                            return@onPlayPause
+                                        }
                                         val song = songsPlaybackSong ?: return@onPlayPause
-                                        val uri = songsPlaybackAudioUri ?: return@onPlayPause
                                         keyboardSelectedSongId = song.songId
-                                        quickPlayToggle(uri, song.volumeDb)
+                                        quickPlayToggle(song.playbackItem, song.volumeDb)
                                     },
                                     onGainDelta = onGainDelta@{ deltaDb ->
+                                        if (isSongsPlaybackActive && liveGainControlsEnabled) {
+                                            onActivePlaybackGainDelta(deltaDb)
+                                            return@onGainDelta
+                                        }
                                         val song = songsPlaybackSong ?: return@onGainDelta
                                         adjustLibrarySongGainDb(song, deltaDb)
                                     }
@@ -4305,13 +4253,7 @@ fun LibraryScreen(
                                 val levelsGainPreparation = levelsGainSong?.let { song ->
                                     lufsPreparations[song.songId] ?: initialLufsPreparation(song)
                                 }
-                                val levelsGainAudioUri = levelsGainSong
-                                    ?.song
-                                    ?.audioPath
-                                    ?.takeIf { it.isNotBlank() }
-                                    ?.let { Uri.fromFile(File(it)) }
-                                val isLevelsPlaybackActive = levelsGainAudioUri != null &&
-                                    quickNowUri == levelsGainAudioUri
+                                val isLevelsPlaybackActive = !activePlaybackUri.isNullOrBlank()
                                 Box(modifier = Modifier.fillMaxSize()) {
                                 Column(modifier = Modifier.fillMaxSize()) {
                                     LazyColumn(
@@ -4324,7 +4266,9 @@ fun LibraryScreen(
                                             val audioUri = song.song.audioPath
                                                 ?.takeIf { it.isNotBlank() }
                                                 ?.let { Uri.fromFile(File(it)) }
-                                            val isPreviewing = audioUri != null && quickNowUri == audioUri && quickIsPlaying
+                                            val isPreviewing = audioUri != null &&
+                                                isActivePlaybackUri(audioUri) &&
+                                                isActivePlaybackPlaying
                                             var previewOffsetMenuExpanded by remember(song.songId) {
                                                 mutableStateOf(false)
                                             }
@@ -4353,7 +4297,7 @@ fun LibraryScreen(
                                                                         onClick = {
                                                                             if (isPreviewing) {
                                                                                 previewOffsetMenuExpanded = false
-                                                                                stopQuickPlay()
+                                                                                onActivePlaybackPlayPause()
                                                                             } else {
                                                                                 previewOffsetMenuExpanded = true
                                                                             }
@@ -4383,10 +4327,10 @@ fun LibraryScreen(
                                                                     text = { Text(text = sLufsPreviewStart) },
                                                                     onClick = {
                                                                         previewOffsetMenuExpanded = false
-                                                                        audioUri?.let { uri ->
+                                                                        if (audioUri != null) {
                                                                             levelsGainDrawerSongId = song.songId
                                                                             quickPlayToggle(
-                                                                                uri = uri,
+                                                                                playbackItem = song.playbackItem,
                                                                                 gainDb = preparation.finalDb ?: song.volumeDb,
                                                                                 startPositionMs = 0L
                                                                             )
@@ -4405,10 +4349,10 @@ fun LibraryScreen(
                                                                         },
                                                                         onClick = {
                                                                             previewOffsetMenuExpanded = false
-                                                                            audioUri?.let { uri ->
+                                                                            if (audioUri != null) {
                                                                                 levelsGainDrawerSongId = song.songId
                                                                                 quickPlayToggle(
-                                                                                    uri = uri,
+                                                                                    playbackItem = song.playbackItem,
                                                                                     gainDb = preparation.finalDb ?: song.volumeDb,
                                                                                     startPositionMs = seconds * 1_000L
                                                                                 )
@@ -4456,48 +4400,59 @@ fun LibraryScreen(
                                     }
                                     PlaybackControl(
                                         positionMs = if (isLevelsPlaybackActive) {
-                                            if (quickIsDragging) quickDragPositionMs else quickPositionMs
+                                            if (playbackIsDragging) playbackDragPositionMs else playbackPositionMs
                                         } else {
                                             0
                                         },
-                                        durationMs = if (isLevelsPlaybackActive) quickDurationMs else 0,
+                                        durationMs = if (isLevelsPlaybackActive) playbackDurationMs else 0,
                                         onSeekLivePreview = { newPos ->
-                                            if (isLevelsPlaybackActive && quickDurationMs > 0) {
-                                                quickIsDragging = true
-                                                quickDragPositionMs = newPos
+                                            if (isLevelsPlaybackActive && playbackDurationMs > 0) {
+                                                playbackIsDragging = true
+                                                playbackDragPositionMs = newPos
                                             }
                                         },
                                         onSeekCommit = onSeekCommit@{ newPos ->
-                                            if (!isLevelsPlaybackActive || quickDurationMs <= 0) {
-                                                quickIsDragging = false
+                                            if (!isLevelsPlaybackActive || playbackDurationMs <= 0) {
+                                                playbackIsDragging = false
                                                 return@onSeekCommit
                                             }
-                                            val safe = newPos.coerceIn(0, quickDurationMs)
-                                            quickIsDragging = false
-                                            quickPositionMs = safe
-                                            runCatching { quickPlayer.seekTo(safe.toLong()) }
+                                            val safe = newPos.coerceIn(0, playbackDurationMs)
+                                            playbackIsDragging = false
+                                            playbackPositionMs = safe
+                                            seekActivePlaybackToMs(safe.toLong())
                                         },
                                         highlightColor = accent,
-                                        isPlaying = isLevelsPlaybackActive && quickIsPlaying,
+                                        isPlaying = isLevelsPlaybackActive && isActivePlaybackPlaying,
                                         onPlayPause = onPlayPause@{
+                                            if (isLevelsPlaybackActive) {
+                                                onActivePlaybackPlayPause()
+                                                return@onPlayPause
+                                            }
                                             val song = levelsGainSong ?: return@onPlayPause
-                                            val uri = levelsGainAudioUri ?: return@onPlayPause
                                             quickPlayToggle(
-                                                uri = uri,
+                                                playbackItem = song.playbackItem,
                                                 gainDb = levelsGainPreparation?.finalDb ?: song.volumeDb
                                             )
                                         },
                                         onPrev = onPrev@{
-                                            if (!isLevelsPlaybackActive || quickDurationMs <= 0) return@onPrev
-                                            quickPositionMs = 0
-                                            quickDragPositionMs = 0
-                                            runCatching { quickPlayer.seekTo(0L) }
+                                            if (!isLevelsPlaybackActive || playbackDurationMs <= 0) return@onPrev
+                                            playbackPositionMs = 0
+                                            playbackDragPositionMs = 0
+                                            seekActivePlaybackToMs(0L)
                                         },
                                         onNext = {},
-                                        gainDb = levelsGainPreparation?.finalDb
-                                            ?: levelsGainSong?.volumeDb
-                                            ?: 0,
+                                        gainDb = if (isLevelsPlaybackActive) {
+                                            currentTrackGainDb
+                                        } else {
+                                            levelsGainPreparation?.finalDb
+                                                ?: levelsGainSong?.volumeDb
+                                                ?: 0
+                                        },
                                         onGainDelta = onGainDelta@{ deltaDb ->
+                                            if (isLevelsPlaybackActive && liveGainControlsEnabled) {
+                                                onActivePlaybackGainDelta(deltaDb)
+                                                return@onGainDelta
+                                            }
                                             val song = levelsGainSong ?: return@onGainDelta
                                             adjustLufsManualDb(song, deltaDb)
                                         }
@@ -4599,11 +4554,11 @@ fun LibraryScreen(
                                 onOpenPlayer = { uri ->
                                     closeLibrarySearch()
                                     stopQuickPlay()
-                                    onPlayFromLibrary(uri.toString(), isLibraryFullModeEnabled)
+                                    onPlayFromLibrary(uri.toString(), isLibraryFullModeEnabled, null)
                                 },
 
                                 onQuickPlay = { uri ->
-                                    quickPlayToggle(uri)
+                                    quickPlayToggle(uri.toString())
                                 },
 
                                 onImportBackupJson = { uri ->
@@ -4768,16 +4723,16 @@ fun LibraryScreen(
                                 .align(androidx.compose.ui.Alignment.BottomCenter)
                                 .zIndex(10f)
                         ) {
-                            val isLibraryPlaybackActive = quickNowUri != null
+                            val isLibraryPlaybackActive = !activePlaybackUri.isNullOrBlank()
                             LibraryPlaybackControl(
                                 isPlaybackActive = isLibraryPlaybackActive,
-                                gainDb = 0,
-                                onPlayPause = {
-                                    quickNowUri?.let { uri ->
-                                        quickPlayToggle(uri)
+                                gainDb = currentTrackGainDb,
+                                onPlayPause = onActivePlaybackPlayPause,
+                                onGainDelta = { deltaDb ->
+                                    if (liveGainControlsEnabled) {
+                                        onActivePlaybackGainDelta(deltaDb)
                                     }
-                                },
-                                onGainDelta = {}
+                                }
                             )
                         }
                     }
