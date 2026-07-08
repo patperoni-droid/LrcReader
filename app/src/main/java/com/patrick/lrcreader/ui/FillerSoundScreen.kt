@@ -14,11 +14,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,8 +28,11 @@ import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.log10
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 private fun defaultDocumentsTreeUriOrNull(): Uri? {
     // ⚠️ Sur la majorité des Android, l’autorité “externalstorage” existe.
@@ -109,16 +107,49 @@ fun FillerSoundScreen(
         return clamped.toDouble().pow(1.0 / 3.0).toFloat() // racine cubique
     }
 
+    fun realVolumeToDb(volume: Float): Int {
+        val safe = volume.coerceIn(0f, 1f)
+        if (safe <= 0f) return -60
+        return (20.0 * log10(safe.toDouble())).roundToInt().coerceIn(-60, 0)
+    }
+
+    fun dbToRealVolume(db: Int): Float {
+        return 10.0.pow(db.coerceIn(-60, 0) / 20.0).toFloat().coerceIn(0f, 1f)
+    }
+
     val initialReal = FillerSoundPrefs.getFillerVolume(context)
     var uiFillerVolume by remember { mutableStateOf(realToUiVolume(initialReal)) }
 
+    fun setFillerVolumeReal(real: Float) {
+        val safeReal = real.coerceIn(0f, 1f)
+        uiFillerVolume = realToUiVolume(safeReal)
+        FillerSoundPrefs.saveFillerVolume(context, safeReal)
+        FillerSoundManager.setVolume(safeReal)
+    }
+
     // état de lecture pour le gros bouton Play/Pause
     var isPlaying by remember { mutableStateOf(false) }
+    var playbackPositionMs by remember { mutableIntStateOf(0) }
+    var playbackDurationMs by remember { mutableIntStateOf(0) }
+    var playbackDragging by remember { mutableStateOf(false) }
+    var playbackDragPositionMs by remember { mutableIntStateOf(0) }
 
     // ✅ démarrage fiable (on lance directement en coroutine, pas via LaunchedEffect)
     val scope = rememberCoroutineScope()
     var isStarting by remember { mutableStateOf(false) }
     var startJob by remember { mutableStateOf<Job?>(null) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val managerPlaying = FillerSoundManager.isPlaying()
+            isPlaying = managerPlaying
+            playbackDurationMs = FillerSoundManager.getDurationMs()
+            if (!playbackDragging) {
+                playbackPositionMs = FillerSoundManager.getCurrentPositionMs()
+            }
+            delay(if (managerPlaying) 250L else 500L)
+        }
+    }
 
     // ✅ Hint d’ouverture : essayer d’ouvrir directement dans "Documents"
     // (Android peut l’ignorer selon le téléphone, mais quand il l’accepte ça évite le piège "Téléchargements")
@@ -263,10 +294,7 @@ fun FillerSoundScreen(
                 Slider(
                     value = uiFillerVolume,
                     onValueChange = { v ->
-                        uiFillerVolume = v
-                        val real = uiToRealVolume(v)
-                        FillerSoundPrefs.saveFillerVolume(context, real)
-                        FillerSoundManager.setVolume(real)
+                        setFillerVolumeReal(uiToRealVolume(v))
                     },
                     valueRange = 0f..1f,
                     enabled = isEnabled,
@@ -302,114 +330,67 @@ fun FillerSoundScreen(
                     }
                 }
 
-                // ───────── GROS BOUTONS DE TRANSPORT ─────────
-                Spacer(Modifier.height(8.dp))
-
-                val canControlSelected = isEnabled
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // PREVIOUS
-                    IconButton(
-                        onClick = {
-                            if (!canControlSelected) return@IconButton
-
-                            FillerSoundManager.previous(context)
-                            FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
-                            isPlaying = true
-                            isStarting = false
-                            startJob?.cancel()
-                            startJob = null
-                        },
-                        enabled = canControlSelected,
-                        modifier = Modifier.size(72.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.SkipPrevious,
-                            contentDescription = stringResource(R.string.filler_prev),
-                            tint = if (canControlSelected) onBg else sub,
-                            modifier = Modifier.size(40.dp)
-                        )
-                    }
-
-                    // PLAY / PAUSE
-                    IconButton(
-                        onClick = {
-                            if (!canControlSelected) return@IconButton
-                            if (isStarting) return@IconButton
-
-                            if (!isEnabled) {
-                                isEnabled = true
-                                FillerSoundPrefs.setEnabled(context, true)
-                            }
-
-                            val isPlayingThis = FillerSoundManager.isPlaying()
-
-                            if (!isPlayingThis) {
-                                isStarting = true
-
-                                startJob?.cancel()
-                                startJob = scope.launch {
-                                    runCatching {
-                                        FillerSoundManager.startFromUi(context)
-                                        FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
-                                    }
-
-                                    isPlaying = FillerSoundManager.isPlaying()
-                                    isStarting = false
-                                }
-                            } else {
-                                FillerSoundManager.fadeOutAndStop(200)
-                                isPlaying = false
-                                isStarting = false
-                            }
-                        },
-                        enabled = canControlSelected,
-                        modifier = Modifier
-                            .padding(horizontal = 8.dp)
-                            .size(80.dp)
-                    ) {
-                        val showPause = FillerSoundManager.isPlaying()
-
-                        Icon(
-                            imageVector = if (showPause) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                            contentDescription = stringResource(R.string.filler_play_pause),
-                            tint = if (canControlSelected) accent else sub,
-                            modifier = Modifier.size(46.dp)
-                        )
-                    }
-
-                    // NEXT
-                    IconButton(
-                        onClick = {
-                            if (!canControlSelected) return@IconButton
-
-                            FillerSoundManager.next(context)
-                            FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
-                            isPlaying = true
-                            isStarting = false
-                            startJob?.cancel()
-                            startJob = null
-                        },
-                        enabled = canControlSelected,
-                        modifier = Modifier.size(72.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.SkipNext,
-                            contentDescription = stringResource(R.string.filler_next),
-                            tint = if (canControlSelected) onBg else sub,
-                            modifier = Modifier.size(40.dp)
-                        )
-                    }
-                }
-
             }
         }
+
+        Spacer(Modifier.height(10.dp))
+
+        PlaybackControl(
+            positionMs = if (playbackDragging) playbackDragPositionMs else playbackPositionMs,
+            durationMs = playbackDurationMs,
+            onSeekLivePreview = { newPos ->
+                if (playbackDurationMs > 0) {
+                    playbackDragging = true
+                    playbackDragPositionMs = newPos
+                }
+            },
+            onSeekCommit = { newPos ->
+                val safe = newPos.coerceIn(0, playbackDurationMs.coerceAtLeast(0))
+                playbackDragging = false
+                playbackPositionMs = safe
+                FillerSoundManager.seekTo(safe)
+            },
+            highlightColor = accent,
+            isPlaying = isPlaying,
+            onPlayPause = onPlayPause@{
+                if (isStarting) return@onPlayPause
+
+                if (!isEnabled) {
+                    isEnabled = true
+                    FillerSoundPrefs.setEnabled(context, true)
+                }
+
+                if (!FillerSoundManager.isPlaying()) {
+                    isStarting = true
+                    startJob?.cancel()
+                    startJob = scope.launch {
+                        runCatching {
+                            FillerSoundManager.startFromUi(context)
+                            FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
+                        }
+                        isPlaying = FillerSoundManager.isPlaying()
+                        playbackDurationMs = FillerSoundManager.getDurationMs()
+                        playbackPositionMs = FillerSoundManager.getCurrentPositionMs()
+                        isStarting = false
+                    }
+                } else {
+                    FillerSoundManager.fadeOutAndStop(200)
+                    isPlaying = false
+                    isStarting = false
+                }
+            },
+            onPrev = {
+                playbackPositionMs = 0
+                playbackDragPositionMs = 0
+                FillerSoundManager.seekTo(0)
+            },
+            onNext = {},
+            gainDb = realVolumeToDb(uiToRealVolume(uiFillerVolume)),
+            onGainDelta = { deltaDb ->
+                val currentDb = realVolumeToDb(uiToRealVolume(uiFillerVolume))
+                setFillerVolumeReal(dbToRealVolume(currentDb + deltaDb))
+            }
+        )
 
         Spacer(Modifier.height(10.dp))
 

@@ -191,6 +191,19 @@ object FillerSoundManager {
         return mainPlaying || nextPlaying
     }
 
+    fun getCurrentPositionMs(): Int {
+        return runCatching { player?.currentPosition ?: 0 }.getOrElse { 0 }
+    }
+
+    fun getDurationMs(): Int {
+        return runCatching { player?.duration ?: 0 }.getOrElse { 0 }.coerceAtLeast(0)
+    }
+
+    fun seekTo(positionMs: Int) {
+        val safe = positionMs.coerceIn(0, getDurationMs().coerceAtLeast(0))
+        runCatching { player?.seekTo(safe) }
+    }
+
     fun getAudioSessionIds(): List<Int> {
         val playerId = safeSessionId(player, "player")
         val nextId = safeSessionId(nextPlayer, "nextPlayer")
