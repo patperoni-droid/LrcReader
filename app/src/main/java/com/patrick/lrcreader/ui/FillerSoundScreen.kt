@@ -202,7 +202,7 @@ fun FillerSoundScreen(
     // ─────────────────────────────────────────────────────────────
     //  UI
     // ─────────────────────────────────────────────────────────────
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundBrush)
@@ -212,9 +212,14 @@ fun FillerSoundScreen(
                 end = 14.dp,
                 bottom = 8.dp
             )
-            .verticalScroll(rememberScrollState())
     ) {
-        Spacer(Modifier.height(10.dp))
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 96.dp)
+        ) {
+            Spacer(Modifier.height(10.dp))
 
         // ───────── CARTE PRINCIPALE (réglages + gros boutons) ─────────
         Card(
@@ -335,65 +340,6 @@ fun FillerSoundScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        PlaybackControl(
-            positionMs = if (playbackDragging) playbackDragPositionMs else playbackPositionMs,
-            durationMs = playbackDurationMs,
-            onSeekLivePreview = { newPos ->
-                if (playbackDurationMs > 0) {
-                    playbackDragging = true
-                    playbackDragPositionMs = newPos
-                }
-            },
-            onSeekCommit = { newPos ->
-                val safe = newPos.coerceIn(0, playbackDurationMs.coerceAtLeast(0))
-                playbackDragging = false
-                playbackPositionMs = safe
-                FillerSoundManager.seekTo(safe)
-            },
-            highlightColor = accent,
-            isPlaying = isPlaying,
-            onPlayPause = onPlayPause@{
-                if (isStarting) return@onPlayPause
-
-                if (!isEnabled) {
-                    isEnabled = true
-                    FillerSoundPrefs.setEnabled(context, true)
-                }
-
-                if (!FillerSoundManager.isPlaying()) {
-                    isStarting = true
-                    startJob?.cancel()
-                    startJob = scope.launch {
-                        runCatching {
-                            FillerSoundManager.startFromUi(context)
-                            FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
-                        }
-                        isPlaying = FillerSoundManager.isPlaying()
-                        playbackDurationMs = FillerSoundManager.getDurationMs()
-                        playbackPositionMs = FillerSoundManager.getCurrentPositionMs()
-                        isStarting = false
-                    }
-                } else {
-                    FillerSoundManager.fadeOutAndStop(200)
-                    isPlaying = false
-                    isStarting = false
-                }
-            },
-            onPrev = {
-                playbackPositionMs = 0
-                playbackDragPositionMs = 0
-                FillerSoundManager.seekTo(0)
-            },
-            onNext = {},
-            gainDb = realVolumeToDb(uiToRealVolume(uiFillerVolume)),
-            onGainDelta = { deltaDb ->
-                val currentDb = realVolumeToDb(uiToRealVolume(uiFillerVolume))
-                setFillerVolumeReal(dbToRealVolume(currentDb + deltaDb))
-            }
-        )
-
-        Spacer(Modifier.height(10.dp))
-
         Text(
             text = stringResource(R.string.filler_source_title),
             color = onBg,
@@ -485,6 +431,70 @@ fun FillerSoundScreen(
         }
 
         Spacer(Modifier.height(8.dp))
+    }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+        ) {
+            PlaybackControl(
+                positionMs = if (playbackDragging) playbackDragPositionMs else playbackPositionMs,
+                durationMs = playbackDurationMs,
+                onSeekLivePreview = { newPos ->
+                    if (playbackDurationMs > 0) {
+                        playbackDragging = true
+                        playbackDragPositionMs = newPos
+                    }
+                },
+                onSeekCommit = { newPos ->
+                    val safe = newPos.coerceIn(0, playbackDurationMs.coerceAtLeast(0))
+                    playbackDragging = false
+                    playbackPositionMs = safe
+                    FillerSoundManager.seekTo(safe)
+                },
+                highlightColor = accent,
+                isPlaying = isPlaying,
+                onPlayPause = onPlayPause@{
+                    if (isStarting) return@onPlayPause
+
+                    if (!isEnabled) {
+                        isEnabled = true
+                        FillerSoundPrefs.setEnabled(context, true)
+                    }
+
+                    if (!FillerSoundManager.isPlaying()) {
+                        isStarting = true
+                        startJob?.cancel()
+                        startJob = scope.launch {
+                            runCatching {
+                                FillerSoundManager.startFromUi(context)
+                                FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
+                            }
+                            isPlaying = FillerSoundManager.isPlaying()
+                            playbackDurationMs = FillerSoundManager.getDurationMs()
+                            playbackPositionMs = FillerSoundManager.getCurrentPositionMs()
+                            isStarting = false
+                        }
+                    } else {
+                        FillerSoundManager.fadeOutAndStop(200)
+                        isPlaying = false
+                        isStarting = false
+                    }
+                },
+                onPrev = {
+                    playbackPositionMs = 0
+                    playbackDragPositionMs = 0
+                    FillerSoundManager.seekTo(0)
+                },
+                onNext = {},
+                gainDb = realVolumeToDb(uiToRealVolume(uiFillerVolume)),
+                onGainDelta = { deltaDb ->
+                    val currentDb = realVolumeToDb(uiToRealVolume(uiFillerVolume))
+                    setFillerVolumeReal(dbToRealVolume(currentDb + deltaDb))
+                }
+            )
+        }
     }
 }
 
