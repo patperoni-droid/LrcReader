@@ -60,6 +60,22 @@ Cette composition représente le premier périmètre fonctionnel du composant.
 
 ---
 
+## Intégration
+
+Le `Playback Control` est un composant autonome.
+
+Les écrans qui l'utilisent doivent respecter sa structure interne.
+
+Ils ne doivent jamais :
+
+- modifier l'ordre des lignes ;
+- superposer les éléments ;
+- réorganiser le contenu interne.
+
+Si un problème d'affichage apparaît, la correction doit être effectuée dans le conteneur de l'écran et non dans le `Playback Control`.
+
+---
+
 ## Positionnement
 
 Le `Playback Control` est un composant ancré.
@@ -167,6 +183,25 @@ Il n'existe pas de gain propre au `Playback Control`.
 
 Chaque appui sur `[-]` ou `[+]` applique un pas de `1 dB` via la logique officielle de réglage du gain du morceau courant.
 
+Le réglage rapide est contextuel.
+
+Le `Playback Control` ne possède jamais de volume propre.
+
+L'écran hôte fournit :
+
+- la valeur affichée ;
+- les callbacks ;
+- la logique associée.
+
+Exemples :
+
+- Player -> Gain Playback ;
+- LEVELS -> Gain Playback ;
+- Bibliothèque -> Gain Playback ;
+- Bus Principal -> Gain Playback ;
+- Fond sonore -> Volume Fond sonore ;
+- DJ -> Volume DJ, si intégré un jour.
+
 ---
 
 ## Premier Périmètre
@@ -192,3 +227,19 @@ Le `Playback Control` doit :
 - rester compact.
 
 Il doit être assez discret pour exister dans plusieurs contextes, mais assez clair pour être reconnu instantanément pendant un concert.
+
+---
+
+## Statut
+
+Statut : STABLE
+
+Son architecture est désormais considérée comme stabilisée.
+
+Les évolutions futures pourront concerner :
+
+- l'apparence graphique ;
+- les espacements ;
+- des améliorations ergonomiques.
+
+En revanche, les responsabilités du composant, son comportement, sa structure interne et son positionnement officiel constituent désormais la référence SMP.
