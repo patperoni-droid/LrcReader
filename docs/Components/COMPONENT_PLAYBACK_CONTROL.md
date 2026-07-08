@@ -66,11 +66,20 @@ Le `Playback Control` est un composant ancré.
 
 Son emplacement fait partie de son identité.
 
+Son emplacement officiel est :
+
+- en bas de l'écran ;
+- exactement au même emplacement que dans le Lecteur Audio / Paroles.
+
 Le `Playback Control` doit toujours être positionné au même endroit que dans le Lecteur Audio / Paroles.
+
+Il ne doit jamais être centré verticalement ni déplacé selon les écrans.
 
 Le but est de conserver une mémoire musculaire identique dans tous les écrans.
 
 Les écrans doivent s'adapter au `Playback Control`.
+
+Les écrans doivent adapter leur contenu afin de conserver ce positionnement.
 
 Le `Playback Control` ne doit pas être repositionné en fonction de la mise en page locale.
 
