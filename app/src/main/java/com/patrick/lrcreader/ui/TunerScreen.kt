@@ -27,6 +27,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,7 +53,15 @@ import kotlin.math.roundToInt
 @Composable
 fun TunerScreen(
     modifier: Modifier = Modifier,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    isPlayerPlaying: Boolean = false,
+    currentTrackGainDb: Int = 0,
+    liveGainControlsEnabled: Boolean = false,
+    onLiveGainDelta: (Int) -> Unit = {},
+    getPositionMs: () -> Long = { 0L },
+    getEffectiveDurationMs: () -> Long = { 0L },
+    seekToMs: (Long) -> Unit = {},
+    onPlaybackControlPlayPause: () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -71,10 +80,32 @@ fun TunerScreen(
     )
 
     val tunerState by TunerEngine.state.collectAsState()
+    var playbackPositionMs by remember { mutableIntStateOf(0) }
+    var playbackDurationMs by remember { mutableIntStateOf(0) }
+    var playbackDragging by remember { mutableStateOf(false) }
+    var playbackDragPositionMs by remember { mutableIntStateOf(0) }
 
     DisposableEffect(hasMicPermission) {
         if (hasMicPermission) TunerEngine.start()
         onDispose { TunerEngine.stop() }
+    }
+
+    LaunchedEffect(isPlayerPlaying) {
+        while (true) {
+            val position = getPositionMs()
+            val duration = getEffectiveDurationMs()
+            if (!playbackDragging) {
+                playbackPositionMs = position
+                    .coerceIn(0L, Int.MAX_VALUE.toLong())
+                    .toInt()
+            }
+            playbackDurationMs = if (duration > 0L) {
+                duration.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+            } else {
+                0
+            }
+            delay(if (isPlayerPlaying) 250L else 500L)
+        }
     }
 
     val backgroundBrush = Brush.verticalGradient(
@@ -383,6 +414,38 @@ fun TunerScreen(
                     }
                 }
             }
+
+            PlaybackControl(
+                positionMs = if (playbackDragging) playbackDragPositionMs else playbackPositionMs,
+                durationMs = playbackDurationMs,
+                onSeekLivePreview = { newPos ->
+                    if (playbackDurationMs > 0) {
+                        playbackDragging = true
+                        playbackDragPositionMs = newPos
+                    }
+                },
+                onSeekCommit = { newPos ->
+                    val safe = newPos.coerceIn(0, playbackDurationMs.coerceAtLeast(0))
+                    playbackDragging = false
+                    playbackPositionMs = safe
+                    seekToMs(safe.toLong())
+                },
+                highlightColor = TunerUi.Accent,
+                isPlaying = isPlayerPlaying,
+                onPlayPause = onPlaybackControlPlayPause,
+                onPrev = {
+                    playbackPositionMs = 0
+                    playbackDragPositionMs = 0
+                    seekToMs(0L)
+                },
+                onNext = {},
+                gainDb = currentTrackGainDb,
+                onGainDelta = { deltaDb ->
+                    if (liveGainControlsEnabled) {
+                        onLiveGainDelta(deltaDb)
+                    }
+                }
+            )
 
             Spacer(Modifier.height(8.dp))
 

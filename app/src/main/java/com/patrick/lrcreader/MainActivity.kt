@@ -4703,7 +4703,23 @@ class MainActivity : AppCompatActivity() {
                                         modifier = paneModifier,
                                         onClose = {
                                             tabletRightPanel = TabletSplitRightPanel.LYRICS
-                                        }
+                                        },
+                                        isPlayerPlaying = isPlaying,
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        onLiveGainDelta = ::adjustLiveGain,
+                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getEffectiveDurationMs = {
+                                            resolveEffectiveDurationMs(
+                                                requestedUri = currentPlayingUri,
+                                                activeUri = exoPlayer.currentMediaItem
+                                                    ?.localConfiguration
+                                                    ?.uri
+                                                    ?.toString()
+                                            )
+                                        },
+                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onPlaybackControlPlayPause = ::togglePlaybackFromMainBus
                                     )
                                 }
 
@@ -5767,7 +5783,23 @@ class MainActivity : AppCompatActivity() {
                                         modifier = contentModifier,
                                         onClose = {
                                             setTabAndPersist(BottomTab.Home, reason = "tunerClose")
-                                        }
+                                        },
+                                        isPlayerPlaying = isPlaying,
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        onLiveGainDelta = ::adjustLiveGain,
+                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getEffectiveDurationMs = {
+                                            resolveEffectiveDurationMs(
+                                                requestedUri = currentPlayingUri,
+                                                activeUri = exoPlayer.currentMediaItem
+                                                    ?.localConfiguration
+                                                    ?.uri
+                                                    ?.toString()
+                                            )
+                                        },
+                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onPlaybackControlPlayPause = ::togglePlaybackFromMainBus
                                     )
 
                                     else -> Box(
