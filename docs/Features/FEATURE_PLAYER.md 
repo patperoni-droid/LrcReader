@@ -110,6 +110,20 @@ During playback:
 
 ⸻
 
+# PLAYBACK / BACKGROUND SOUND PRIORITY
+
+Playback is always prioritary over Background Sound.
+
+When a song starts:
+- Background Sound must stop automatically
+
+When a song stops:
+- Background Sound may resume automatically only if this option is enabled
+
+No unintended mix between Playback and Background Sound must be possible.
+
+⸻
+
 # PLAYER OPENING BEHAVIOR
 
 The Player opening behavior is user-configurable.

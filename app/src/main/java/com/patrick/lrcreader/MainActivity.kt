@@ -1384,7 +1384,12 @@ class MainActivity : AppCompatActivity() {
                     if (manualCrossfadeTransitionTitle != null) return
                     val shouldPlay = !isPlaying
                     isPlaying = shouldPlay
-                    if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
+                    if (shouldPlay) {
+                        PlaybackCoordinator.onPlayerStart()
+                        exoPlayer.play()
+                    } else {
+                        exoPlayer.pause()
+                    }
                 }
 
                 var isMixerPreviewOpen by remember { mutableStateOf(false) }
@@ -2188,6 +2193,7 @@ class MainActivity : AppCompatActivity() {
                     val shouldPlay = !isPlaying
                     isPlaying = shouldPlay
                     if (shouldPlay) {
+                        PlaybackCoordinator.onPlayerStart()
                         exoPlayer.play()
                     } else {
                         exoPlayer.pause()
@@ -4191,7 +4197,12 @@ class MainActivity : AppCompatActivity() {
                                                 return@PlayerScreen
                                             }
                                             isPlaying = shouldPlay
-                                            if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
+                                            if (shouldPlay) {
+                                                PlaybackCoordinator.onPlayerStart()
+                                                exoPlayer.play()
+                                            } else {
+                                                exoPlayer.pause()
+                                            }
                                         },
                                         parsedLines = parsedLines,
                                         lyricsLoading = lyricsLoading,
@@ -5177,7 +5188,12 @@ class MainActivity : AppCompatActivity() {
                                                 return@PlayerScreen
                                             }
                                             isPlaying = shouldPlay
-                                            if (shouldPlay) exoPlayer.play() else exoPlayer.pause()
+                                            if (shouldPlay) {
+                                                PlaybackCoordinator.onPlayerStart()
+                                                exoPlayer.play()
+                                            } else {
+                                                exoPlayer.pause()
+                                            }
                                         },
                                         parsedLines = parsedLines,
                                         lyricsLoading = lyricsLoading,
