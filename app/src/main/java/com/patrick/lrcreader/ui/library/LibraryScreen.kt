@@ -2531,8 +2531,19 @@ fun LibraryScreen(
         }
     }
 
-    LaunchedEffect(isSongViewMode, isLufsViewMode, quickNowUri, quickIsPlaying) {
-        if ((!isSongViewMode && !isLufsViewMode) || quickNowUri == null) return@LaunchedEffect
+    LaunchedEffect(
+        isSongViewMode,
+        isLufsViewMode,
+        isPlaylistsViewMode,
+        isPrompterViewMode,
+        quickNowUri,
+        quickIsPlaying
+    ) {
+        if ((!isSongViewMode && !isLufsViewMode && !isPlaylistsViewMode && !isPrompterViewMode) ||
+            quickNowUri == null
+        ) {
+            return@LaunchedEffect
+        }
         while (true) {
             val position = runCatching { quickPlayer.currentPosition }.getOrDefault(0L)
             val duration = runCatching { quickPlayer.duration }.getOrDefault(0L)
@@ -2612,6 +2623,51 @@ fun LibraryScreen(
         } catch (e: Exception) {
             Log.e("LibraryQuickPlay", "Erreur quick play", e)
         }
+    }
+
+    @Composable
+    fun LibraryPlaybackControl(
+        isPlaybackActive: Boolean,
+        gainDb: Int,
+        onPlayPause: () -> Unit,
+        onGainDelta: (Int) -> Unit
+    ) {
+        PlaybackControl(
+            positionMs = if (isPlaybackActive) {
+                if (quickIsDragging) quickDragPositionMs else quickPositionMs
+            } else {
+                0
+            },
+            durationMs = if (isPlaybackActive) quickDurationMs else 0,
+            onSeekLivePreview = { newPos ->
+                if (isPlaybackActive && quickDurationMs > 0) {
+                    quickIsDragging = true
+                    quickDragPositionMs = newPos
+                }
+            },
+            onSeekCommit = onSeekCommit@{ newPos ->
+                if (!isPlaybackActive || quickDurationMs <= 0) {
+                    quickIsDragging = false
+                    return@onSeekCommit
+                }
+                val safe = newPos.coerceIn(0, quickDurationMs)
+                quickIsDragging = false
+                quickPositionMs = safe
+                runCatching { quickPlayer.seekTo(safe.toLong()) }
+            },
+            highlightColor = accent,
+            isPlaying = isPlaybackActive && quickIsPlaying,
+            onPlayPause = onPlayPause,
+            onPrev = onPrev@{
+                if (!isPlaybackActive || quickDurationMs <= 0) return@onPrev
+                quickPositionMs = 0
+                quickDragPositionMs = 0
+                runCatching { quickPlayer.seekTo(0L) }
+            },
+            onNext = {},
+            gainDb = gainDb,
+            onGainDelta = onGainDelta
+        )
     }
 
     fun readTextFromUri(uri: Uri): String? {
@@ -3961,7 +4017,8 @@ fun LibraryScreen(
                             )
                         } else {
                             LazyColumn(
-                                modifier = Modifier.fillMaxSize()
+                                modifier = Modifier.fillMaxSize(),
+                                contentPadding = PaddingValues(bottom = 96.dp)
                             ) {
                                 items(filteredPlaylists, key = { it }) { playlistName ->
                                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -4190,45 +4247,15 @@ fun LibraryScreen(
                                         }
                                     )
                                 }
-                                PlaybackControl(
-                                    positionMs = if (isSongsPlaybackActive) {
-                                        if (quickIsDragging) quickDragPositionMs else quickPositionMs
-                                    } else {
-                                        0
-                                    },
-                                    durationMs = if (isSongsPlaybackActive) quickDurationMs else 0,
-                                    onSeekLivePreview = { newPos ->
-                                        if (isSongsPlaybackActive && quickDurationMs > 0) {
-                                            quickIsDragging = true
-                                            quickDragPositionMs = newPos
-                                        }
-                                    },
-                                    onSeekCommit = onSeekCommit@{ newPos ->
-                                        if (!isSongsPlaybackActive || quickDurationMs <= 0) {
-                                            quickIsDragging = false
-                                            return@onSeekCommit
-                                        }
-                                        val safe = newPos.coerceIn(0, quickDurationMs)
-                                        quickIsDragging = false
-                                        quickPositionMs = safe
-                                        runCatching { quickPlayer.seekTo(safe.toLong()) }
-                                    },
-                                    highlightColor = accent,
-                                    isPlaying = isSongsPlaybackActive && quickIsPlaying,
+                                LibraryPlaybackControl(
+                                    isPlaybackActive = isSongsPlaybackActive,
+                                    gainDb = songsPlaybackSong?.volumeDb ?: 0,
                                     onPlayPause = onPlayPause@{
                                         val song = songsPlaybackSong ?: return@onPlayPause
                                         val uri = songsPlaybackAudioUri ?: return@onPlayPause
                                         keyboardSelectedSongId = song.songId
                                         quickPlayToggle(uri, song.volumeDb)
                                     },
-                                    onPrev = onPrev@{
-                                        if (!isSongsPlaybackActive || quickDurationMs <= 0) return@onPrev
-                                        quickPositionMs = 0
-                                        quickDragPositionMs = 0
-                                        runCatching { quickPlayer.seekTo(0L) }
-                                    },
-                                    onNext = {},
-                                    gainDb = songsPlaybackSong?.volumeDb ?: 0,
                                     onGainDelta = onGainDelta@{ deltaDb ->
                                         val song = songsPlaybackSong ?: return@onGainDelta
                                         adjustLibrarySongGainDb(song, deltaDb)
@@ -4517,7 +4544,7 @@ fun LibraryScreen(
                                 cardBg = cardBg,
                                 rowBorder = rowBorder,
                                 accent = accent,
-                                bottomPadding = selectionBottomPadding,
+                                bottomPadding = if (isPrompterViewMode) 96.dp else selectionBottomPadding,
                                 isExplorerMode = isFilesViewMode,
                                 canImportBackupJson = canImportBackupJsonFromCurrentFolder,
                                 selectedSongs = selectedSongs,
@@ -4709,6 +4736,27 @@ fun LibraryScreen(
                                 }
                             )
                             }
+                        }
+                    }
+
+                    if (isPlaylistsViewMode || isPrompterViewMode) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(androidx.compose.ui.Alignment.BottomCenter)
+                                .zIndex(10f)
+                        ) {
+                            val isLibraryPlaybackActive = quickNowUri != null
+                            LibraryPlaybackControl(
+                                isPlaybackActive = isLibraryPlaybackActive,
+                                gainDb = 0,
+                                onPlayPause = {
+                                    quickNowUri?.let { uri ->
+                                        quickPlayToggle(uri)
+                                    }
+                                },
+                                onGainDelta = {}
+                            )
                         }
                     }
 
