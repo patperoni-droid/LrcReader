@@ -3987,7 +3987,8 @@ fun LibraryScreen(
                         }
                     }
                 } else if (isPlaylistsViewMode) {
-                    Column(modifier = Modifier.fillMaxSize()) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Column(modifier = Modifier.fillMaxSize()) {
                         if (isSearchVisible) {
                             SmpSearchField(
                                 value = searchQuery,
@@ -4086,6 +4087,25 @@ fun LibraryScreen(
                                     }
                                 }
                             }
+                        }
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .align(androidx.compose.ui.Alignment.BottomCenter)
+                                .zIndex(10f)
+                        ) {
+                            val isLibraryPlaybackActive = quickNowUri != null
+                            LibraryPlaybackControl(
+                                isPlaybackActive = isLibraryPlaybackActive,
+                                gainDb = 0,
+                                onPlayPause = {
+                                    quickNowUri?.let { uri ->
+                                        quickPlayToggle(uri)
+                                    }
+                                },
+                                onGainDelta = {}
+                            )
                         }
                     }
                 } else if (currentFolderUri == null && !isSongBasedViewMode) {
@@ -4741,7 +4761,7 @@ fun LibraryScreen(
                         }
                     }
 
-                    if (isPlaylistsViewMode || isPrompterViewMode) {
+                    if (isPrompterViewMode) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
