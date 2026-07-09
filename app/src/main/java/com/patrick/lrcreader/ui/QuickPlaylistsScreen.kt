@@ -3174,7 +3174,13 @@ fun QuickPlaylistsScreen(
                     }
                 }
             }
-        }
+            }
+
+            if (compactTabletLayout) {
+                SequentialNavigation(
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 
