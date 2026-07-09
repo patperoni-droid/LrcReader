@@ -42,9 +42,9 @@ fun TimeBar(
     val posText = remember(positionMs) { formatMsLocal(positionMs) }
     val durText = remember(durationMs) { formatMsLocal(durationMs.coerceAtLeast(0)) }
     val trackColor = highlightColor.copy(alpha = 0.25f)
-    val textSize = if (compact) 10.sp else 12.sp
-    val sidePadding = if (compact) 4.dp else 6.dp
-    val sliderHeight = if (compact) 14.dp else 20.dp
+    val textSize = if (compact) 12.sp else 12.sp
+    val sidePadding = if (compact) 10.dp else 6.dp
+    val sliderHeight = if (compact) 20.dp else 20.dp
     val bottomPadding = 0.dp
 
     Row(

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -39,14 +40,14 @@ fun PlayerControls(
     onGainDelta: (Int) -> Unit = {},
     compact: Boolean = false
 ) {
-    val controlButtonSize = if (compact) 42.dp else 48.dp
-    val controlIconSize = if (compact) 31.dp else 36.dp
-    val primaryButtonWidth = if (compact) 98.dp else 126.dp
-    val primaryButtonHeight = if (compact) 43.dp else 50.dp
-    val primaryIconSize = if (compact) 23.dp else 27.dp
-    val gainButtonSize = if (compact) 32.dp else 36.dp
+    val controlButtonSize = if (compact) 48.dp else 48.dp
+    val controlIconSize = if (compact) 34.dp else 36.dp
+    val primaryButtonWidth = if (compact) 144.dp else 126.dp
+    val primaryButtonHeight = if (compact) 50.dp else 50.dp
+    val primaryIconSize = if (compact) 25.dp else 27.dp
+    val gainButtonSize = if (compact) 36.dp else 36.dp
     val verticalPadding = 0.dp
-    val itemSpacing = if (compact) 6.dp else 8.dp
+    val itemSpacing = if (compact) 14.dp else 8.dp
     val buttonShape = RoundedCornerShape(7.dp)
     val consoleGreen = Color(0xFF18B857)
     val consoleRed = Color(0xFFD93636)
@@ -127,6 +128,10 @@ fun PlayerControls(
                 fontSize = if (compact) 18.sp else 20.sp,
                 fontWeight = FontWeight.SemiBold
             )
+        }
+
+        if (compact) {
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

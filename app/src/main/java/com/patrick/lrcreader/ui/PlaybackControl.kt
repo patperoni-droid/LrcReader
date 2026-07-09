@@ -1,6 +1,9 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 
 @Composable
@@ -16,24 +19,27 @@ fun PlaybackControl(
     onNext: () -> Unit,
     gainDb: Int,
     onGainDelta: (Int) -> Unit,
-    compact: Boolean = false
+    compact: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
-    TimeBar(
-        positionMs = positionMs,
-        durationMs = durationMs,
-        onSeekLivePreview = onSeekLivePreview,
-        onSeekCommit = onSeekCommit,
-        highlightColor = highlightColor,
-        compact = compact
-    )
+    Column(modifier = modifier.fillMaxWidth()) {
+        TimeBar(
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onSeekLivePreview = onSeekLivePreview,
+            onSeekCommit = onSeekCommit,
+            highlightColor = highlightColor,
+            compact = compact
+        )
 
-    PlayerControls(
-        isPlaying = isPlaying,
-        onPlayPause = onPlayPause,
-        onPrev = onPrev,
-        onNext = onNext,
-        gainDb = gainDb,
-        onGainDelta = onGainDelta,
-        compact = compact
-    )
+        PlayerControls(
+            isPlaying = isPlaying,
+            onPlayPause = onPlayPause,
+            onPrev = onPrev,
+            onNext = onNext,
+            gainDb = gainDb,
+            onGainDelta = onGainDelta,
+            compact = compact
+        )
+    }
 }
