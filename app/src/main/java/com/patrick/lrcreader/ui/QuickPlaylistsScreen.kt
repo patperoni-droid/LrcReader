@@ -3178,7 +3178,9 @@ fun QuickPlaylistsScreen(
 
             if (compactTabletLayout) {
                 SequentialNavigation(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    onSelectPrevious = {},
+                    onSelectNext = {}
                 )
             }
         }

@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -21,11 +22,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.patrick.lrcreader.exo.R
 
 @Composable
 fun SequentialNavigation(
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onSelectPrevious: () -> Unit = {},
+    onSelectNext: () -> Unit = {}
 ) {
     val shellShape = RoundedCornerShape(16.dp)
     val controlShape = RoundedCornerShape(7.dp)
@@ -46,18 +51,22 @@ fun SequentialNavigation(
     ) {
         SequentialNavigationButton(
             imageVector = Icons.Filled.KeyboardArrowDown,
+            contentDescription = stringResource(R.string.sequential_navigation_select_next_cd),
             background = controlBackground,
             border = controlBorder,
             tint = disabledTint,
-            shape = controlShape
+            shape = controlShape,
+            onClick = onSelectNext
         )
 
         SequentialNavigationButton(
             imageVector = Icons.Filled.KeyboardArrowUp,
+            contentDescription = stringResource(R.string.sequential_navigation_select_previous_cd),
             background = controlBackground,
             border = controlBorder,
             tint = disabledTint,
-            shape = controlShape
+            shape = controlShape,
+            onClick = onSelectPrevious
         )
     }
 }
@@ -65,10 +74,12 @@ fun SequentialNavigation(
 @Composable
 private fun SequentialNavigationButton(
     imageVector: ImageVector,
+    contentDescription: String,
     background: Color,
     border: Color,
     tint: Color,
-    shape: RoundedCornerShape
+    shape: RoundedCornerShape,
+    onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -76,12 +87,13 @@ private fun SequentialNavigationButton(
             .fillMaxHeight()
             .padding(vertical = 10.dp)
             .background(background, shape)
-            .border(1.dp, border, shape),
+            .border(1.dp, border, shape)
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(
             imageVector = imageVector,
-            contentDescription = null,
+            contentDescription = contentDescription,
             tint = tint,
             modifier = Modifier.size(34.dp)
         )

@@ -307,6 +307,8 @@
     <string name="library_lufs_db_value">%1$+d dB</string>
     <string name="playback_control_gain_decrease">-</string>
     <string name="playback_control_gain_increase">+</string>
+    <string name="sequential_navigation_select_previous_cd">Selección anterior</string>
+    <string name="sequential_navigation_select_next_cd">Selección siguiente</string>
     <string name="library_lufs_hint_title">Normalización de volumen</string>
     <string name="library_lufs_hint_message">Aquí puedes equilibrar el volumen de tus pistas.\n\nEsto evita grandes diferencias de nivel entre canciones, para un resultado más cómodo y profesional en directo.\n\nUtilizamos una referencia cercana a -14 LUFS, un estándar ampliamente utilizado.\n\nPuedes aplicar o quitar este ajuste en cualquier momento.</string>
     <string name="library_lufs_hint_do_not_show_again">No volver a mostrar</string>
