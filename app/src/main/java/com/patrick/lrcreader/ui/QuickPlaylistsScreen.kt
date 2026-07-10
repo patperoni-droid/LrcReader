@@ -190,6 +190,8 @@ fun QuickPlaylistsScreen(
     hardwareCommand: HardwareListCommand = HardwareListCommand.ACTIVATE,
     hardwareReturnToCurrentToken: Int = 0,
     hardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT,
+    playbackControlActivateSelectedToken: Int = 0,
+    onSequentialSelectionChanged: () -> Unit = {},
     onAddTrackToPlaylist: (String) -> Unit = {},
     searchToggleSignal: Int = 0,
     smpSongsCache: Map<String, com.patrick.lrcreader.smp.SongUnit> = emptyMap(),
@@ -1209,6 +1211,7 @@ fun QuickPlaylistsScreen(
         if (targetIndex !in selectableItems.indices) return
 
         keyboardSelectedItem = selectableItems[targetIndex]
+        onSequentialSelectionChanged()
     }
 
     LaunchedEffect(hardwareCommandToken, visibleRows, internalSelected) {
@@ -1234,6 +1237,18 @@ fun QuickPlaylistsScreen(
                 closePlaylistSearch()
             }
         }
+    }
+
+    LaunchedEffect(playbackControlActivateSelectedToken, visibleRows, internalSelected) {
+        if (playbackControlActivateSelectedToken == 0) return@LaunchedEffect
+        val currentPlaylist = internalSelected ?: return@LaunchedEffect
+        val targetItem = keyboardSelectedItem
+            ?.takeIf { selectedItem -> visibleRows.any { row -> row.item == selectedItem } }
+            ?: return@LaunchedEffect
+        val playbackItem = resolveVariantFamilyPlaybackItem(targetItem, variantFamilyById)
+        saveOriginalOrderIfMissing(context, currentPlaylist, songs.toList())
+        onPlaySong(playbackItem, currentPlaylist, Color.White)
+        closePlaylistSearch()
     }
 
     LaunchedEffect(hardwareReturnToCurrentToken, visibleRows, internalSelected) {

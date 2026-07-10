@@ -173,6 +173,7 @@ fun PlayerScreen(
     getPositionMs: () -> Long,
     getEffectiveDurationMs: () -> Long,
     seekToMs: (Long) -> Unit,
+    onPlaySelectedPlaylistItem: () -> Boolean = { false },
     compactTabletLayout: Boolean = false,
     showAutoReturnButton: Boolean = true,
     showLiveGainControls: Boolean = false,
@@ -3165,7 +3166,7 @@ fun PlayerScreen(
                             },
                             highlightColor = highlightColor,
                             isPlaying = isPlaying,
-                            onPlayPause = {
+                            onPlayPause = playPause@{
                                 if (isPlaying) {
                                     if (isTimelinePreparedLoopActive) {
                                         timelinePreparedLoopResumeRelativeMs = exoPlayer.currentPosition
@@ -3178,6 +3179,7 @@ fun PlayerScreen(
                                         runCatching { FillerSoundManager.startFromPlayerPause(context) }
                                     }
                                 } else {
+                                    if (onPlaySelectedPlaylistItem()) return@playPause
                                     if (durationMs > 0) {
                                         PlaybackCoordinator.onPlayerStart()
                                         if (isTimelinePreparedLoopActive &&

@@ -1253,6 +1253,8 @@ class MainActivity : AppCompatActivity() {
 
                 var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
                 var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
+                var quickPlaylistSequentialSelectionPendingPlay by remember { mutableStateOf(false) }
+                var quickPlaylistPlaybackControlActivateToken by remember { mutableIntStateOf(0) }
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
                 var currentPlayingTitle by rememberSaveable { mutableStateOf<String?>(null) }
@@ -1380,9 +1382,24 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                fun requestQuickPlaylistSelectedPlayback(): Boolean {
+                    if (manualCrossfadeTransitionTitle != null) return false
+                    if (!quickPlaylistSequentialSelectionPendingPlay) return false
+                    val quickPlaylistPaneVisible =
+                        adaptiveTokens.tabletMode &&
+                            tabletExperimentalModeEnabled &&
+                            (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists)
+                    if (!quickPlaylistPaneVisible) return false
+
+                    quickPlaylistSequentialSelectionPendingPlay = false
+                    quickPlaylistPlaybackControlActivateToken += 1
+                    return true
+                }
+
                 fun togglePlaybackFromMainBus() {
                     if (manualCrossfadeTransitionTitle != null) return
                     val shouldPlay = !isPlaying
+                    if (shouldPlay && requestQuickPlaylistSelectedPlayback()) return
                     isPlaying = shouldPlay
                     if (shouldPlay) {
                         PlaybackCoordinator.onPlayerStart()
@@ -4361,6 +4378,7 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         },
                                         seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onPlaySelectedPlaylistItem = ::requestQuickPlaylistSelectedPlayback,
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled,
                                         showAutoReturnButton = false,
@@ -4763,6 +4781,7 @@ class MainActivity : AppCompatActivity() {
                                         modifier = paneModifier,
                                         onPlaySong = { uri, playlistName, color ->
                                             stopChainPlayback()
+                                            quickPlaylistSequentialSelectionPendingPlay = false
                                             PlaybackCoordinator.peekNextTrack()
                                                 ?.takeIf { armed -> armed.uri == uri }
                                                 ?.let {
@@ -4901,6 +4920,10 @@ class MainActivity : AppCompatActivity() {
                                         hardwareCommand = quickHardwareCommand,
                                         hardwareReturnToCurrentToken = quickHardwareReturnToken,
                                         hardwareReturnCommand = quickHardwareReturnCommand,
+                                        playbackControlActivateSelectedToken = quickPlaylistPlaybackControlActivateToken,
+                                        onSequentialSelectionChanged = {
+                                            quickPlaylistSequentialSelectionPendingPlay = true
+                                        },
                                         onAddTrackToPlaylist = {
                                             openTabletSplitLibrary(openSearch = false)
                                             tabletLibraryOpenStorageSignal++
@@ -5372,6 +5395,7 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         },
                                         seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onPlaySelectedPlaylistItem = ::requestQuickPlaylistSelectedPlayback,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
                                         showPhoneLiveGainDrawer = !adaptiveTokens.tabletMode
@@ -5381,6 +5405,7 @@ class MainActivity : AppCompatActivity() {
                                         modifier = contentModifier,
                                         onPlaySong = { uri, playlistName, color ->
                                             stopChainPlayback()
+                                            quickPlaylistSequentialSelectionPendingPlay = false
                                             PlaybackCoordinator.peekNextTrack()
                                                 ?.takeIf { armed -> armed.uri == uri }
                                                 ?.let {
@@ -5519,6 +5544,10 @@ class MainActivity : AppCompatActivity() {
                                     hardwareCommand = quickHardwareCommand,
                                     hardwareReturnToCurrentToken = quickHardwareReturnToken,
                                     hardwareReturnCommand = quickHardwareReturnCommand,
+                                    playbackControlActivateSelectedToken = quickPlaylistPlaybackControlActivateToken,
+                                    onSequentialSelectionChanged = {
+                                        quickPlaylistSequentialSelectionPendingPlay = true
+                                    },
                                     onAddTrackToPlaylist = { playlistName ->
                                         pendingPlaylistTrackTarget = playlistName
                                         pickPlaylistTrackLauncher.launch(
