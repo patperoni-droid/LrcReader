@@ -1191,6 +1191,26 @@ fun QuickPlaylistsScreen(
         scrollKeyboardSelectionIntoView(targetItem)
     }
 
+    fun moveSequentialSelection(delta: Int) {
+        if (delta == 0) return
+        val selectableItems = visibleRows.map { it.item }
+        if (selectableItems.isEmpty()) return
+
+        val anchorItem = when {
+            keyboardSelectedItem in selectableItems -> keyboardSelectedItem
+            currentPlayingPlaylist == internalSelected &&
+                currentPlayingPlaylistItemKey in selectableItems -> currentPlayingPlaylistItemKey
+            currentPlayingUri in selectableItems -> currentPlayingUri
+            else -> selectableItems.first()
+        } ?: selectableItems.first()
+
+        val anchorIndex = selectableItems.indexOf(anchorItem).coerceAtLeast(0)
+        val targetIndex = anchorIndex + delta
+        if (targetIndex !in selectableItems.indices) return
+
+        keyboardSelectedItem = selectableItems[targetIndex]
+    }
+
     LaunchedEffect(hardwareCommandToken, visibleRows, internalSelected) {
         if (hardwareCommandToken == 0) return@LaunchedEffect
         if (internalSelected.isNullOrBlank()) return@LaunchedEffect
@@ -1649,6 +1669,7 @@ fun QuickPlaylistsScreen(
                                 val activeSongId = activeSongIdForFamily(family)
                                 val activePlaybackItem = activeSongId?.let(::buildSmpItem) ?: uriString
                                 val isExpanded = family.id in expandedVariantFamilyIds
+                                val isKeyboardSelected = compactTabletLayout && keyboardSelectedItem == uriString
                                 val isCurrentPlaying = currentPlayingUri == activePlaybackItem ||
                                     currentPlayingPlaylistItemKey == activePlaybackItem
                                 val isForcedNext = nextTrackUri != null && nextTrackUri == activePlaybackItem
@@ -1677,11 +1698,15 @@ fun QuickPlaylistsScreen(
                                     }
                                 }
                                 val rowShape = RoundedCornerShape(10.dp)
-                                val familyBackground = if (isCurrentPlaying) Color(0xFF202020) else Color(0xFF181818)
-                                val familyBorder = if (isCurrentPlaying) {
-                                    Color.White.copy(alpha = 0.75f)
-                                } else {
-                                    Color.White.copy(alpha = 0.20f)
+                                val familyBackground = when {
+                                    isKeyboardSelected -> Color(0x224FC3F7)
+                                    isCurrentPlaying -> Color(0xFF202020)
+                                    else -> Color(0xFF181818)
+                                }
+                                val familyBorder = when {
+                                    isKeyboardSelected -> Color(0xCC4FC3F7)
+                                    isCurrentPlaying -> Color.White.copy(alpha = 0.75f)
+                                    else -> Color.White.copy(alpha = 0.20f)
                                 }
 
                                 Column(
@@ -1693,7 +1718,7 @@ fun QuickPlaylistsScreen(
                                         )
                                         .background(familyBackground, rowShape)
                                         .border(
-                                            width = if (isCurrentPlaying) 2.dp else 1.dp,
+                                            width = if (isKeyboardSelected || isCurrentPlaying) 2.dp else 1.dp,
                                             color = familyBorder,
                                             shape = rowShape
                                         )
@@ -2084,6 +2109,7 @@ fun QuickPlaylistsScreen(
                             if (isGroupHeader(uriString)) {
                                 val groupTitle = getGroupTitle(uriString).uppercase()
                                 val headerKey = uriString
+                                val isKeyboardSelectedGroup = compactTabletLayout && keyboardSelectedItem == uriString
                                 val isActivePlayingGroup = activePlayingGroupHeaderKey == headerKey
                                 val isDraggingThis = draggingUri == uriString
                                 val isCollapsed = collapsedGroupIds.contains(headerKey)
@@ -2130,15 +2156,17 @@ fun QuickPlaylistsScreen(
                                 val badgeBg = Color.White.copy(alpha = 0.18f)
                                 val badgeBorder = Color.White.copy(alpha = 0.30f)
                                 val dragTint = if (isDraggingThis) headerText else headerMuted
-                                val rowBorder = if (isDropTargetHeader) {
-                                    Color.White.copy(alpha = 0.70f)
-                                } else {
-                                    if (isActivePlayingGroup) activeGroupRedBorder else groupBorderColor
+                                val rowBorder = when {
+                                    isKeyboardSelectedGroup -> Color(0xCC4FC3F7)
+                                    isDropTargetHeader -> Color.White.copy(alpha = 0.70f)
+                                    isActivePlayingGroup -> activeGroupRedBorder
+                                    else -> groupBorderColor
                                 }
-                                val rowBackground = if (isDropTargetHeader) {
-                                    Color(0xFF1184B8)
-                                } else {
-                                    if (isActivePlayingGroup) animatedActiveGroupRed else groupColor
+                                val rowBackground = when {
+                                    isKeyboardSelectedGroup -> Color(0xFF0B4F6E)
+                                    isDropTargetHeader -> Color(0xFF1184B8)
+                                    isActivePlayingGroup -> animatedActiveGroupRed
+                                    else -> groupColor
                                 }
 
                                 Row(
@@ -3179,8 +3207,8 @@ fun QuickPlaylistsScreen(
             if (compactTabletLayout) {
                 SequentialNavigation(
                     modifier = Modifier.fillMaxWidth(),
-                    onSelectPrevious = {},
-                    onSelectNext = {}
+                    onSelectPrevious = { moveSequentialSelection(-1) },
+                    onSelectNext = { moveSequentialSelection(1) }
                 )
             }
         }
