@@ -395,6 +395,9 @@ fun QuickPlaylistsScreen(
     var activePlayingGroupHeaderKey by rememberSaveable(internalSelected) { mutableStateOf<String?>(null) }
     var pendingLiveGroupScrollHeaderKey by remember { mutableStateOf<String?>(null) }
     var keyboardSelectedItem by rememberSaveable(internalSelected) { mutableStateOf<String?>(null) }
+    var lastHandledPlaybackControlActivateSelectedToken by remember {
+        mutableIntStateOf(playbackControlActivateSelectedToken)
+    }
 
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
@@ -1239,8 +1242,12 @@ fun QuickPlaylistsScreen(
         }
     }
 
-    LaunchedEffect(playbackControlActivateSelectedToken, visibleRows, internalSelected) {
+    LaunchedEffect(playbackControlActivateSelectedToken) {
         if (playbackControlActivateSelectedToken == 0) return@LaunchedEffect
+        if (playbackControlActivateSelectedToken == lastHandledPlaybackControlActivateSelectedToken) {
+            return@LaunchedEffect
+        }
+        lastHandledPlaybackControlActivateSelectedToken = playbackControlActivateSelectedToken
         val currentPlaylist = internalSelected ?: return@LaunchedEffect
         val targetItem = keyboardSelectedItem
             ?.takeIf { selectedItem -> visibleRows.any { row -> row.item == selectedItem } }
