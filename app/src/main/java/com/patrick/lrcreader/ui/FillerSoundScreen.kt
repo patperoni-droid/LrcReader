@@ -27,6 +27,7 @@ import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -49,6 +50,7 @@ fun FillerSoundScreen(
     context: Context,
     onBack: () -> Unit
 ) {
+    val adaptiveTokens = rememberSmpAdaptiveTokens()
     // ✅ IMPORTANT :
     // stringResource() est @Composable -> on l’utilise UNIQUEMENT dans le "corps" Composable
     // et pas dans remember { ... } ni dans des init de state.
@@ -492,7 +494,8 @@ fun FillerSoundScreen(
                 onGainDelta = { deltaDb ->
                     val currentDb = realVolumeToDb(uiToRealVolume(uiFillerVolume))
                     setFillerVolumeReal(dbToRealVolume(currentDb + deltaDb))
-                }
+                },
+                liveConsoleMode = adaptiveTokens.tabletMode
             )
         }
     }

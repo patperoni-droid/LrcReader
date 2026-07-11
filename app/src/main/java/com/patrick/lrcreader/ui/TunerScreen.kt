@@ -45,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.TunerEngine
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 import kotlin.math.max
@@ -63,6 +64,7 @@ fun TunerScreen(
     seekToMs: (Long) -> Unit = {},
     onPlaybackControlPlayPause: () -> Unit = {}
 ) {
+    val adaptiveTokens = rememberSmpAdaptiveTokens()
     val context = LocalContext.current
 
     var hasMicPermission by remember {
@@ -444,7 +446,8 @@ fun TunerScreen(
                     if (liveGainControlsEnabled) {
                         onLiveGainDelta(deltaDb)
                     }
-                }
+                },
+                liveConsoleMode = adaptiveTokens.tabletMode
             )
 
             Spacer(Modifier.height(8.dp))
