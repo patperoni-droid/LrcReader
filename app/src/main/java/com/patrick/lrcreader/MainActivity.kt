@@ -1254,6 +1254,7 @@ class MainActivity : AppCompatActivity() {
                 var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
                 var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
                 var quickPlaylistSequentialSelectionPendingPlay by remember { mutableStateOf(false) }
+                var quickPlaylistPreparedSelectionSongId by remember { mutableStateOf<String?>(null) }
                 var quickPlaylistPlaybackControlActivateToken by remember { mutableIntStateOf(0) }
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
@@ -1262,6 +1263,18 @@ class MainActivity : AppCompatActivity() {
                 var currentPlayingPlaylistItemKey by rememberSaveable { mutableStateOf<String?>(null) }
                 val currentPlayingSongId = remember(currentPlayingUri) {
                     resolveSessionSongIdFromTrackUri(currentPlayingUri)
+                }
+                val quickPlaylistLiveSelectionInSync = remember(
+                    quickPlaylistSequentialSelectionPendingPlay,
+                    quickPlaylistPreparedSelectionSongId,
+                    currentPlayingSongId,
+                    currentPlayingUri
+                ) {
+                    !quickPlaylistSequentialSelectionPendingPlay ||
+                        currentPlayingUri.isNullOrBlank() ||
+                        quickPlaylistPreparedSelectionSongId?.let { preparedSongId ->
+                            preparedSongId == currentPlayingSongId
+                        } == true
                 }
                 var moreNavigationTarget by remember { mutableStateOf<String?>(null) }
                 var moreNavigationToken by remember { mutableStateOf(0) }
@@ -1390,6 +1403,13 @@ class MainActivity : AppCompatActivity() {
                             tabletExperimentalModeEnabled &&
                             (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists)
                     if (!quickPlaylistPaneVisible) return false
+
+                    if (quickPlaylistPreparedSelectionSongId != null &&
+                        quickPlaylistPreparedSelectionSongId == currentPlayingSongId
+                    ) {
+                        quickPlaylistSequentialSelectionPendingPlay = false
+                        return false
+                    }
 
                     quickPlaylistSequentialSelectionPendingPlay = false
                     quickPlaylistPlaybackControlActivateToken += 1
@@ -4381,6 +4401,7 @@ class MainActivity : AppCompatActivity() {
                                         onPlaySelectedPlaylistItem = ::requestQuickPlaylistSelectedPlayback,
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled,
+                                        playbackControlSelectionInSync = quickPlaylistLiveSelectionInSync,
                                         showAutoReturnButton = false,
                                         showLiveGainControls = true,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
@@ -4921,7 +4942,8 @@ class MainActivity : AppCompatActivity() {
                                         hardwareReturnToCurrentToken = quickHardwareReturnToken,
                                         hardwareReturnCommand = quickHardwareReturnCommand,
                                         playbackControlActivateSelectedToken = quickPlaylistPlaybackControlActivateToken,
-                                        onSequentialSelectionChanged = {
+                                        onSequentialSelectionChanged = { preparedSongId ->
+                                            quickPlaylistPreparedSelectionSongId = preparedSongId
                                             quickPlaylistSequentialSelectionPendingPlay = true
                                         },
                                         onAddTrackToPlaylist = {
@@ -5545,7 +5567,8 @@ class MainActivity : AppCompatActivity() {
                                     hardwareReturnToCurrentToken = quickHardwareReturnToken,
                                     hardwareReturnCommand = quickHardwareReturnCommand,
                                     playbackControlActivateSelectedToken = quickPlaylistPlaybackControlActivateToken,
-                                    onSequentialSelectionChanged = {
+                                    onSequentialSelectionChanged = { preparedSongId ->
+                                        quickPlaylistPreparedSelectionSongId = preparedSongId
                                         quickPlaylistSequentialSelectionPendingPlay = true
                                     },
                                     onAddTrackToPlaylist = { playlistName ->

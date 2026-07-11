@@ -21,6 +21,8 @@ fun PlaybackControl(
     onGainDelta: (Int) -> Unit,
     compact: Boolean = false,
     liveConsoleMode: Boolean = false,
+    liveSelectionInSync: Boolean = true,
+    onLivePlay: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -41,7 +43,9 @@ fun PlaybackControl(
             gainDb = gainDb,
             onGainDelta = onGainDelta,
             compact = compact,
-            liveConsoleMode = liveConsoleMode
+            liveConsoleMode = liveConsoleMode,
+            liveSelectionInSync = liveSelectionInSync,
+            onLivePlay = onLivePlay
         )
     }
 }

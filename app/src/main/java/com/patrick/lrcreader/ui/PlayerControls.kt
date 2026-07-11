@@ -39,7 +39,9 @@ fun PlayerControls(
     gainDb: Int = 4,
     onGainDelta: (Int) -> Unit = {},
     compact: Boolean = false,
-    liveConsoleMode: Boolean = false
+    liveConsoleMode: Boolean = false,
+    liveSelectionInSync: Boolean = true,
+    onLivePlay: (() -> Unit)? = null
 ) {
     val controlButtonSize = if (compact) 48.dp else 48.dp
     val controlIconSize = if (compact) 34.dp else 36.dp
@@ -51,12 +53,23 @@ fun PlayerControls(
     val itemSpacing = if (compact) 14.dp else 8.dp
     val buttonShape = RoundedCornerShape(7.dp)
     val consoleGreen = Color(0xFF18B857)
+    val consoleYellow = Color(0xFFFFC247)
     val consoleRed = Color(0xFFD93636)
-    val primaryButtonColor = if (isPlaying) consoleRed else consoleGreen
+    val primaryButtonColor = when {
+        liveConsoleMode && !liveSelectionInSync -> consoleYellow
+        liveConsoleMode -> consoleGreen
+        isPlaying -> consoleRed
+        else -> consoleGreen
+    }
     val pauseButtonColor = if (isPlaying) consoleRed else Color.White.copy(alpha = 0.08f)
     val pauseIconColor = if (isPlaying) Color.White else Color.White.copy(alpha = 0.42f)
     val gainButtonBackground = Color.White.copy(alpha = 0.10f)
     val controlBorder = Color.White.copy(alpha = 0.22f)
+    val primaryClick = if (liveConsoleMode) {
+        onLivePlay ?: onPlayPause
+    } else {
+        onPlayPause
+    }
 
     Row(
         modifier = Modifier
@@ -71,12 +84,14 @@ fun PlayerControls(
                 .height(primaryButtonHeight)
                 .background(primaryButtonColor, buttonShape)
                 .border(1.dp, controlBorder, buttonShape)
-                .clickable(onClick = onPlayPause),
+                .clickable(onClick = primaryClick),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = stringResource(R.string.player_cd_play_pause),
+                imageVector = if (liveConsoleMode || !isPlaying) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                contentDescription = stringResource(
+                    if (liveConsoleMode) R.string.player_cd_play else R.string.player_cd_play_pause
+                ),
                 tint = Color.White,
                 modifier = Modifier.size(primaryIconSize)
             )

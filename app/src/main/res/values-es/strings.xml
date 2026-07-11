@@ -381,6 +381,7 @@
 
     <string name="player_cd_prev">Anterior</string>
     <string name="player_cd_play_pause">Reproducir/Pausar</string>
+    <string name="player_cd_play">Reproducir</string>
     <string name="player_cd_pause">Pausa</string>
     <string name="player_cd_next">Siguiente</string>
     <string name="player_cd_change_style">Cambiar estilo</string>

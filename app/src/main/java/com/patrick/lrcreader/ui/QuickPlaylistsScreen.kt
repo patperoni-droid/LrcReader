@@ -191,7 +191,7 @@ fun QuickPlaylistsScreen(
     hardwareReturnToCurrentToken: Int = 0,
     hardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT,
     playbackControlActivateSelectedToken: Int = 0,
-    onSequentialSelectionChanged: () -> Unit = {},
+    onSequentialSelectionChanged: (String?) -> Unit = {},
     onAddTrackToPlaylist: (String) -> Unit = {},
     searchToggleSignal: Int = 0,
     smpSongsCache: Map<String, com.patrick.lrcreader.smp.SongUnit> = emptyMap(),
@@ -1210,8 +1210,9 @@ fun QuickPlaylistsScreen(
         val targetIndex = anchorIndex + delta
         if (targetIndex !in selectableItems.indices) return
 
-        keyboardSelectedItem = selectableItems[targetIndex]
-        onSequentialSelectionChanged()
+        val targetItem = selectableItems[targetIndex]
+        keyboardSelectedItem = targetItem
+        onSequentialSelectionChanged(playbackControlSelectionSongId(targetItem, variantFamilyById))
     }
 
     LaunchedEffect(hardwareCommandToken, visibleRows, internalSelected) {
@@ -4501,6 +4502,14 @@ private fun resolveVariantFamilyPlaybackItem(
     val family = variantFamilyForPlaylistItem(item, familyById) ?: return item
     val activeSongId = activeSongIdForFamily(family) ?: return item
     return buildSmpItem(activeSongId)
+}
+
+private fun playbackControlSelectionSongId(
+    item: String,
+    familyById: Map<String, SongVariantFamily>
+): String? {
+    val playbackItem = resolveVariantFamilyPlaybackItem(item, familyById)
+    return getSmpSongId(playbackItem)?.takeIf { it.isNotBlank() }
 }
 
 private fun resolveVariantFamilyPlaybackQueue(

@@ -175,6 +175,7 @@ fun PlayerScreen(
     seekToMs: (Long) -> Unit,
     onPlaySelectedPlaylistItem: () -> Boolean = { false },
     compactTabletLayout: Boolean = false,
+    playbackControlSelectionInSync: Boolean = true,
     showAutoReturnButton: Boolean = true,
     showLiveGainControls: Boolean = false,
     liveGainControlsEnabled: Boolean = true,
@@ -3197,6 +3198,24 @@ fun PlayerScreen(
                                     }
                                 }
                             },
+                            onLivePlay = livePlay@{
+                                if (onPlaySelectedPlaylistItem()) return@livePlay
+                                if (!isPlaying && durationMs > 0) {
+                                    PlaybackCoordinator.onPlayerStart()
+                                    if (isTimelinePreparedLoopActive &&
+                                        timelinePreparedLoopEndMs > timelinePreparedLoopStartMs
+                                    ) {
+                                        playTimelinePreparedLoopFrom(
+                                            relativePositionMs = timelinePreparedLoopResumeRelativeMs,
+                                            shouldPlay = true
+                                        )
+                                        onIsPlayingChange(true)
+                                    } else {
+                                        onIsPlayingChange(true)
+                                    }
+                                    centerCurrentLineLazy(listState)
+                                }
+                            },
                             onPrev = onPrev@{
                                 val trackUri = currentTrackUri ?: return@onPrev
                                 if (durationMs <= 0) return@onPrev
@@ -3221,7 +3240,8 @@ fun PlayerScreen(
                             gainDb = currentTrackGainDb,
                             onGainDelta = onLiveGainDelta,
                             compact = compactTabletLayout,
-                            liveConsoleMode = compactTabletLayout
+                            liveConsoleMode = compactTabletLayout,
+                            liveSelectionInSync = playbackControlSelectionInSync
                         )
                     }
                 }
