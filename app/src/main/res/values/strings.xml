@@ -412,6 +412,7 @@
 
     <string name="player_cd_prev">Précédent</string>
     <string name="player_cd_play_pause">Play/Pause</string>
+    <string name="player_cd_pause">Pause</string>
     <string name="player_cd_next">Suivant</string>
     <string name="player_cd_change_style">Changer de style</string>
     <string name="player_cd_toggle_readability">Activer le mode lisibilité des paroles</string>

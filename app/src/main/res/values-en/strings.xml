@@ -420,6 +420,7 @@
 
     <string name="player_cd_prev">Previous</string>
     <string name="player_cd_play_pause">Play/Pause</string>
+    <string name="player_cd_pause">Pause</string>
     <string name="player_cd_next">Next</string>
     <string name="player_cd_change_style">Change style</string>
     <string name="player_cd_toggle_readability">Toggle lyrics readability mode</string>

@@ -52,6 +52,8 @@ fun PlayerControls(
     val consoleGreen = Color(0xFF18B857)
     val consoleRed = Color(0xFFD93636)
     val primaryButtonColor = if (isPlaying) consoleRed else consoleGreen
+    val pauseButtonColor = if (isPlaying) consoleRed else Color.White.copy(alpha = 0.08f)
+    val pauseIconColor = if (isPlaying) Color.White else Color.White.copy(alpha = 0.42f)
     val gainButtonBackground = Color.White.copy(alpha = 0.10f)
     val controlBorder = Color.White.copy(alpha = 0.22f)
 
@@ -77,6 +79,24 @@ fun PlayerControls(
                 tint = Color.White,
                 modifier = Modifier.size(primaryIconSize)
             )
+        }
+
+        if (compact) {
+            Box(
+                modifier = Modifier
+                    .size(controlButtonSize)
+                    .background(pauseButtonColor, buttonShape)
+                    .border(1.dp, controlBorder, buttonShape)
+                    .clickable(enabled = isPlaying) { onPlayPause() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Pause,
+                    contentDescription = stringResource(R.string.player_cd_pause),
+                    tint = pauseIconColor,
+                    modifier = Modifier.size(controlIconSize)
+                )
+            }
         }
 
         IconButton(
