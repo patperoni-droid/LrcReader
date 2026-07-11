@@ -1166,11 +1166,11 @@ fun QuickPlaylistsScreen(
     suspend fun moveKeyboardSelection(
         command: HardwareListCommand,
         anchorToCurrentTrack: Boolean
-    ) {
+    ): String? {
         val playableItems = visibleRows
             .map { it.item }
             .filter(::isKeyboardSelectablePlaylistItem)
-        if (playableItems.isEmpty()) return
+        if (playableItems.isEmpty()) return null
 
         val anchorItem = when {
             keyboardSelectedItem in playableItems -> keyboardSelectedItem
@@ -1191,6 +1191,7 @@ fun QuickPlaylistsScreen(
         val targetItem = playableItems[targetIndex]
         keyboardSelectedItem = targetItem
         scrollKeyboardSelectionIntoView(targetItem)
+        return targetItem
     }
 
     fun moveSequentialSelection(delta: Int) {
@@ -1220,22 +1221,20 @@ fun QuickPlaylistsScreen(
         if (internalSelected.isNullOrBlank()) return@LaunchedEffect
         when (hardwareCommand) {
             HardwareListCommand.MOVE_PREVIOUS,
-            HardwareListCommand.MOVE_NEXT -> moveKeyboardSelection(
-                command = hardwareCommand,
-                anchorToCurrentTrack = false
-            )
+            HardwareListCommand.MOVE_NEXT -> {
+                val targetItem = moveKeyboardSelection(
+                    command = hardwareCommand,
+                    anchorToCurrentTrack = false
+                ) ?: return@LaunchedEffect
+                onSequentialSelectionChanged(playbackControlSelectionSongId(targetItem, variantFamilyById))
+            }
 
             HardwareListCommand.ACTIVATE -> {
-                val currentPlaylist = internalSelected ?: return@LaunchedEffect
-                moveKeyboardSelection(
+                val targetItem = moveKeyboardSelection(
                     command = HardwareListCommand.ACTIVATE,
                     anchorToCurrentTrack = false
-                )
-                val targetItem = keyboardSelectedItem ?: return@LaunchedEffect
-                val playbackItem = resolveVariantFamilyPlaybackItem(targetItem, variantFamilyById)
-                saveOriginalOrderIfMissing(context, currentPlaylist, songs.toList())
-                onPlaySong(playbackItem, currentPlaylist, Color.White)
-                closePlaylistSearch()
+                ) ?: return@LaunchedEffect
+                onSequentialSelectionChanged(playbackControlSelectionSongId(targetItem, variantFamilyById))
             }
         }
     }
