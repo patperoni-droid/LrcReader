@@ -3220,7 +3220,8 @@ fun PlayerScreen(
                             },
                             gainDb = currentTrackGainDb,
                             onGainDelta = onLiveGainDelta,
-                            compact = compactTabletLayout
+                            compact = compactTabletLayout,
+                            liveConsoleMode = compactTabletLayout
                         )
                     }
                 }

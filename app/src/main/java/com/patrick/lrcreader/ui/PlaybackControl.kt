@@ -20,6 +20,7 @@ fun PlaybackControl(
     gainDb: Int,
     onGainDelta: (Int) -> Unit,
     compact: Boolean = false,
+    liveConsoleMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -39,7 +40,8 @@ fun PlaybackControl(
             onNext = onNext,
             gainDb = gainDb,
             onGainDelta = onGainDelta,
-            compact = compact
+            compact = compact,
+            liveConsoleMode = liveConsoleMode
         )
     }
 }

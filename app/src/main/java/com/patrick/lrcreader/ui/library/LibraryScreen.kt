@@ -2625,7 +2625,8 @@ fun LibraryScreen(
                 onNext = {},
                 gainDb = gainDb,
                 onGainDelta = onGainDelta,
-                compact = compactTabletLayout
+                compact = compactTabletLayout,
+                liveConsoleMode = compactTabletLayout
             )
         }
     }
@@ -4457,7 +4458,8 @@ fun LibraryScreen(
                                             val song = levelsGainSong ?: return@onGainDelta
                                             adjustLufsManualDb(song, deltaDb)
                                         },
-                                        compact = compactTabletLayout
+                                        compact = compactTabletLayout,
+                                        liveConsoleMode = compactTabletLayout
                                     )
                                 }
                                     TrackGainDrawer(

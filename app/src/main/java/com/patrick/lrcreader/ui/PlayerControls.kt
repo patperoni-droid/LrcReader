@@ -38,7 +38,8 @@ fun PlayerControls(
     onNext: () -> Unit,
     gainDb: Int = 4,
     onGainDelta: (Int) -> Unit = {},
-    compact: Boolean = false
+    compact: Boolean = false,
+    liveConsoleMode: Boolean = false
 ) {
     val controlButtonSize = if (compact) 48.dp else 48.dp
     val controlIconSize = if (compact) 34.dp else 36.dp
@@ -81,7 +82,7 @@ fun PlayerControls(
             )
         }
 
-        if (compact) {
+        if (liveConsoleMode) {
             Box(
                 modifier = Modifier
                     .size(controlButtonSize)

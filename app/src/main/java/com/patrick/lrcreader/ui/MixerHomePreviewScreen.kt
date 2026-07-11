@@ -449,7 +449,8 @@ fun MixerHomePreviewScreen(
                         onLiveGainDelta(deltaDb)
                     }
                 },
-                compact = compactTabletMode
+                compact = compactTabletMode,
+                liveConsoleMode = compactTabletMode
             )
 
             Spacer(Modifier.height(8.dp))
