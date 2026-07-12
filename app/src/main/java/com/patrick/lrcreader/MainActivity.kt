@@ -4953,6 +4953,8 @@ class MainActivity : AppCompatActivity() {
                                         searchToggleSignal = playlistSearchToggleSignal,
                                         smpSongsCache = smpSongsById,
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
+                                            tabletExperimentalModeEnabled,
+                                        livePlaylistSelectionMode = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled
                                     )
                                 }

@@ -197,7 +197,8 @@ fun QuickPlaylistsScreen(
     searchToggleSignal: Int = 0,
     smpSongsCache: Map<String, com.patrick.lrcreader.smp.SongUnit> = emptyMap(),
     indexAll: List<LibraryIndexCache.CachedEntry> = emptyList(), // ✅ propre + default
-    compactTabletLayout: Boolean = false
+    compactTabletLayout: Boolean = false,
+    livePlaylistSelectionMode: Boolean = false
 ) {
 
     val context = LocalContext.current
@@ -1202,6 +1203,13 @@ fun QuickPlaylistsScreen(
         focusManager.clearFocus(force = true)
     }
 
+    fun prepareLivePlaylistSelection(item: String) {
+        keyboardSelectedItem = item
+        updatePlayedMoveSelection(item)
+        onSequentialSelectionChanged(playbackControlSelectionSongId(item, variantFamilyById))
+        closePlaylistSearch()
+    }
+
     suspend fun scrollKeyboardSelectionIntoView(targetItem: String) {
         val rowIndex = visibleRows.indexOfFirst { row -> row.item == targetItem }
         if (rowIndex < 0) return
@@ -1855,8 +1863,12 @@ fun QuickPlaylistsScreen(
                                             modifier = Modifier
                                                 .weight(1f)
                                                 .clickable {
-                                                    keyboardSelectedItem = uriString
+                                                    if (livePlaylistSelectionMode) {
+                                                        prepareLivePlaylistSelection(uriString)
+                                                        return@clickable
+                                                    }
                                                     val currentPlaylist = internalSelected ?: return@clickable
+                                                    keyboardSelectedItem = uriString
                                                     saveOriginalOrderIfMissing(context, currentPlaylist, songs.toList())
                                                     onPlaySong(activePlaybackItem, currentPlaylist, Color.White)
                                                     closePlaylistSearch()
@@ -2697,9 +2709,13 @@ fun QuickPlaylistsScreen(
                                         .weight(1f)
                                         .combinedClickable(
                                             onClick = {
-                                                keyboardSelectedItem = uriString
+                                                if (livePlaylistSelectionMode) {
+                                                    prepareLivePlaylistSelection(uriString)
+                                                    return@combinedClickable
+                                                }
                                                 val currentPlaylist = internalSelected
                                                     ?: return@combinedClickable
+                                                keyboardSelectedItem = uriString
                                                 val currentGroupHeaderKey = containingGroupHeaderIndex
                                                     ?.let { songs.getOrNull(it) }
                                                 val isInsideCurrentQueueGroup =
