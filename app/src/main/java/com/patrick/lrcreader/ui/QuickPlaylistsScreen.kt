@@ -38,6 +38,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -385,6 +386,9 @@ fun QuickPlaylistsScreen(
     val searchTextSize = if (compactTabletLayout) 13.sp else 16.sp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
     val headerDropPaddingPx = with(LocalDensity.current) { 12.dp.toPx() }
+    val sequentialNavigationBottomSafetyPx = with(LocalDensity.current) {
+        if (compactTabletLayout) 70.dp.toPx().toInt() else 0
+    }
     var draggingUri by remember { mutableStateOf<String?>(null) }
     var dragOrderChanged by remember { mutableStateOf(false) }
     var dragOffsetPx by remember { mutableStateOf(0f) }
@@ -1210,13 +1214,21 @@ fun QuickPlaylistsScreen(
 
         val targetInfo = visibleItems.firstOrNull { item -> item.index == rowIndex }
         val viewportStart = listState.layoutInfo.viewportStartOffset
-        val viewportEnd = listState.layoutInfo.viewportEndOffset
+        val viewportEnd = (listState.layoutInfo.viewportEndOffset - sequentialNavigationBottomSafetyPx)
+            .coerceAtLeast(viewportStart)
+        val averageVisibleItemSize = visibleItems.sumOf { item -> item.size }
+            .toFloat()
+            .div(visibleItems.size)
+            .coerceAtLeast(1f)
+        val effectiveVisibleItemCount = ((viewportEnd - viewportStart) / averageVisibleItemSize)
+            .toInt()
+            .coerceAtLeast(1)
         when {
             targetInfo == null && rowIndex < visibleItems.first().index ->
                 listState.animateScrollToItem(rowIndex)
 
             targetInfo == null && rowIndex > visibleItems.last().index -> {
-                val firstTargetIndex = (rowIndex - visibleItems.size + 1).coerceAtLeast(0)
+                val firstTargetIndex = (rowIndex - effectiveVisibleItemCount + 1).coerceAtLeast(0)
                 listState.animateScrollToItem(firstTargetIndex)
             }
 
@@ -1224,8 +1236,8 @@ fun QuickPlaylistsScreen(
                 listState.animateScrollToItem(rowIndex)
 
             targetInfo != null && targetInfo.offset + targetInfo.size > viewportEnd -> {
-                val firstTargetIndex = (rowIndex - visibleItems.size + 1).coerceAtLeast(0)
-                listState.animateScrollToItem(firstTargetIndex)
+                val hiddenOverlapPx = targetInfo.offset + targetInfo.size - viewportEnd
+                listState.animateScrollBy(hiddenOverlapPx.toFloat())
             }
         }
     }
