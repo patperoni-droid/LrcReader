@@ -399,6 +399,25 @@ fun QuickPlaylistsScreen(
         mutableIntStateOf(playbackControlActivateSelectedToken)
     }
 
+    fun updatePlayedMoveSelection(selectedItem: String?) {
+        if (!compactTabletLayout) {
+            PlaylistRepository.setPlayedMoveSelection(null, null)
+            return
+        }
+        val effectiveSelectedItem = selectedItem
+            ?: if (currentPlayingPlaylist == internalSelected) {
+                currentPlayingPlaylistItemKey?.takeIf { it.isNotBlank() }
+                    ?: currentPlayingUri?.takeIf { it.isNotBlank() }
+            } else {
+                null
+            }
+        PlaylistRepository.setPlayedMoveSelection(
+            playlistName = internalSelected,
+            uri = effectiveSelectedItem,
+            songId = effectiveSelectedItem?.let { playbackControlSelectionSongId(it, variantFamilyById) }
+        )
+    }
+
     var renameTarget by remember { mutableStateOf<String?>(null) }
     var renameText by remember { mutableStateOf("") }
     var renameGroupTarget by remember { mutableStateOf<String?>(null) }
@@ -413,6 +432,26 @@ fun QuickPlaylistsScreen(
     var moveTargetOptions by remember { mutableStateOf<List<PlaylistMoveOption>>(emptyList()) }
 
     var isFillerRunning by remember { mutableStateOf(FillerSoundManager.isPlaying()) }
+
+    LaunchedEffect(
+        compactTabletLayout,
+        internalSelected,
+        keyboardSelectedItem,
+        currentPlayingPlaylist,
+        currentPlayingPlaylistItemKey,
+        currentPlayingUri,
+        variantFamilyById
+    ) {
+        updatePlayedMoveSelection(keyboardSelectedItem)
+    }
+
+    DisposableEffect(compactTabletLayout) {
+        onDispose {
+            if (compactTabletLayout) {
+                PlaylistRepository.setPlayedMoveSelection(null, null)
+            }
+        }
+    }
 
     // dialog création titre texte (ancienne méthode, on la garde pour l’instant)
     var showCreateTextDialog by remember { mutableStateOf(false) }
@@ -1193,6 +1232,7 @@ fun QuickPlaylistsScreen(
         }
         val targetItem = playableItems[targetIndex]
         keyboardSelectedItem = targetItem
+        updatePlayedMoveSelection(targetItem)
         scrollKeyboardSelectionIntoView(targetItem)
         return targetItem
     }
@@ -1216,6 +1256,7 @@ fun QuickPlaylistsScreen(
 
         val targetItem = selectableItems[targetIndex]
         keyboardSelectedItem = targetItem
+        updatePlayedMoveSelection(targetItem)
         onSequentialSelectionChanged(playbackControlSelectionSongId(targetItem, variantFamilyById))
     }
 

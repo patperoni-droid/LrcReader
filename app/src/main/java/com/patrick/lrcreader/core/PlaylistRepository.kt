@@ -65,6 +65,12 @@ object PlaylistRepository {
     private var nowPlayingPlaylist: String? = null
     private var nowPlayingUri: String? = null
     private var nowPlayingSongId: String? = null
+    private var playedMoveSelectionPlaylist: String? = null
+    private var playedMoveSelectionUri: String? = null
+    private var playedMoveSelectionSongId: String? = null
+    private var pendingPlayedMovePlaylist: String? = null
+    private var pendingPlayedMoveUri: String? = null
+    private var pendingPlayedMoveSongId: String? = null
 
     private var playbackAccumMs: Long = 0L
     private var lastTickElapsedMs: Long? = null
@@ -99,6 +105,22 @@ object PlaylistRepository {
         lastTickElapsedMs = null
         playedTriggeredForCurrent = false
         nowPlayingArmedAtElapsedMs = null
+    }
+
+    fun setPlayedMoveSelection(
+        playlistName: String?,
+        uri: String?,
+        songId: String? = null
+    ) {
+        val cleanPlaylist = playlistName?.trim()?.takeIf { it.isNotEmpty() }
+        val cleanUri = normalizeUriKey(uri)
+        playedMoveSelectionPlaylist = cleanPlaylist
+        playedMoveSelectionUri = cleanUri
+        playedMoveSelectionSongId = normalizeSongId(songId)
+            ?: cleanPlaylist?.let { playlist ->
+                cleanUri?.let { selectedUri -> resolveSongIdForState(playlist, selectedUri) }
+            }
+        movePendingPlayedItemIfUnselected()
     }
 
     /**
@@ -149,21 +171,13 @@ object PlaylistRepository {
                 songId = songId
             )
 
-            val list = playlists[pl]
-            var moved = false
-            if (list != null) {
-                val idx = list.indexOf(uri).takeIf { it >= 0 }
-                    ?: songId?.takeIf { currentSongId ->
-                        playlistSongIdOccurrenceCount(pl, currentSongId) == 1
-                    }?.let { currentSongId ->
-                        list.indexOfFirst { item -> resolveSongIdForState(pl, item) == currentSongId }
-                            .takeIf { it >= 0 }
-                    }
-                if (idx != null) {
-                    list.removeAt(idx)
-                    list.add(uri)
-                    moved = true
-                }
+            val moved = if (isPlayedMoveSelection(pl, uri, songId)) {
+                pendingPlayedMovePlaylist = pl
+                pendingPlayedMoveUri = uri
+                pendingPlayedMoveSongId = songId
+                false
+            } else {
+                movePlayedItemToEnd(pl, uri, songId)
             }
 
             if (changed || moved) {
@@ -239,8 +253,14 @@ object PlaylistRepository {
      */
     fun getSongsFor(playlistName: String): List<String> {
         val all = playlistSongsSnapshot(playlistName)
-        val notPlayed = all.filterNot { isSongPlayed(playlistName, it) }
-        val alreadyPlayed = all.filter { isSongPlayed(playlistName, it) }
+        val notPlayed = all.filterNot { uri ->
+            isSongPlayed(playlistName, uri) &&
+                !isPlayedMoveSelection(playlistName, uri, resolveSongIdForState(playlistName, uri))
+        }
+        val alreadyPlayed = all.filter { uri ->
+            isSongPlayed(playlistName, uri) &&
+                !isPlayedMoveSelection(playlistName, uri, resolveSongIdForState(playlistName, uri))
+        }
         return notPlayed + alreadyPlayed
     }
 
@@ -564,6 +584,12 @@ object PlaylistRepository {
         customTitlesBySongId.clear()
         playlistColors.clear()
         nowPlayingSongId = null
+        playedMoveSelectionPlaylist = null
+        playedMoveSelectionUri = null
+        playedMoveSelectionSongId = null
+        pendingPlayedMovePlaylist = null
+        pendingPlayedMoveUri = null
+        pendingPlayedMoveSongId = null
         bump()
     }
 
@@ -740,6 +766,54 @@ object PlaylistRepository {
         val added = legacySet.add(uri)
         val removedSongId = songId?.let { playedSongIds[playlistName]?.remove(it) == true } == true
         return added || removedSongId
+    }
+
+    private fun isPlayedMoveSelection(
+        playlistName: String,
+        uri: String,
+        songId: String?
+    ): Boolean {
+        if (playlistName != playedMoveSelectionPlaylist) return false
+        val selectedUri = playedMoveSelectionUri ?: return false
+        if (selectedUri == uri) return true
+        val selectedSongId = playedMoveSelectionSongId ?: return false
+        return songId != null &&
+            songId == selectedSongId &&
+            playlistSongIdOccurrenceCount(playlistName, songId) == 1
+    }
+
+    private fun movePendingPlayedItemIfUnselected() {
+        val playlist = pendingPlayedMovePlaylist ?: return
+        val uri = pendingPlayedMoveUri ?: return
+        val songId = pendingPlayedMoveSongId
+        if (isPlayedMoveSelection(playlist, uri, songId)) return
+
+        pendingPlayedMovePlaylist = null
+        pendingPlayedMoveUri = null
+        pendingPlayedMoveSongId = null
+
+        if (movePlayedItemToEnd(playlist, uri, songId)) {
+            bump()
+        }
+    }
+
+    private fun movePlayedItemToEnd(
+        playlistName: String,
+        uri: String,
+        songId: String?
+    ): Boolean {
+        val list = playlists[playlistName] ?: return false
+        val idx = list.indexOf(uri).takeIf { it >= 0 }
+            ?: songId?.takeIf { currentSongId ->
+                playlistSongIdOccurrenceCount(playlistName, currentSongId) == 1
+            }?.let { currentSongId ->
+                list.indexOfFirst { item -> resolveSongIdForState(playlistName, item) == currentSongId }
+                    .takeIf { it >= 0 }
+            }
+            ?: return false
+        list.removeAt(idx)
+        list.add(uri)
+        return true
     }
 
     private fun setSongReviewState(
