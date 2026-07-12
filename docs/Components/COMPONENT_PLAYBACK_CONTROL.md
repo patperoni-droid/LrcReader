@@ -2,31 +2,42 @@
 
 ## Mission
 
-Le `Playback Control` est le centre de contrôle universel de la lecture de SMP.
+Le `Playback Control` est le centre de contrôle universel du **Playback actif** de SMP.
 
-Il permet au musicien de contrôler immédiatement le morceau en cours sans revenir systématiquement dans le Player.
+Il permet au musicien de contrôler immédiatement le morceau actuellement en lecture sans revenir systématiquement dans le Player.
 
 Le Player reste l'écran complet.
 
-Le `Playback Control` est un composant réutilisable.
+Le `Playback Control` est un composant officiel, réutilisable et indépendant des écrans.
 
 ---
 
 ## Philosophie
 
-Le `Playback Control` ne remplace pas le Player.
+Le `Playback Control` ne remplace jamais le Player.
 
-Le Player conserve :
+Le Player conserve notamment :
 
-- paroles ;
-- accords ;
-- timeline détaillée ;
+- les paroles ;
+- les accords ;
+- la timeline détaillée ;
 - Define Next ;
-- fonctions avancées.
+- les fonctions avancées.
 
-Le `Playback Control` fournit uniquement les commandes utilisées très fréquemment pendant une répétition ou un concert.
+Le `Playback Control` regroupe uniquement les commandes les plus utilisées pendant une répétition ou un concert.
 
-Il doit permettre de garder le contrôle musical sans changer de contexte.
+Son objectif est de permettre au musicien de conserver le contrôle du concert sans changer d'écran.
+
+En mode Live (tablette), SMP distingue volontairement deux notions :
+
+- le morceau actuellement en lecture ;
+- le morceau actuellement sélectionné.
+
+Cette séparation permet de préparer le morceau suivant sans interrompre celui qui est en cours.
+
+**La navigation prépare.**
+
+**Le bouton Play confirme.**
 
 ---
 
@@ -40,206 +51,329 @@ Il doit permettre de garder le contrôle musical sans changer de contexte.
 - compatible tablette ;
 - aucune duplication de logique.
 
-Le `Playback Control` appartient à SMP, pas à un écran particulier.
+Le `Playback Control` appartient à SMP et jamais à un écran particulier.
+
+Il ne contrôle jamais un écran.
+
+Il contrôle toujours le Playback actif.
 
 ---
 
-## Composition V1
+## Playback actif
 
-Le composant comprend :
+À un instant donné, SMP possède un unique Playback actif.
+
+Ce Playback peut avoir été démarré depuis :
+
+- Lecteur Audio / Paroles ;
+- Bibliothèque ;
+- LEVELS ;
+- Bus Principal ;
+- toute autre interface autorisée.
+
+Lorsqu'un nouveau morceau est lancé :
+
+- il devient automatiquement le Playback actif ;
+- le Playback précédent est arrêté conformément aux règles de coordination audio ;
+- tous les Playback Control pilotent désormais ce nouveau Playback actif.
+
+Le changement d'écran ne modifie jamais le Playback actif.
+
+---
+
+## Sélection
+
+Le Playback actif et la sélection représentent deux états distincts du système SMP.
+
+Ils peuvent être synchronisés.
+
+Exemple :
+
+- le morceau sélectionné est aussi le morceau actuellement en lecture.
+
+Ils peuvent aussi être désynchronisés.
+
+Exemple :
+
+- un morceau continue de jouer ;
+- le musicien prépare un autre morceau en le sélectionnant.
+
+En mode Live tablette, toute méthode de sélection prépare uniquement un morceau.
+
+Cette sélection peut provenir :
+
+- d'un appui tactile sur la playlist ;
+- de la Navigation Séquentielle.
+
+Dans tous les cas :
+
+- le morceau devient sélectionné ;
+- le Playback actif continue normalement ;
+- aucune lecture automatique n'est déclenchée.
+
+Cette séparation est volontaire.
+
+Elle constitue le fondement du mode Live de SMP.
+
+---
+
+## Responsabilités
+
+Le `Playback Control` :
+
+- ne modifie jamais la playlist ;
+- ne déplace jamais la sélection ;
+- ne décide jamais du morceau suivant.
+
+Il agit uniquement sur le Playback actif et utilise la sélection fournie par la Navigation Séquentielle.
+
+---
+
+## Composition
+
+### Téléphone
+
+Le Playback Control reste volontairement compact.
+
+Il comprend :
 
 - barre de progression ;
 - temps courant ;
-- temps total, ou temps restant selon évolution ;
-- bouton Retour Début ;
-- bouton principal Lecture / Pause ;
-- réglage rapide du gain ;
-- affichage du gain courant.
+- temps total ;
+- Retour début ;
+- bouton Lecture / Pause ;
+- réglage rapide ;
+- affichage de la valeur.
 
-Cette composition représente le premier périmètre fonctionnel du composant.
+Cette ergonomie reste prioritaire.
 
----
+Sur téléphone, le comportement historique est conservé.
 
-## Intégration
+Un appui sur un morceau de la playlist lance immédiatement sa lecture.
 
-Le `Playback Control` est un composant autonome.
-
-Les écrans qui l'utilisent doivent respecter sa structure interne.
-
-Ils ne doivent jamais :
-
-- modifier l'ordre des lignes ;
-- superposer les éléments ;
-- réorganiser le contenu interne.
-
-Si un problème d'affichage apparaît, la correction doit être effectuée dans le conteneur de l'écran et non dans le `Playback Control`.
+Cette règle privilégie la rapidité d'action sur un écran compact.
 
 ---
 
-## Positionnement
+### Tablette (Mode Live)
 
-Le `Playback Control` est un composant ancré.
+La console tablette est conçue pour fonctionner **en complément de la Navigation Séquentielle**.
 
-Son emplacement fait partie de son identité.
+Elle sépare explicitement les commandes Play et Pause.
 
-Son emplacement officiel est :
+Elle comprend :
 
-- en bas de l'écran ;
-- exactement au même emplacement que dans le Lecteur Audio / Paroles.
+- barre de progression ;
+- temps courant ;
+- temps total ;
+- Retour début ;
+- bouton Play ;
+- bouton Pause ;
+- réglage rapide ;
+- affichage de la valeur.
 
-Le `Playback Control` doit toujours être positionné au même endroit que dans le Lecteur Audio / Paroles.
+Le bouton Play reste un bouton Play permanent.
 
-Il ne doit jamais être centré verticalement ni déplacé selon les écrans.
+Il ne devient jamais un bouton Pause.
 
-Le but est de conserver une mémoire musculaire identique dans tous les écrans.
+En mode Live tablette, la sélection prépare uniquement le morceau ciblé.
 
-Les écrans doivent s'adapter au `Playback Control`.
+Elle ne déclenche jamais une lecture automatiquement.
 
-Les écrans doivent adapter leur contenu afin de conserver ce positionnement.
+La sélection peut provenir :
 
-Le `Playback Control` ne doit pas être repositionné en fonction de la mise en page locale.
+- d'un appui tactile sur la playlist ;
+- de la Navigation Séquentielle.
 
-Cette règle provient des essais réalisés en situation réelle de concert.
+Le Playback actif continue normalement tant que le musicien n'appuie pas explicitement sur Play.
+
+Le bouton Play devient jaune lorsque la sélection ne correspond plus au Playback actif.
+
+La Navigation Séquentielle reste un composant indépendant chargé de gérer la sélection.
+
+Cette ergonomie est spécifique au mode Live.
 
 ---
 
-## Règle Du Bouton Principal
+## Bouton Play
 
-Le bouton principal est un carré.
+Le bouton Play possède toujours la même responsabilité :
 
-Sa couleur indique l'état global de lecture.
+> lancer le morceau actuellement sélectionné.
 
-### Etat 1
+Sa fonction ne change jamais.
 
-Carré vert.
+Le lancement constitue toujours une décision explicite du musicien.
 
-Icône :
+Le bouton Play ne déclenche jamais automatiquement une lecture.
 
-```text
-▶
+Le bouton Play ne modifie jamais la sélection.
+
+Il utilise simplement la sélection courante comme cible de lecture.
+
+Sur tablette, le bouton Play reste toujours visible et conserve toujours sa signification.
+
+Il ne devient jamais un bouton Pause, même lorsque le Playback actif est en lecture ou suspendu.
+
+Sa couleur indique uniquement la relation entre :
+
+- la sélection ;
+- le Playback actif.
+
+### Vert
+
+Le morceau sélectionné correspond au Playback actif.
+
+Lecture et sélection sont synchronisées.
+
+L'état lecture ou pause du Playback actif ne transforme pas le bouton Play en bouton Pause.
+
+### Jaune
+
+Le musicien a sélectionné un autre morceau.
+
+Le Playback actif continue normalement.
+
+Cette sélection prépare un autre morceau sans déclencher de lecture automatique.
+
+Le bouton Play indique qu'un nouveau morceau est prêt à être lancé.
+
+Lorsque ce morceau est lancé, il devient le nouveau Playback actif et le bouton Play redevient vert.
+
+---
+
+## Bouton Pause
+
+Le bouton Pause agit uniquement sur le Playback actif.
+
+Sur tablette, il constitue une commande distincte du bouton Play.
+
+Il suspend la lecture du Playback actif.
+
+Il ne modifie jamais :
+
+- la sélection ;
+- la playlist ;
+- la Navigation Séquentielle.
+
+Si le musicien a préparé un autre morceau par la sélection, cette préparation est conservée.
+
+---
+
+## Bouton Retour
+
+Le bouton Retour remet uniquement le Playback actif au début.
+
+Il ne modifie jamais :
+
+- la sélection ;
+- l'état Lecture / Pause.
+
+Comportement :
+
+- lecture → retour à 0:00 et lecture conservée ;
+- pause → retour à 0:00 et pause conservée ;
+- aucun Playback actif → aucune action.
+
+---
+
+## Navigation Séquentielle
+
+Les commandes ▲ ▼ ne déclenchent jamais une lecture.
+
+Elles préparent uniquement la sélection dans la playlist.
+
+En mode Live tablette, elles produisent le même résultat qu'un appui tactile sur un morceau :
+
+- la sélection change ;
+- le Playback actif continue ;
+- le bouton Play devient jaune si un autre morceau est préparé.
+
+Cette sélection peut être préparée pendant qu'un autre morceau continue de jouer.
+
+Le lancement reste toujours une décision explicite du musicien via le bouton Play.
+
+---
+
+## Réglage rapide contextuel
+
+Le Playback Control contient une zone de réglage rapide.
+
+```
+[-] Valeur [+]
 ```
 
-Action :
+Le composant ne possède jamais de réglage propre.
 
-Lecture ou reprise.
-
-### Etat 2
-
-Carré rouge.
-
-Icône :
-
-```text
-⏸
-```
-
-Action :
-
-Pause.
-
-Une nouvelle pression reprend exactement au même endroit.
-
-Le bouton principal ne remet jamais le morceau au début.
-
----
-
-## Règle Du Bouton Retour
-
-Le bouton Retour remet le morceau au début.
-
-Sa mission est uniquement de gérer la position.
-
-Il ne modifie jamais l'état Lecture / Pause.
-
-Comportement attendu :
-
-- si le morceau est en lecture, le bouton revient à `0:00` et la lecture continue ;
-- si le morceau est en pause, le bouton revient à `0:00` et le Player reste en pause ;
-- si aucun morceau n'est chargé, le bouton ne fait rien.
-
-Le bouton Retour ne déclenche jamais une lecture, une pause ou une reprise.
-
----
-
-## Réglage Rapide Du Gain
-
-Le `Playback Control` permet un réglage rapide :
-
-```text
-[-]  +4 dB  [+]
-```
-
-Le `GainDrawer` reste le réglage précis.
-
-Les deux composants se complètent.
-
-Le `Playback Control` sert à corriger vite.
-
-Le `GainDrawer` sert à ajuster finement.
-
-Le réglage rapide du `Playback Control` pilote exactement la même valeur de gain que le `GainDrawer`.
-
-Il n'existe pas de gain propre au `Playback Control`.
-
-Chaque appui sur `[-]` ou `[+]` applique un pas de `1 dB` via la logique officielle de réglage du gain du morceau courant.
-
-Le réglage rapide est contextuel.
-
-Le `Playback Control` ne possède jamais de volume propre.
-
-L'écran hôte fournit :
-
-- la valeur affichée ;
-- les callbacks ;
-- la logique associée.
+Il pilote toujours le réglage fourni par l'écran hôte.
 
 Exemples :
 
-- Player -> Gain Playback ;
-- LEVELS -> Gain Playback ;
-- Bibliothèque -> Gain Playback ;
-- Bus Principal -> Gain Playback ;
-- Fond sonore -> Volume Fond sonore ;
-- DJ -> Volume DJ, si intégré un jour.
+- Player → Gain Playback ;
+- LEVELS → Gain Playback ;
+- Bibliothèque → Gain Playback ;
+- Bus Principal → Gain Playback ;
+- Fond sonore → Volume Fond sonore ;
+- DJ → Volume DJ.
 
----
+Le GainDrawer reste le réglage précis.
 
-## Premier Périmètre
-
-Premier écran d'intégration :
-
-- Lecteur Audio / Paroles.
-
-Les autres écrans seront évalués après validation de cette première intégration.
-
-Cette règle ne fige pas de liste d'écrans exclus.
+Le Playback Control permet un ajustement rapide.
 
 ---
 
 ## Principes UX
 
-Le `Playback Control` doit :
+Le Playback Control doit :
 
 - être immédiatement identifiable ;
-- être utilisable sans apprentissage ;
-- privilégier les gestes les plus fréquents ;
-- ne jamais masquer les informations importantes ;
-- rester compact.
+- conserver une géométrie stable ;
+- conserver les commandes au même emplacement ;
+- conserver les mêmes commandes sur un même périphérique ;
+- ne jamais changer la signification d'un bouton ;
+- garder Play et Pause comme deux commandes distinctes en mode Live tablette ;
+- utiliser les couleurs uniquement pour représenter un état ;
+- rester utilisable sans apprentissage.
 
-Il doit être assez discret pour exister dans plusieurs contextes, mais assez clair pour être reconnu instantanément pendant un concert.
+La mémoire musculaire du musicien est prioritaire.
+
+En mode Live tablette, toutes les méthodes de sélection possèdent le même comportement.
+
+La préparation d'un morceau est indépendante de son lancement.
+
+Le lancement reste toujours une décision explicite du musicien.
+
+Cette différence avec le téléphone est volontaire :
+
+- le téléphone privilégie la rapidité ;
+- la console Live tablette privilégie la sécurité.
 
 ---
 
 ## Statut
 
-Statut : STABLE
+**Statut : ARCHITECTURE VALIDÉE**
 
-Son architecture est désormais considérée comme stabilisée.
+Le Playback Control constitue désormais la console officielle de pilotage du Playback actif.
 
-Les évolutions futures pourront concerner :
+En mode Live (tablette), il sépare volontairement :
 
-- l'apparence graphique ;
-- les espacements ;
-- des améliorations ergonomiques.
+- la préparation du morceau suivant ;
+- le contrôle du morceau actuellement en lecture.
 
-En revanche, les responsabilités du composant, son comportement, sa structure interne et son positionnement officiel constituent désormais la référence SMP.
+Cette séparation constitue une règle officielle de l'architecture SMP.
+
+---
+
+## Règle fondamentale
+
+En mode Live, SMP sépare volontairement :
+
+- la préparation d'un morceau ;
+- son exécution.
+
+La préparation consiste à choisir ou déplacer la sélection.
+
+L'exécution consiste à lancer effectivement le morceau.
+
+Cette séparation garantit que le musicien conserve toujours la maîtrise du moment où un nouveau morceau est lancé.
