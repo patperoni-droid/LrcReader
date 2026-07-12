@@ -52,6 +52,7 @@ import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.LyricsViewMode
 import com.patrick.lrcreader.core.appendCapturedChordLineSorted
 import com.patrick.lrcreader.core.captureLiveChord
 import com.patrick.lrcreader.core.clearAllChordsKeepingPaletteAndLyrics
@@ -130,7 +131,9 @@ fun LyricsEditorSection(
     onPersistSucceeded: (List<LrcLine>) -> Unit,
     onPersistLines: suspend (List<LrcLine>) -> Boolean,
     onDeletePersisted: suspend () -> Boolean,
-    mainTabLabelRes: Int = R.string.lyrics_editor_tab_lyrics,
+    currentContentMode: LyricsViewMode = LyricsViewMode.LYRICS,
+    onContentModeChange: (LyricsViewMode) -> Unit = {},
+    compactEditorTabs: Boolean = false,
     inputLabelRes: Int = R.string.lyrics_editor_input_label,
     enableCueEditing: Boolean = true,
     showChordPalette: Boolean = false,
@@ -170,7 +173,7 @@ fun LyricsEditorSection(
     var lineMenuColorArgb by remember { mutableStateOf<Int?>(null) }
     val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
     val tabletLineEditFocusActive = tabletFocusEditingMode &&
-        currentEditTab == 0 &&
+        currentEditTab != 2 &&
         rawTextFieldFocused &&
         keyboardVisible
     var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
@@ -202,10 +205,25 @@ fun LyricsEditorSection(
     } else {
         R.string.lyrics_editor_hint_do_not_show_again
     }
+    val lyricsTabLabelRes = if (compactEditorTabs) {
+        R.string.lyrics_editor_tab_lyrics_short
+    } else {
+        R.string.lyrics_editor_tab_lyrics
+    }
+    val chordsTabLabelRes = if (compactEditorTabs) {
+        R.string.lyrics_editor_tab_chords_short
+    } else {
+        R.string.player_view_chords
+    }
+    val syncTabLabelRes = if (compactEditorTabs) {
+        R.string.lyrics_editor_tab_sync_short
+    } else {
+        R.string.lyrics_editor_tab_sync
+    }
 
     LaunchedEffect(currentEditTab) {
         if (
-            currentEditTab == 1 &&
+            currentEditTab == 2 &&
             !hasShownEditorHintThisSession &&
             !LyricsEditorHintPrefs.isDismissed(context)
         ) {
@@ -322,7 +340,7 @@ fun LyricsEditorSection(
         if (simpleLines.isEmpty()) return emptyList()
 
         return when (currentEditTab) {
-            0 -> {
+            0, 1 -> {
                 if (rawHasTimestamps) {
                     parsedRawLines
                 } else if (editingLines.isEmpty()) {
@@ -347,16 +365,44 @@ fun LyricsEditorSection(
         if (targetTab == currentEditTab) return
 
         when (targetTab) {
-            1 -> {
+            2 -> {
                 val normalizedLines = buildLinesFromRawDraft()
                 applyEditingLinesWithUndo(normalizedLines, updateRawDraft = false)
             }
-            0 -> {
+            0, 1 -> {
                 applyLinesToRawDraft(editingLines)
             }
         }
 
         onCurrentEditTabChange(targetTab)
+    }
+
+    fun switchContentTab(targetTab: Int, targetMode: LyricsViewMode) {
+        if (targetMode == currentContentMode) {
+            switchEditTab(targetTab)
+            return
+        }
+        if (isPersistBusy) return
+
+        scope.launch {
+            isPersistBusy = true
+            try {
+                val finalLines = buildPersistableLinesForCurrentDraft()
+                val persisted = if (finalLines.isEmpty()) {
+                    onDeletePersisted()
+                } else {
+                    onPersistLines(finalLines)
+                }
+                if (!persisted) return@launch
+
+                previousEditingLines = null
+                onPersistSucceeded(finalLines)
+                onContentModeChange(targetMode)
+                onCurrentEditTabChange(targetTab)
+            } finally {
+                isPersistBusy = false
+            }
+        }
     }
 
     fun insertChordFromPalette(chord: String) {
@@ -374,7 +420,7 @@ fun LyricsEditorSection(
     }
 
     fun handlePaletteChordClick(chord: String) {
-        if (showChordPalette && currentEditTab == 1) {
+        if (showChordPalette && currentEditTab == 2) {
             if (!isPlaying) {
                 val firstChordLine = captureLiveChord(
                     chord = chord,
@@ -445,7 +491,7 @@ fun LyricsEditorSection(
 
     LaunchedEffect(showChordPalette, currentEditTab, pendingCapturedLine, editingLines.size) {
         val pending = pendingCapturedLine ?: return@LaunchedEffect
-        if (!showChordPalette || currentEditTab != 1) return@LaunchedEffect
+        if (!showChordPalette || currentEditTab != 2) return@LaunchedEffect
         val targetIndex = editingLines.indexOfLast { it.timeMs == pending.timeMs && it.text == pending.text }
         if (targetIndex < 0) return@LaunchedEffect
 
@@ -871,18 +917,23 @@ fun LyricsEditorSection(
                     ) {
                         Tab(
                             selected = currentEditTab == 0,
-                            onClick = { switchEditTab(0) },
-                            text = { Text(stringResource(mainTabLabelRes)) }
+                            onClick = { switchContentTab(0, LyricsViewMode.LYRICS) },
+                            text = { Text(stringResource(lyricsTabLabelRes)) }
                         )
                         Tab(
                             selected = currentEditTab == 1,
-                            onClick = { switchEditTab(1) },
-                            text = { Text(stringResource(R.string.lyrics_editor_tab_sync)) }
+                            onClick = { switchContentTab(1, LyricsViewMode.CHORDS) },
+                            text = { Text(stringResource(chordsTabLabelRes)) }
+                        )
+                        Tab(
+                            selected = currentEditTab == 2,
+                            onClick = { switchEditTab(2) },
+                            text = { Text(stringResource(syncTabLabelRes)) }
                         )
                     }
                 }
 
-                if (showChordPalette && currentEditTab == 1) {
+                if (showChordPalette && currentEditTab == 2) {
                     TextButton(
                         onClick = { showChordHelpDialog = true }
                     ) {
@@ -915,7 +966,7 @@ fun LyricsEditorSection(
         }
 
         when (currentEditTab) {
-            0 -> {
+            0, 1 -> {
                 // Onglet SIMPLE
                 Column(
                     modifier = Modifier
@@ -1022,7 +1073,7 @@ fun LyricsEditorSection(
                 }
             }
 
-            1 -> {
+            2 -> {
                 // Onglet SYNCHRO
                 Column(
                     modifier = Modifier

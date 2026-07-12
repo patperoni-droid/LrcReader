@@ -506,7 +506,10 @@
 
     <!-- Lyrics editor section -->
     <string name="lyrics_editor_tab_lyrics">Lyrics</string>
+    <string name="lyrics_editor_tab_lyrics_short">Lyrics</string>
+    <string name="lyrics_editor_tab_chords_short">Ch.</string>
     <string name="lyrics_editor_tab_sync">Sync</string>
+    <string name="lyrics_editor_tab_sync_short">Sync</string>
     <string name="lyrics_editor_cd_save_lyrics">Save lyrics</string>
     <string name="lyrics_editor_input_label">Lyrics (one line per phrase)</string>
     <string name="chords_editor_input_label">Chords (one line per chord)</string>

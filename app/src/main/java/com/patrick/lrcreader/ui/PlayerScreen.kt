@@ -802,6 +802,23 @@ fun PlayerScreen(
     fun editorLyricsText(lines: List<LrcLine>): String =
         if (lines.any { it.timeMs > 0L }) linesToLrcText(lines) else plainLyricsText(lines)
 
+    fun loadSongEditorContent(mode: LyricsViewMode, initialTab: Int) {
+        editingTargetMode = mode
+        val sourceLines = if (mode == LyricsViewMode.CHORDS) {
+            parsedChordLines
+        } else {
+            parsedLines
+        }
+        rawLyricsText = if (sourceLines.isNotEmpty()) {
+            editorLyricsText(sourceLines)
+        } else {
+            ""
+        }
+        editingLines = sourceLines
+        editingLinesDirty = false
+        currentEditTab = initialTab
+    }
+
     fun closeLyricsEditorImmediately() {
         showUnsavedLyricsDialog = false
         isEditingLyrics = false
@@ -2497,11 +2514,14 @@ fun PlayerScreen(
                     }
                     true
                 },
-                mainTabLabelRes = if (editingTargetMode == LyricsViewMode.LYRICS) {
-                    R.string.lyrics_editor_tab_lyrics
-                } else {
-                    R.string.player_view_chords
+                currentContentMode = editingTargetMode,
+                onContentModeChange = { mode ->
+                    loadSongEditorContent(
+                        mode = mode,
+                        initialTab = if (mode == LyricsViewMode.CHORDS) 1 else 0
+                    )
                 },
+                compactEditorTabs = !compactTabletLayout,
                 inputLabelRes = if (editingTargetMode == LyricsViewMode.LYRICS) {
                     R.string.lyrics_editor_input_label
                 } else {
@@ -2828,32 +2848,26 @@ fun PlayerScreen(
                             showEditLyrics = selectedViewMode == LyricsViewMode.LYRICS ||
                                 selectedViewMode == LyricsViewMode.CHORDS,
                             onOpenEditor = {
-                                editingTargetMode = selectedViewMode
                                 editingTrackUri = currentTrackUri
-                                editingLinesDirty = false
                                 showUnsavedLyricsDialog = false
                                 // Do not resolve the exact SAF lyrics file synchronously here:
                                 // opening the editor must stay on the UI thread and fast.
                                 editingResolvedLrcFileName = resolvedLyricsLrcFileName
-                                val sourceLines = if (editingTargetMode == LyricsViewMode.CHORDS) {
-                                    parsedChordLines
+                                val initialMode = if (selectedViewMode == LyricsViewMode.CHORDS) {
+                                    LyricsViewMode.CHORDS
                                 } else {
-                                    parsedLines
+                                    LyricsViewMode.LYRICS
                                 }
-                                if (editingTargetMode == LyricsViewMode.LYRICS) {
+                                if (initialMode == LyricsViewMode.LYRICS) {
                                     Log.d(
                                         LYRICS_PIPELINE_TRACE_TAG,
-                                        "EDITOR_OPEN songId=${currentSongId ?: currentTrackUri.orEmpty()} source=PlayerScreen.parsedLines lineCount=${sourceLines.size} colorCount=${sourceLines.count { it.colorArgb != null }}"
+                                        "EDITOR_OPEN songId=${currentSongId ?: currentTrackUri.orEmpty()} source=PlayerScreen.parsedLines lineCount=${parsedLines.size} colorCount=${parsedLines.count { it.colorArgb != null }}"
                                     )
                                 }
-                                if (sourceLines.isNotEmpty()) {
-                                    rawLyricsText = editorLyricsText(sourceLines)
-                                    editingLines = sourceLines
-                                } else {
-                                    rawLyricsText = ""
-                                    editingLines = emptyList()
-                                }
-                                currentEditTab = 0
+                                loadSongEditorContent(
+                                    mode = initialMode,
+                                    initialTab = if (initialMode == LyricsViewMode.CHORDS) 1 else 0
+                                )
                                 isEditingLyrics = true
                             },
                             showTimeline = isCurrentTrackSmp,

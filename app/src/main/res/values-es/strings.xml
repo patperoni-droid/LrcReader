@@ -447,7 +447,10 @@
 
     <!-- Lyrics editor section -->
     <string name="lyrics_editor_tab_lyrics">Letras</string>
+    <string name="lyrics_editor_tab_lyrics_short">Letras</string>
+    <string name="lyrics_editor_tab_chords_short">Acor.</string>
     <string name="lyrics_editor_tab_sync">Sync</string>
+    <string name="lyrics_editor_tab_sync_short">Sync</string>
     <string name="lyrics_editor_cd_save_lyrics">Guardar letras</string>
     <string name="lyrics_editor_input_label">Letras (una línea por frase)</string>
     <string name="chords_editor_input_label">Acordes (una línea por acorde)</string>
