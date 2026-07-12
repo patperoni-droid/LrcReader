@@ -1200,8 +1200,33 @@ fun QuickPlaylistsScreen(
 
     suspend fun scrollKeyboardSelectionIntoView(targetItem: String) {
         val rowIndex = visibleRows.indexOfFirst { row -> row.item == targetItem }
-        if (rowIndex >= 0) {
+        if (rowIndex < 0) return
+
+        val visibleItems = listState.layoutInfo.visibleItemsInfo
+        if (visibleItems.isEmpty()) {
             listState.animateScrollToItem(rowIndex)
+            return
+        }
+
+        val targetInfo = visibleItems.firstOrNull { item -> item.index == rowIndex }
+        val viewportStart = listState.layoutInfo.viewportStartOffset
+        val viewportEnd = listState.layoutInfo.viewportEndOffset
+        when {
+            targetInfo == null && rowIndex < visibleItems.first().index ->
+                listState.animateScrollToItem(rowIndex)
+
+            targetInfo == null && rowIndex > visibleItems.last().index -> {
+                val firstTargetIndex = (rowIndex - visibleItems.size + 1).coerceAtLeast(0)
+                listState.animateScrollToItem(firstTargetIndex)
+            }
+
+            targetInfo != null && targetInfo.offset < viewportStart ->
+                listState.animateScrollToItem(rowIndex)
+
+            targetInfo != null && targetInfo.offset + targetInfo.size > viewportEnd -> {
+                val firstTargetIndex = (rowIndex - visibleItems.size + 1).coerceAtLeast(0)
+                listState.animateScrollToItem(firstTargetIndex)
+            }
         }
     }
 
@@ -1257,6 +1282,7 @@ fun QuickPlaylistsScreen(
         val targetItem = selectableItems[targetIndex]
         keyboardSelectedItem = targetItem
         updatePlayedMoveSelection(targetItem)
+        scope.launch { scrollKeyboardSelectionIntoView(targetItem) }
         onSequentialSelectionChanged(playbackControlSelectionSongId(targetItem, variantFamilyById))
     }
 
