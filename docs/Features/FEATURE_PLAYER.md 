@@ -181,26 +181,32 @@ Phone UI:
 
 ⸻
 
-# LYRICS EDITOR AUTO-SAVE
+# SONG EDITOR SAVE
 
-The lyrics editor must auto-save user work.
+The unified song editor must preserve user work across its permanent tabs:
+- Lyrics
+- Chords
+- Sync
 
 Covered changes:
 - lyric text
-- timestamps
+- lyric timestamps
 - line colors
+- chord text
+- chord timestamps
 - LRC import results
 - line edit/delete operations
 
 Rules:
 - leaving the editor must not lose work
+- switching tabs is not leaving the editor and must not block on full persistence
+- the visible Save action saves the current editor session at song scope
 - auto-save must run only after real changes
 - pending changes must be flushed before returning to Player when needed
 - lyrics writes must be serialized and atomic when using runtime files
-- editor exit must wait for the final lyrics flush before returning to Player
-- the visible Save button is no longer the central lyrics workflow
-- Chords editor behavior must not regress
-- priority: never lose user lyrics
+- editor exit must wait for the final editor-session save before returning to Player
+- lyrics and chords must use their official persistence paths and must never overwrite each other
+- priority: never lose user song-editor work
 
 ⸻
 

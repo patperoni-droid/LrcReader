@@ -131,6 +131,22 @@ fun LyricsEditorSection(
     onPersistSucceeded: (List<LrcLine>) -> Unit,
     onPersistLines: suspend (List<LrcLine>) -> Boolean,
     onDeletePersisted: suspend () -> Boolean,
+    onDraftLinesPrepared: (LyricsViewMode, List<LrcLine>) -> Unit = { _, _ -> },
+    onSaveEditorSession: suspend (LyricsViewMode, List<LrcLine>, Boolean) -> Boolean = { _, lines, closeAfterSave ->
+        val persisted = if (lines.isEmpty()) {
+            onDeletePersisted()
+        } else {
+            onPersistLines(lines)
+        }
+        if (persisted) {
+            if (closeAfterSave) {
+                onSaveSortedLines(lines)
+            } else {
+                onPersistSucceeded(lines)
+            }
+        }
+        persisted
+    },
     currentContentMode: LyricsViewMode = LyricsViewMode.LYRICS,
     onContentModeChange: (LyricsViewMode) -> Unit = {},
     compactEditorTabs: Boolean = false,
@@ -382,27 +398,11 @@ fun LyricsEditorSection(
             switchEditTab(targetTab)
             return
         }
-        if (isPersistBusy) return
-
-        scope.launch {
-            isPersistBusy = true
-            try {
-                val finalLines = buildPersistableLinesForCurrentDraft()
-                val persisted = if (finalLines.isEmpty()) {
-                    onDeletePersisted()
-                } else {
-                    onPersistLines(finalLines)
-                }
-                if (!persisted) return@launch
-
-                previousEditingLines = null
-                onPersistSucceeded(finalLines)
-                onContentModeChange(targetMode)
-                onCurrentEditTabChange(targetTab)
-            } finally {
-                isPersistBusy = false
-            }
-        }
+        val finalLines = buildPersistableLinesForCurrentDraft()
+        onDraftLinesPrepared(currentContentMode, finalLines)
+        previousEditingLines = null
+        onContentModeChange(targetMode)
+        onCurrentEditTabChange(targetTab)
     }
 
     fun insertChordFromPalette(chord: String) {
@@ -628,7 +628,7 @@ fun LyricsEditorSection(
         updatePalette("", persist = false)
     }
 
-    suspend fun persistCurrentDraftAndClose() {
+    suspend fun persistCurrentDraft(closeAfterSave: Boolean) {
         val finalLines = buildPersistableLinesForCurrentDraft()
         if (!showChordPalette) {
             Log.d(
@@ -660,16 +660,13 @@ fun LyricsEditorSection(
         isPersistBusy = true
         try {
             if (finalLines.isEmpty()) {
-                val deleted = onDeletePersisted()
-                if (!deleted) return
+                val saved = onSaveEditorSession(currentContentMode, finalLines, closeAfterSave)
+                if (!saved) return
                 previousEditingLines = editingLines.map { it.copy() }
-                onEditingLinesChange(emptyList())
-                onRawLyricsTextChange("")
                 rawTextFieldValue = TextFieldValue("", TextRange(0))
                 if (!showChordPalette) {
                     Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_OK")
                 }
-                onSaveSortedLines(emptyList())
                 return
             }
 
@@ -685,7 +682,7 @@ fun LyricsEditorSection(
                 )
             }
 
-            val persisted = onPersistLines(finalLines)
+            val persisted = onSaveEditorSession(currentContentMode, finalLines, closeAfterSave)
             if (!persisted) {
                 if (!showChordPalette) {
                     Log.e(
@@ -708,7 +705,6 @@ fun LyricsEditorSection(
                     "AUTOSAVE_SUCCESS songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
                 )
             }
-            onSaveSortedLines(finalLines)
         } finally {
             isPersistBusy = false
         }
@@ -716,7 +712,7 @@ fun LyricsEditorSection(
 
     // 🔹 Enregistrer
     fun handleSave() {
-        scope.launch { persistCurrentDraftAndClose() }
+        scope.launch { persistCurrentDraft(closeAfterSave = false) }
     }
 
     val autoSaveLyricsLines = remember(
@@ -821,7 +817,7 @@ fun LyricsEditorSection(
             saveAndCloseRequestToken != consumedSaveAndCloseRequestToken
         ) {
             consumedSaveAndCloseRequestToken = saveAndCloseRequestToken
-            persistCurrentDraftAndClose()
+            persistCurrentDraft(closeAfterSave = true)
         }
     }
 
@@ -945,18 +941,16 @@ fun LyricsEditorSection(
                     }
                 }
 
-                if (showChordPalette) {
-                    IconButton(
-                        onClick = { handleSave() },
-                        enabled = !isPersistBusy,
-                        modifier = Modifier.padding(start = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.Check,
-                            contentDescription = stringResource(R.string.lyrics_editor_cd_save_lyrics),
-                            tint = Color(0xFF80CBC4)
-                        )
-                    }
+                IconButton(
+                    onClick = { handleSave() },
+                    enabled = !isPersistBusy,
+                    modifier = Modifier.padding(start = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = stringResource(R.string.lyrics_editor_cd_save_lyrics),
+                        tint = Color(0xFF80CBC4)
+                    )
                 }
 
                 headerEndContent()

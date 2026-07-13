@@ -765,6 +765,14 @@ fun PlayerScreen(
     var rawLyricsText by remember(lyricsEditorSessionKey) { mutableStateOf("") }
     var editingLines by remember(lyricsEditorSessionKey) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var editingLinesDirty by remember(lyricsEditorSessionKey) { mutableStateOf(false) }
+    var lyricsDraftRawText by remember(lyricsEditorSessionKey) { mutableStateOf("") }
+    var lyricsDraftLines by remember(lyricsEditorSessionKey) { mutableStateOf<List<LrcLine>>(emptyList()) }
+    var lyricsDraftDirty by remember(lyricsEditorSessionKey) { mutableStateOf(false) }
+    var lyricsDraftInitialized by remember(lyricsEditorSessionKey) { mutableStateOf(false) }
+    var chordsDraftRawText by remember(lyricsEditorSessionKey) { mutableStateOf("") }
+    var chordsDraftLines by remember(lyricsEditorSessionKey) { mutableStateOf<List<LrcLine>>(emptyList()) }
+    var chordsDraftDirty by remember(lyricsEditorSessionKey) { mutableStateOf(false) }
+    var chordsDraftInitialized by remember(lyricsEditorSessionKey) { mutableStateOf(false) }
     var currentEditTab by rememberSaveable(lyricsEditorSessionKey) { mutableStateOf(0) }
     var showUnsavedLyricsDialog by remember { mutableStateOf(false) }
     var saveAndCloseRequestToken by remember { mutableIntStateOf(0) }
@@ -802,20 +810,76 @@ fun PlayerScreen(
     fun editorLyricsText(lines: List<LrcLine>): String =
         if (lines.any { it.timeMs > 0L }) linesToLrcText(lines) else plainLyricsText(lines)
 
-    fun loadSongEditorContent(mode: LyricsViewMode, initialTab: Int) {
-        editingTargetMode = mode
-        val sourceLines = if (mode == LyricsViewMode.CHORDS) {
-            parsedChordLines
+    fun setSongEditorDraft(
+        mode: LyricsViewMode,
+        rawText: String,
+        lines: List<LrcLine>,
+        dirty: Boolean
+    ) {
+        if (mode == LyricsViewMode.CHORDS) {
+            chordsDraftRawText = rawText
+            chordsDraftLines = lines
+            chordsDraftDirty = dirty
+            chordsDraftInitialized = true
         } else {
-            parsedLines
+            lyricsDraftRawText = rawText
+            lyricsDraftLines = lines
+            lyricsDraftDirty = dirty
+            lyricsDraftInitialized = true
         }
-        rawLyricsText = if (sourceLines.isNotEmpty()) {
-            editorLyricsText(sourceLines)
+    }
+
+    fun captureActiveSongEditorDraft(lines: List<LrcLine> = editingLines) {
+        if (!isEditingLyrics) return
+        setSongEditorDraft(
+            mode = editingTargetMode,
+            rawText = rawLyricsText,
+            lines = lines,
+            dirty = editingLinesDirty
+        )
+    }
+
+    fun initializeSongEditorDrafts() {
+        setSongEditorDraft(
+            mode = LyricsViewMode.LYRICS,
+            rawText = editorLyricsText(parsedLines),
+            lines = parsedLines,
+            dirty = false
+        )
+        setSongEditorDraft(
+            mode = LyricsViewMode.CHORDS,
+            rawText = editorLyricsText(parsedChordLines),
+            lines = parsedChordLines,
+            dirty = false
+        )
+    }
+
+    fun loadSongEditorContent(mode: LyricsViewMode, initialTab: Int) {
+        captureActiveSongEditorDraft()
+        editingTargetMode = mode
+        val draftInitialized = if (mode == LyricsViewMode.CHORDS) {
+            chordsDraftInitialized
         } else {
-            ""
+            lyricsDraftInitialized
+        }
+        val sourceLines = when {
+            mode == LyricsViewMode.CHORDS && draftInitialized -> chordsDraftLines
+            mode == LyricsViewMode.CHORDS -> parsedChordLines
+            draftInitialized -> lyricsDraftLines
+            else -> parsedLines
+        }
+        rawLyricsText = when {
+            mode == LyricsViewMode.CHORDS && draftInitialized -> chordsDraftRawText
+            mode != LyricsViewMode.CHORDS && draftInitialized -> lyricsDraftRawText
+            sourceLines.isNotEmpty() -> editorLyricsText(sourceLines)
+            else -> ""
         }
         editingLines = sourceLines
-        editingLinesDirty = false
+        editingLinesDirty = if (mode == LyricsViewMode.CHORDS) {
+            chordsDraftDirty
+        } else {
+            lyricsDraftDirty
+        }
         currentEditTab = initialTab
     }
 
@@ -831,17 +895,11 @@ fun PlayerScreen(
         }
 
     fun requestCloseLyricsEditor() {
-        if (editingTargetMode == LyricsViewMode.LYRICS) {
-            Log.d(
-                LYRICS_PLAYER_SYNC_DIAG_TAG,
-                "EXIT_EDITOR_TO_PLAYER songId=${currentSongId ?: currentTrackUri.orEmpty()} pendingChanges=$editingLinesDirty"
-            )
-            saveAndCloseRequestToken++
-        } else if (editingLinesDirty) {
-            showUnsavedLyricsDialog = true
-        } else {
-            closeLyricsEditorImmediately()
-        }
+        Log.d(
+            LYRICS_PLAYER_SYNC_DIAG_TAG,
+            "EXIT_EDITOR_TO_PLAYER songId=${currentSongId ?: currentTrackUri.orEmpty()} pendingChanges=$editingLinesDirty"
+        )
+        saveAndCloseRequestToken++
     }
 
     fun showAccordsTrackChangedBlockedToast() {
@@ -855,6 +913,9 @@ fun PlayerScreen(
     fun showAccordsIoFailureToast(message: String) {
         Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
     }
+
+    val latestCurrentTrackUri by rememberUpdatedState(currentTrackUri)
+    val latestParsedLines by rememberUpdatedState(parsedLines)
 
     fun persistTimelineMarkers(
         updatedMarkers: List<TimelineMarker>,
@@ -1038,9 +1099,6 @@ fun PlayerScreen(
         persistTimelineMarkers(updatedMarkers, previousMarkers)
     }
 
-    val latestCurrentTrackUri by rememberUpdatedState(currentTrackUri)
-    val latestParsedLines by rememberUpdatedState(parsedLines)
-
     val accordsWriteQueue = remember(scope, context) {
         LatestAccordsWriteQueue<AccordsWriteRequest>(
             scope = scope
@@ -1119,6 +1177,576 @@ fun PlayerScreen(
     }
     DisposableEffect(accordsWriteQueue) {
         onDispose { accordsWriteQueue.close() }
+    }
+
+    fun recomputeCurrentIndexForLines(lines: List<LrcLine>) {
+        if (lines.isEmpty()) {
+            currentLrcIndex = 0
+            return
+        }
+        val totalOffsetMs = lyricsDelayMs + userOffsetMs
+        val effectivePos = (getPositionMs() - totalOffsetMs).coerceAtLeast(0L)
+        val idx = findActiveLrcIndex(lines, effectivePos)
+        currentLrcIndex = if (idx >= 0) idx else 0
+    }
+
+    suspend fun persistEditorChordLines(lines: List<LrcLine>): Boolean {
+        val lockedTrackUri = resolveAccordsEditTargetTrack(
+            lockedTrackUri = editingTrackUri,
+            currentTrackUri = currentTrackUri
+        )
+        if (lockedTrackUri == null) {
+            showAccordsTrackChangedBlockedToast()
+            Log.w(
+                "LrcDebug",
+                "ACCORDS_SAVE_BLOCKED trackChanged editingTrackUri=$editingTrackUri currentTrackUri=$currentTrackUri"
+            )
+            return false
+        }
+
+        val isSmpAccordsTrack = LrcStorage.isSmpRuntimeTrack(context, lockedTrackUri)
+        val saveOutcome = withContext(Dispatchers.IO) {
+            runCatching {
+                val migration = if (isSmpAccordsTrack) {
+                    null
+                } else {
+                    ensureSmpTrackForLyricsSave(lockedTrackUri)
+                }
+                if (!isSmpAccordsTrack && migration == null) {
+                    return@runCatching AccordsPersistOutcome(
+                        trackUriString = lockedTrackUri,
+                        migration = null,
+                        io = com.patrick.lrcreader.core.AccordsIoResult(
+                            success = false,
+                            stage = "autoMigrate"
+                        ),
+                        reloadedText = null
+                    )
+                }
+
+                val targetTrackUri = migration?.trackUriString ?: lockedTrackUri
+                val ioResult = runAccordsSaveIo(
+                    writeAccords = {
+                        writeAccordsToSplByTrackUri(
+                            context = context,
+                            trackUriString = targetTrackUri,
+                            preferredLrcFileName = editingResolvedLrcFileName,
+                            lines = lines.toList()
+                        )
+                    },
+                    ensureLyricsTwin = { writtenName ->
+                        val ensureResult = ensureLyricsFileExistsForTrack(
+                            context = context,
+                            trackUriString = targetTrackUri,
+                            preferredLrcFileName = writtenName
+                        )
+                        Log.d(
+                            "LrcDebug",
+                            "ACCORDS_ENSURE_LYRICS trackUri=$targetTrackUri target=$writtenName result=$ensureResult"
+                        )
+                        ensureResult
+                    }
+                )
+                if (!ioResult.success) {
+                    return@runCatching AccordsPersistOutcome(
+                        trackUriString = targetTrackUri,
+                        migration = migration,
+                        io = ioResult,
+                        reloadedText = null
+                    )
+                }
+
+                AccordsPersistOutcome(
+                    trackUriString = targetTrackUri,
+                    migration = migration,
+                    io = ioResult,
+                    reloadedText = readAccordsFromSplByTrackUri(
+                        context = context,
+                        trackUriString = targetTrackUri,
+                        preferredLrcFileName = editingResolvedLrcFileName
+                    )
+                )
+            }.getOrElse {
+                AccordsPersistOutcome(
+                    trackUriString = lockedTrackUri,
+                    migration = null,
+                    io = com.patrick.lrcreader.core.AccordsIoResult(
+                        success = false,
+                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
+                    ),
+                    reloadedText = null
+                )
+            }
+        }
+        if (!saveOutcome.io.success) {
+            Log.e(
+                "LrcDebug",
+                buildAccordsIoFailureLog(
+                    action = "save",
+                    trackUri = saveOutcome.trackUriString,
+                    io = saveOutcome.io
+                )
+            )
+            buildAccordsIoFailureFeedback(
+                context = context,
+                actionLabel = sAccordsActionSave,
+                io = saveOutcome.io
+            )?.let { showAccordsIoFailureToast(it) }
+            return false
+        }
+
+        val reloadedRaw = saveOutcome.reloadedText
+        if (reloadedRaw == null) {
+            Log.e("LrcDebug", "ACCORDS_SAVE_RELOAD_FAILED trackUri=${saveOutcome.trackUriString}")
+            showAccordsIoFailureToast(
+                buildAccordsIoFailureFeedback(
+                    action = "save",
+                    io = com.patrick.lrcreader.core.AccordsIoResult(
+                        success = false,
+                        stage = "reloadAccords"
+                    )
+                ) ?: sAccordsActionSave
+            )
+            return false
+        }
+
+        val reloadedParsed = if (reloadedRaw.isBlank()) emptyList() else parseLrc(reloadedRaw)
+        persistedChordLines = reloadedParsed
+        persistedHasChordsSource = true
+        parsedChordLines = reloadedParsed
+        hasChordsSource = true
+        saveOutcome.migration?.let {
+            editingTrackUri = it.trackUriString
+            onTrackPromotedToSmp(it)
+        }
+        if (selectedViewMode == LyricsViewMode.CHORDS) {
+            recomputeCurrentIndexForLines(parsedChordLines)
+        }
+        return true
+    }
+
+    suspend fun persistEditorLyricsLines(lines: List<LrcLine>): Boolean {
+        currentTrackUri?.let { trackUri ->
+            val preferredAtSave = resolvedLyricsLrcFileName
+            val saveStartMs = android.os.SystemClock.elapsedRealtime()
+            val effectiveTrackUri = LrcStorage.resolveRuntimeAlias(context, trackUri)
+            val isAlreadySmpTrack = LrcStorage.isSmpRuntimeTrack(context, effectiveTrackUri)
+            LyricsMemoryCache.invalidate(trackUri)
+            if (effectiveTrackUri != trackUri) {
+                LyricsMemoryCache.invalidate(effectiveTrackUri)
+            }
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "CACHE_INVALIDATE songId=${currentSongId ?: effectiveTrackUri}"
+            )
+            Log.d(
+                LYRICS_PLAYER_SYNC_DIAG_TAG,
+                "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: effectiveTrackUri}"
+            )
+            Log.d(
+                LYRICS_PERSIST_DIAG_TAG,
+                "AUTOSAVE_START songId=${currentSongId ?: effectiveTrackUri} reason=editor_save"
+            )
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "SAVE_REQUEST songId=${currentSongId ?: effectiveTrackUri} reason=editor_save lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
+            )
+            Log.d(
+                "LrcDebug",
+                "LYRICS_SAVE_CONFIRMED start trackUri=$trackUri lines=${lines.size}"
+            )
+            val saveOutcome = withContext(Dispatchers.IO) {
+                runCatching {
+                    val migration = if (isAlreadySmpTrack) {
+                        null
+                    } else {
+                        ensureSmpTrackForLyricsSave(effectiveTrackUri)
+                    }
+                    migration?.let {
+                        LrcStorage.rememberRuntimeAlias(context, trackUri, it.trackUriString)
+                    }
+                    val targetTrackUri = migration?.trackUriString ?: effectiveTrackUri
+                    if (targetTrackUri != trackUri) {
+                        LyricsMemoryCache.invalidate(targetTrackUri)
+                        Log.d(
+                            LYRICS_PLAYER_SYNC_DIAG_TAG,
+                            "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: targetTrackUri}"
+                        )
+                    }
+                    Log.d(
+                        LYRICS_PERSIST_DIAG_TAG,
+                        "AUTOSAVE_TARGET songId=${currentSongId ?: targetTrackUri} path/store=$targetTrackUri"
+                    )
+                    Log.d(
+                        LYRICS_PIPELINE_TRACE_TAG,
+                        "SAVE_START songId=${currentSongId ?: targetTrackUri} target=$targetTrackUri path=$targetTrackUri"
+                    )
+                    Log.d(
+                        PLAYER_LRC_TAG,
+                        "save_lyrics trackUri=$targetTrackUri lines=${lines.size}"
+                    )
+                    val saved = LrcStorage.saveForTrack(
+                        context = context,
+                        trackUriString = targetTrackUri,
+                        lines = lines
+                    )
+                    if (!saved) {
+                        Log.e(
+                            LYRICS_PIPELINE_TRACE_TAG,
+                            "SAVE_FAIL songId=${currentSongId ?: targetTrackUri} error=LrcStorage.saveForTrack_false"
+                        )
+                        return@runCatching null
+                    }
+
+                    val colorsSaved = TrackSettingsStore.saveLyricsLineColors(
+                        context = context,
+                        songId = currentSongId,
+                        uriString = LrcStorage.resolveRuntimeAlias(context, targetTrackUri),
+                        lyricsLineColors = extractLyricsLineColors(lines)
+                    )
+                    if (!colorsSaved) {
+                        Log.e(
+                            "LrcDebug",
+                            "LYRICS_LINE_COLORS_SAVE_FAILED trackUri=$targetTrackUri"
+                        )
+                        Log.e(
+                            LYRICS_PLAYER_SYNC_DIAG_TAG,
+                            "AUTOSAVE_FAIL error=lyrics_line_colors_save_failed songId=${currentSongId ?: targetTrackUri}"
+                        )
+                        Log.e(
+                            LYRICS_PIPELINE_TRACE_TAG,
+                            "SAVE_FAIL songId=${currentSongId ?: targetTrackUri} error=lyrics_line_colors_save_failed"
+                        )
+                    }
+
+                    val resolvedFileName = LrcStorage.resolveOriginForTrack(
+                        context = context,
+                        trackUriString = targetTrackUri
+                    )?.fileName ?: resolveExactLrcFileNameForTrack(
+                        context = context,
+                        trackUriString = targetTrackUri,
+                        preferredLrcFileName = preferredAtSave
+                    )
+
+                    if (!resolvedFileName.isNullOrBlank()) {
+                        ensureAccordsFileExistsForTrack(
+                            context = context,
+                            trackUriString = targetTrackUri,
+                            preferredLrcFileName = resolvedFileName
+                        )
+                    }
+
+                    LyricsPersistOutcome(
+                        trackUriString = targetTrackUri,
+                        migration = migration,
+                        resolvedFileName = resolvedFileName,
+                        debugPath = LrcStorage.resolveOriginForTrack(
+                            context = context,
+                            trackUriString = targetTrackUri
+                        )?.debugPath,
+                        reloadedText = LrcStorage.loadForTrack(context, targetTrackUri)
+                    )
+                }.onFailure { error ->
+                    Log.e(
+                        "LrcDebug",
+                        "LYRICS_SAVE_CONFIRMED failed trackUri=$trackUri",
+                        error
+                    )
+                }.getOrNull()
+            }
+
+            if (saveOutcome == null || saveOutcome.reloadedText.isNullOrBlank()) {
+                Log.e("LrcDebug", "LYRICS_SAVE_CONFIRMED reload_failed trackUri=$trackUri")
+                Log.e(
+                    LYRICS_PERSIST_DIAG_TAG,
+                    "AUTOSAVE_FAIL songId=${currentSongId ?: effectiveTrackUri} error=reload_failed"
+                )
+                Log.e(
+                    LYRICS_PIPELINE_TRACE_TAG,
+                    "SAVE_FAIL songId=${currentSongId ?: effectiveTrackUri} error=reload_failed"
+                )
+                return false
+            }
+
+            saveOutcome.migration?.let { onTrackPromotedToSmp(it) }
+
+            if (
+                !saveOutcome.resolvedFileName.isNullOrBlank() &&
+                (latestCurrentTrackUri == trackUri || latestCurrentTrackUri == saveOutcome.trackUriString)
+            ) {
+                updateResolvedLyricsFileName(
+                    saveOutcome.resolvedFileName,
+                    "source=LYRICS_SAVE"
+                )
+            }
+
+            val elapsedMs = android.os.SystemClock.elapsedRealtime() - saveStartMs
+            Log.d(
+                "LrcDebug",
+                "LYRICS_SAVE_CONFIRMED end trackUri=${saveOutcome.trackUriString} originalTrackUri=$trackUri durationMs=$elapsedMs resolved=${saveOutcome.resolvedFileName} migrated=${saveOutcome.migration != null}"
+            )
+            Log.d(
+                LYRICS_PLAYER_SYNC_DIAG_TAG,
+                "PLAYER_LYRICS_LOAD songId=${currentSongId ?: saveOutcome.trackUriString} source=EDITOR_SAVE lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
+            )
+            Log.d(
+                LYRICS_PERSIST_DIAG_TAG,
+                "AUTOSAVE_SUCCESS songId=${currentSongId ?: saveOutcome.trackUriString} path=${saveOutcome.debugPath.orEmpty()} lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }} fileSize=${saveOutcome.reloadedText.length}"
+            )
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "SAVE_SUCCESS songId=${currentSongId ?: saveOutcome.trackUriString} path=${saveOutcome.debugPath.orEmpty()} fileSize=${saveOutcome.reloadedText.length} lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
+            )
+        }
+        return true
+    }
+
+    suspend fun deleteEditorChordLines(): Boolean {
+        val lockedTrackUri = resolveAccordsEditTargetTrack(
+            lockedTrackUri = editingTrackUri,
+            currentTrackUri = currentTrackUri
+        )
+        if (lockedTrackUri == null) {
+            showAccordsTrackChangedBlockedToast()
+            Log.w(
+                "LrcDebug",
+                "ACCORDS_DELETE_BLOCKED trackChanged editingTrackUri=$editingTrackUri currentTrackUri=$currentTrackUri"
+            )
+            return false
+        }
+
+        val isSmpAccordsTrack = LrcStorage.isSmpRuntimeTrack(context, lockedTrackUri)
+        if (isSmpAccordsTrack) {
+            val initialIo = withContext(Dispatchers.IO) {
+                runCatching {
+                    runAccordsDeleteIo(
+                        deleteAccords = {
+                            deleteAccordsFromSplByTrackUri(
+                                context = context,
+                                trackUriString = lockedTrackUri,
+                                preferredLrcFileName = editingResolvedLrcFileName
+                            )
+                        }
+                    )
+                }.getOrElse {
+                    com.patrick.lrcreader.core.AccordsIoResult(
+                        success = false,
+                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
+                    )
+                }
+            }
+            val ioResult = if (initialIo.success) {
+                val remaining = withContext(Dispatchers.IO) {
+                    readAccordsFromSplByTrackUri(
+                        context = context,
+                        trackUriString = lockedTrackUri,
+                        preferredLrcFileName = editingResolvedLrcFileName
+                    )
+                }
+                if (remaining == null) {
+                    initialIo
+                } else {
+                    com.patrick.lrcreader.core.AccordsIoResult(
+                        success = false,
+                        stage = "reloadAccordsAfterDelete"
+                    )
+                }
+            } else {
+                initialIo
+            }
+
+            val previous = AccordsUiTruth(
+                lines = persistedChordLines,
+                hasSource = persistedHasChordsSource
+            )
+            val resolved = resolveAccordsUiTruthAfterDelete(
+                previous = previous,
+                io = ioResult
+            )
+            persistedChordLines = resolved.lines
+            persistedHasChordsSource = resolved.hasSource
+            parsedChordLines = resolved.lines
+            hasChordsSource = resolved.hasSource
+            if (selectedViewMode == LyricsViewMode.CHORDS) {
+                recomputeCurrentIndexForLines(parsedChordLines)
+            }
+
+            if (!ioResult.success) {
+                Log.e(
+                    "LrcDebug",
+                    buildAccordsIoFailureLog(
+                        action = "delete",
+                        trackUri = lockedTrackUri,
+                        io = ioResult
+                    )
+                )
+                buildAccordsIoFailureFeedback(
+                    context = context,
+                    actionLabel = sAccordsActionDelete,
+                    io = ioResult
+                )?.let { showAccordsIoFailureToast(it) }
+                return false
+            }
+            return true
+        }
+
+        val ioResult = runCatching {
+            runAccordsDeleteIo(
+                deleteAccords = {
+                    deleteAccordsFromSplByTrackUri(
+                        context = context,
+                        trackUriString = lockedTrackUri,
+                        preferredLrcFileName = editingResolvedLrcFileName
+                    )
+                }
+            )
+        }.getOrElse {
+            com.patrick.lrcreader.core.AccordsIoResult(
+                success = false,
+                stage = "exception:${it::class.simpleName ?: "Unknown"}"
+            )
+        }
+
+        val previous = AccordsUiTruth(
+            lines = persistedChordLines,
+            hasSource = persistedHasChordsSource
+        )
+        val resolved = resolveAccordsUiTruthAfterDelete(
+            previous = previous,
+            io = ioResult
+        )
+        persistedChordLines = resolved.lines
+        persistedHasChordsSource = resolved.hasSource
+        parsedChordLines = resolved.lines
+        hasChordsSource = resolved.hasSource
+        if (selectedViewMode == LyricsViewMode.CHORDS) {
+            recomputeCurrentIndexForLines(parsedChordLines)
+        }
+
+        if (!ioResult.success) {
+            Log.e(
+                "LrcDebug",
+                buildAccordsIoFailureLog(
+                    action = "delete",
+                    trackUri = lockedTrackUri,
+                    io = ioResult
+                )
+            )
+            buildAccordsIoFailureFeedback(
+                context = context,
+                actionLabel = sAccordsActionDelete,
+                io = ioResult
+            )?.let { showAccordsIoFailureToast(it) }
+            return false
+        }
+        return true
+    }
+
+    suspend fun deleteEditorLyricsLines(): Boolean {
+        currentTrackUri?.let { trackUri ->
+            LyricsMemoryCache.invalidate(trackUri)
+            val deleted = withContext(Dispatchers.IO) {
+                runCatching {
+                    Log.d(PLAYER_LRC_TAG, "delete_lyrics trackUri=$trackUri")
+                    LrcStorage.deleteForTrack(context, trackUri)
+                    TrackSettingsStore.clearLyricsLineColorsByUri(context, trackUri)
+                    LrcStorage.loadForTrack(context, trackUri).isNullOrBlank()
+                }.getOrDefault(false)
+            }
+            if (deleted && latestCurrentTrackUri == trackUri) {
+                updateResolvedLyricsFileName(null, "source=LYRICS_DELETE")
+            }
+            return deleted
+        }
+        return true
+    }
+
+    suspend fun persistEditorLinesForMode(mode: LyricsViewMode, lines: List<LrcLine>): Boolean =
+        if (lines.isEmpty()) {
+            if (mode == LyricsViewMode.CHORDS) {
+                deleteEditorChordLines()
+            } else {
+                deleteEditorLyricsLines()
+            }
+        } else {
+            if (mode == LyricsViewMode.CHORDS) {
+                persistEditorChordLines(lines)
+            } else {
+                persistEditorLyricsLines(lines)
+            }
+        }
+
+    fun markEditorModePersisted(mode: LyricsViewMode, lines: List<LrcLine>) {
+        val rawText = editorLyricsText(lines)
+        setSongEditorDraft(
+            mode = mode,
+            rawText = rawText,
+            lines = lines,
+            dirty = false
+        )
+        if (mode == editingTargetMode) {
+            rawLyricsText = rawText
+            editingLines = lines
+            editingLinesDirty = false
+        }
+        if (mode == LyricsViewMode.LYRICS) {
+            Log.d(
+                LYRICS_PLAYER_SYNC_DIAG_TAG,
+                "PLAYER_LYRICS_RENDER_SAMPLE firstLines/colors=${lyricsRenderSample(lines)}"
+            )
+            Log.d(
+                LYRICS_PIPELINE_TRACE_TAG,
+                "PLAYER_RENDER_SAMPLE songId=${currentSongId ?: currentTrackUri.orEmpty()} firstLine=${lines.firstOrNull()?.text.orEmpty()} firstColor=${lines.firstOrNull()?.colorArgb}"
+            )
+            onParsedLinesChange(lines)
+            hasLyricsSource = lines.isNotEmpty()
+        }
+    }
+
+    suspend fun saveSongEditorSession(
+        activeMode: LyricsViewMode,
+        activeLines: List<LrcLine>,
+        closeAfterSave: Boolean
+    ): Boolean {
+        val activeDirty = editingLinesDirty || when (activeMode) {
+            LyricsViewMode.CHORDS -> chordsDraftDirty
+            else -> lyricsDraftDirty
+        }
+        setSongEditorDraft(
+            mode = activeMode,
+            rawText = rawLyricsText,
+            lines = activeLines,
+            dirty = activeDirty
+        )
+
+        if (lyricsDraftDirty) {
+            if (!persistEditorLinesForMode(LyricsViewMode.LYRICS, lyricsDraftLines)) {
+                return false
+            }
+            markEditorModePersisted(LyricsViewMode.LYRICS, lyricsDraftLines)
+        }
+
+        if (chordsDraftDirty) {
+            if (!persistEditorLinesForMode(LyricsViewMode.CHORDS, chordsDraftLines)) {
+                return false
+            }
+            markEditorModePersisted(LyricsViewMode.CHORDS, chordsDraftLines)
+        }
+
+        if (closeAfterSave) {
+            closeLyricsEditorImmediately()
+        } else {
+            if (editingTargetMode == LyricsViewMode.CHORDS) {
+                rawLyricsText = chordsDraftRawText
+                editingLines = chordsDraftLines
+                editingLinesDirty = chordsDraftDirty
+            } else {
+                rawLyricsText = lyricsDraftRawText
+                editingLines = lyricsDraftLines
+                editingLinesDirty = lyricsDraftDirty
+            }
+        }
+        return true
     }
 
     fun seedEditingLinesIfBetter(lines: List<LrcLine>) {
@@ -1994,11 +2622,23 @@ fun PlayerScreen(
                 onRawLyricsTextChange = {
                     rawLyricsText = it
                     editingLinesDirty = true
+                    setSongEditorDraft(
+                        mode = editingTargetMode,
+                        rawText = it,
+                        lines = editingLines,
+                        dirty = true
+                    )
                 },
                 editingLines = editingLines,
                 onEditingLinesChange = {
                     editingLines = it
                     editingLinesDirty = true
+                    setSongEditorDraft(
+                        mode = editingTargetMode,
+                        rawText = rawLyricsText,
+                        lines = it,
+                        dirty = true
+                    )
                 },
                 currentEditTab = currentEditTab,
                 onCurrentEditTabChange = { currentEditTab = it },
@@ -2013,6 +2653,12 @@ fun PlayerScreen(
                     rawLyricsText = editorLyricsText(sorted)
                     editingLines = sorted
                     editingLinesDirty = false
+                    setSongEditorDraft(
+                        mode = editingTargetMode,
+                        rawText = rawLyricsText,
+                        lines = sorted,
+                        dirty = false
+                    )
                     if (editingTargetMode == LyricsViewMode.LYRICS) {
                         Log.d(
                             LYRICS_PLAYER_SYNC_DIAG_TAG,
@@ -2031,6 +2677,12 @@ fun PlayerScreen(
                     rawLyricsText = editorLyricsText(persisted)
                     editingLines = persisted
                     editingLinesDirty = false
+                    setSongEditorDraft(
+                        mode = editingTargetMode,
+                        rawText = rawLyricsText,
+                        lines = persisted,
+                        dirty = false
+                    )
                     if (editingTargetMode == LyricsViewMode.LYRICS) {
                         Log.d(
                             LYRICS_PLAYER_SYNC_DIAG_TAG,
@@ -2044,475 +2696,31 @@ fun PlayerScreen(
                         hasLyricsSource = persisted.isNotEmpty()
                     }
                 },
-                onPersistLines = persistLines@{ lines ->
-                    if (editingTargetMode == LyricsViewMode.CHORDS) {
-                        val lockedTrackUri = resolveAccordsEditTargetTrack(
-                            lockedTrackUri = editingTrackUri,
-                            currentTrackUri = currentTrackUri
-                        )
-                        if (lockedTrackUri == null) {
-                            showAccordsTrackChangedBlockedToast()
-                            Log.w(
-                                "LrcDebug",
-                                "ACCORDS_SAVE_BLOCKED trackChanged editingTrackUri=$editingTrackUri currentTrackUri=$currentTrackUri"
-                            )
-                            return@persistLines false
-                        }
-
-                        val isSmpAccordsTrack = LrcStorage.isSmpRuntimeTrack(context, lockedTrackUri)
-                        val saveOutcome = withContext(Dispatchers.IO) {
-                            runCatching {
-                                val migration = if (isSmpAccordsTrack) {
-                                    null
-                                } else {
-                                    ensureSmpTrackForLyricsSave(lockedTrackUri)
-                                }
-                                if (!isSmpAccordsTrack && migration == null) {
-                                    return@runCatching AccordsPersistOutcome(
-                                        trackUriString = lockedTrackUri,
-                                        migration = null,
-                                        io = com.patrick.lrcreader.core.AccordsIoResult(
-                                            success = false,
-                                            stage = "autoMigrate"
-                                        ),
-                                        reloadedText = null
-                                    )
-                                }
-
-                                val targetTrackUri = migration?.trackUriString ?: lockedTrackUri
-                                val ioResult = runAccordsSaveIo(
-                                    writeAccords = {
-                                        writeAccordsToSplByTrackUri(
-                                            context = context,
-                                            trackUriString = targetTrackUri,
-                                            preferredLrcFileName = editingResolvedLrcFileName,
-                                            lines = lines.toList()
-                                        )
-                                    },
-                                    ensureLyricsTwin = { writtenName ->
-                                        val ensureResult = ensureLyricsFileExistsForTrack(
-                                            context = context,
-                                            trackUriString = targetTrackUri,
-                                            preferredLrcFileName = writtenName
-                                        )
-                                        Log.d(
-                                            "LrcDebug",
-                                            "ACCORDS_ENSURE_LYRICS trackUri=$targetTrackUri target=$writtenName result=$ensureResult"
-                                        )
-                                        ensureResult
-                                    }
-                                )
-                                if (!ioResult.success) {
-                                    return@runCatching AccordsPersistOutcome(
-                                        trackUriString = targetTrackUri,
-                                        migration = migration,
-                                        io = ioResult,
-                                        reloadedText = null
-                                    )
-                                }
-
-                                AccordsPersistOutcome(
-                                    trackUriString = targetTrackUri,
-                                    migration = migration,
-                                    io = ioResult,
-                                    reloadedText = readAccordsFromSplByTrackUri(
-                                        context = context,
-                                        trackUriString = targetTrackUri,
-                                        preferredLrcFileName = editingResolvedLrcFileName
-                                    )
-                                )
-                            }.getOrElse {
-                                AccordsPersistOutcome(
-                                    trackUriString = lockedTrackUri,
-                                    migration = null,
-                                    io = com.patrick.lrcreader.core.AccordsIoResult(
-                                        success = false,
-                                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
-                                    ),
-                                    reloadedText = null
-                                )
-                            }
-                        }
-                        if (!saveOutcome.io.success) {
-                            Log.e(
-                                "LrcDebug",
-                                buildAccordsIoFailureLog(
-                                    action = "save",
-                                    trackUri = saveOutcome.trackUriString,
-                                    io = saveOutcome.io
-                                )
-                            )
-                            buildAccordsIoFailureFeedback(
-                                context = context,
-                                actionLabel = sAccordsActionSave,
-                                io = saveOutcome.io
-                            )?.let { showAccordsIoFailureToast(it) }
-                            return@persistLines false
-                        }
-
-                        val reloadedRaw = saveOutcome.reloadedText
-                        if (reloadedRaw == null) {
-                            Log.e("LrcDebug", "ACCORDS_SAVE_RELOAD_FAILED trackUri=${saveOutcome.trackUriString}")
-                            showAccordsIoFailureToast(
-                                buildAccordsIoFailureFeedback(
-                                    action = "save",
-                                    io = com.patrick.lrcreader.core.AccordsIoResult(
-                                        success = false,
-                                        stage = "reloadAccords"
-                                    )
-                                ) ?: sAccordsActionSave
-                            )
-                            return@persistLines false
-                        }
-
-                        val reloadedParsed = if (reloadedRaw.isBlank()) emptyList() else parseLrc(reloadedRaw)
-                        persistedChordLines = reloadedParsed
-                        persistedHasChordsSource = true
-                        parsedChordLines = reloadedParsed
-                        hasChordsSource = true
-                        saveOutcome.migration?.let {
-                            editingTrackUri = it.trackUriString
-                            onTrackPromotedToSmp(it)
-                        }
-                        if (selectedViewMode == LyricsViewMode.CHORDS) {
-                            recomputeCurrentIndexForActiveView()
-                        }
-                        return@persistLines true
-                    }
-
-                    currentTrackUri?.let { trackUri ->
-                        val preferredAtSave = resolvedLyricsLrcFileName
-                        val saveStartMs = android.os.SystemClock.elapsedRealtime()
-                        val effectiveTrackUri = LrcStorage.resolveRuntimeAlias(context, trackUri)
-                        val isAlreadySmpTrack = LrcStorage.isSmpRuntimeTrack(context, effectiveTrackUri)
-                        LyricsMemoryCache.invalidate(trackUri)
-                        if (effectiveTrackUri != trackUri) {
-                            LyricsMemoryCache.invalidate(effectiveTrackUri)
-                        }
-                        Log.d(
-                            LYRICS_PIPELINE_TRACE_TAG,
-                            "CACHE_INVALIDATE songId=${currentSongId ?: effectiveTrackUri}"
-                        )
-                        Log.d(
-                            LYRICS_PLAYER_SYNC_DIAG_TAG,
-                            "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: effectiveTrackUri}"
-                        )
-                        Log.d(
-                            LYRICS_PERSIST_DIAG_TAG,
-                            "AUTOSAVE_START songId=${currentSongId ?: effectiveTrackUri} reason=editor_save"
-                        )
-                        Log.d(
-                            LYRICS_PIPELINE_TRACE_TAG,
-                            "SAVE_REQUEST songId=${currentSongId ?: effectiveTrackUri} reason=editor_save lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
-                        )
-                        Log.d(
-                            "LrcDebug",
-                            "LYRICS_SAVE_CONFIRMED start trackUri=$trackUri lines=${lines.size}"
-                        )
-                        val saveOutcome = withContext(Dispatchers.IO) {
-                            runCatching {
-                                val migration = if (isAlreadySmpTrack) {
-                                    null
-                                } else {
-                                    ensureSmpTrackForLyricsSave(effectiveTrackUri)
-                                }
-                                migration?.let {
-                                    LrcStorage.rememberRuntimeAlias(context, trackUri, it.trackUriString)
-                                }
-                                val targetTrackUri = migration?.trackUriString ?: effectiveTrackUri
-                                if (targetTrackUri != trackUri) {
-                                    LyricsMemoryCache.invalidate(targetTrackUri)
-                                    Log.d(
-                                        LYRICS_PLAYER_SYNC_DIAG_TAG,
-                                        "PLAYER_LYRICS_CACHE_INVALIDATED songId=${currentSongId ?: targetTrackUri}"
-                                    )
-                                }
-                                Log.d(
-                                    LYRICS_PERSIST_DIAG_TAG,
-                                    "AUTOSAVE_TARGET songId=${currentSongId ?: targetTrackUri} path/store=$targetTrackUri"
-                                )
-                                Log.d(
-                                    LYRICS_PIPELINE_TRACE_TAG,
-                                    "SAVE_START songId=${currentSongId ?: targetTrackUri} target=$targetTrackUri path=$targetTrackUri"
-                                )
-                                Log.d(
-                                    PLAYER_LRC_TAG,
-                                    "save_lyrics trackUri=$targetTrackUri lines=${lines.size}"
-                                )
-                                val saved = LrcStorage.saveForTrack(
-                                    context = context,
-                                    trackUriString = targetTrackUri,
-                                    lines = lines
-                                )
-                                if (!saved) {
-                                    Log.e(
-                                        LYRICS_PIPELINE_TRACE_TAG,
-                                        "SAVE_FAIL songId=${currentSongId ?: targetTrackUri} error=LrcStorage.saveForTrack_false"
-                                    )
-                                    return@runCatching null
-                                }
-
-                                val colorsSaved = TrackSettingsStore.saveLyricsLineColors(
-                                    context = context,
-                                    songId = currentSongId,
-                                    uriString = LrcStorage.resolveRuntimeAlias(context, targetTrackUri),
-                                    lyricsLineColors = extractLyricsLineColors(lines)
-                                )
-                                if (!colorsSaved) {
-                                    Log.e(
-                                        "LrcDebug",
-                                        "LYRICS_LINE_COLORS_SAVE_FAILED trackUri=$targetTrackUri"
-                                    )
-                                    Log.e(
-                                        LYRICS_PLAYER_SYNC_DIAG_TAG,
-                                        "AUTOSAVE_FAIL error=lyrics_line_colors_save_failed songId=${currentSongId ?: targetTrackUri}"
-                                    )
-                                    Log.e(
-                                        LYRICS_PIPELINE_TRACE_TAG,
-                                        "SAVE_FAIL songId=${currentSongId ?: targetTrackUri} error=lyrics_line_colors_save_failed"
-                                    )
-                                }
-
-                                val resolvedFileName = LrcStorage.resolveOriginForTrack(
-                                    context = context,
-                                    trackUriString = targetTrackUri
-                                )?.fileName ?: resolveExactLrcFileNameForTrack(
-                                    context = context,
-                                    trackUriString = targetTrackUri,
-                                    preferredLrcFileName = preferredAtSave
-                                )
-
-                                if (!resolvedFileName.isNullOrBlank()) {
-                                    ensureAccordsFileExistsForTrack(
-                                        context = context,
-                                        trackUriString = targetTrackUri,
-                                        preferredLrcFileName = resolvedFileName
-                                    )
-                                }
-
-                                LyricsPersistOutcome(
-                                    trackUriString = targetTrackUri,
-                                    migration = migration,
-                                    resolvedFileName = resolvedFileName,
-                                    debugPath = LrcStorage.resolveOriginForTrack(
-                                        context = context,
-                                        trackUriString = targetTrackUri
-                                    )?.debugPath,
-                                    reloadedText = LrcStorage.loadForTrack(context, targetTrackUri)
-                                )
-                            }.onFailure { error ->
-                                Log.e(
-                                    "LrcDebug",
-                                    "LYRICS_SAVE_CONFIRMED failed trackUri=$trackUri",
-                                    error
-                                )
-                            }.getOrNull()
-                        }
-
-                        if (saveOutcome == null || saveOutcome.reloadedText.isNullOrBlank()) {
-                            Log.e("LrcDebug", "LYRICS_SAVE_CONFIRMED reload_failed trackUri=$trackUri")
-                            Log.e(
-                                LYRICS_PERSIST_DIAG_TAG,
-                                "AUTOSAVE_FAIL songId=${currentSongId ?: effectiveTrackUri} error=reload_failed"
-                            )
-                            Log.e(
-                                LYRICS_PIPELINE_TRACE_TAG,
-                                "SAVE_FAIL songId=${currentSongId ?: effectiveTrackUri} error=reload_failed"
-                            )
-                            return@persistLines false
-                        }
-
-                        saveOutcome.migration?.let { onTrackPromotedToSmp(it) }
-
-                        if (
-                            !saveOutcome.resolvedFileName.isNullOrBlank() &&
-                            (latestCurrentTrackUri == trackUri || latestCurrentTrackUri == saveOutcome.trackUriString)
-                        ) {
-                            updateResolvedLyricsFileName(
-                                saveOutcome.resolvedFileName,
-                                "source=LYRICS_SAVE"
-                            )
-                        }
-
-                        val elapsedMs = android.os.SystemClock.elapsedRealtime() - saveStartMs
-                        Log.d(
-                            "LrcDebug",
-                            "LYRICS_SAVE_CONFIRMED end trackUri=${saveOutcome.trackUriString} originalTrackUri=$trackUri durationMs=$elapsedMs resolved=${saveOutcome.resolvedFileName} migrated=${saveOutcome.migration != null}"
-                        )
-                        Log.d(
-                            LYRICS_PLAYER_SYNC_DIAG_TAG,
-                            "PLAYER_LYRICS_LOAD songId=${currentSongId ?: saveOutcome.trackUriString} source=EDITOR_SAVE lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
-                        )
-                        Log.d(
-                            LYRICS_PERSIST_DIAG_TAG,
-                            "AUTOSAVE_SUCCESS songId=${currentSongId ?: saveOutcome.trackUriString} path=${saveOutcome.debugPath.orEmpty()} lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }} fileSize=${saveOutcome.reloadedText.length}"
-                        )
-                        Log.d(
-                            LYRICS_PIPELINE_TRACE_TAG,
-                            "SAVE_SUCCESS songId=${currentSongId ?: saveOutcome.trackUriString} path=${saveOutcome.debugPath.orEmpty()} fileSize=${saveOutcome.reloadedText.length} lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
-                        )
-                    }
-                    true
+                onPersistLines = { lines ->
+                    persistEditorLinesForMode(editingTargetMode, lines)
                 },
-                onDeletePersisted = deletePersisted@{
-                    if (editingTargetMode == LyricsViewMode.CHORDS) {
-                        val lockedTrackUri = resolveAccordsEditTargetTrack(
-                            lockedTrackUri = editingTrackUri,
-                            currentTrackUri = currentTrackUri
-                        )
-                        if (lockedTrackUri == null) {
-                            showAccordsTrackChangedBlockedToast()
-                            Log.w(
-                                "LrcDebug",
-                                "ACCORDS_DELETE_BLOCKED trackChanged editingTrackUri=$editingTrackUri currentTrackUri=$currentTrackUri"
-                            )
-                            return@deletePersisted false
-                        }
-
-                        val isSmpAccordsTrack = LrcStorage.isSmpRuntimeTrack(context, lockedTrackUri)
-                        if (isSmpAccordsTrack) {
-                            val initialIo = withContext(Dispatchers.IO) {
-                                runCatching {
-                                    runAccordsDeleteIo(
-                                        deleteAccords = {
-                                            deleteAccordsFromSplByTrackUri(
-                                                context = context,
-                                                trackUriString = lockedTrackUri,
-                                                preferredLrcFileName = editingResolvedLrcFileName
-                                            )
-                                        }
-                                    )
-                                }.getOrElse {
-                                    com.patrick.lrcreader.core.AccordsIoResult(
-                                        success = false,
-                                        stage = "exception:${it::class.simpleName ?: "Unknown"}"
-                                    )
-                                }
-                            }
-                            val ioResult = if (initialIo.success) {
-                                val remaining = withContext(Dispatchers.IO) {
-                                    readAccordsFromSplByTrackUri(
-                                        context = context,
-                                        trackUriString = lockedTrackUri,
-                                        preferredLrcFileName = editingResolvedLrcFileName
-                                    )
-                                }
-                                if (remaining == null) {
-                                    initialIo
-                                } else {
-                                    com.patrick.lrcreader.core.AccordsIoResult(
-                                        success = false,
-                                        stage = "reloadAccordsAfterDelete"
-                                    )
-                                }
-                            } else {
-                                initialIo
-                            }
-
-                            val previous = AccordsUiTruth(
-                                lines = persistedChordLines,
-                                hasSource = persistedHasChordsSource
-                            )
-                            val resolved = resolveAccordsUiTruthAfterDelete(
-                                previous = previous,
-                                io = ioResult
-                            )
-                            persistedChordLines = resolved.lines
-                            persistedHasChordsSource = resolved.hasSource
-                            parsedChordLines = resolved.lines
-                            hasChordsSource = resolved.hasSource
-                            if (selectedViewMode == LyricsViewMode.CHORDS) {
-                                recomputeCurrentIndexForActiveView()
-                            }
-
-                            if (!ioResult.success) {
-                                Log.e(
-                                    "LrcDebug",
-                                    buildAccordsIoFailureLog(
-                                        action = "delete",
-                                        trackUri = lockedTrackUri,
-                                        io = ioResult
-                                    )
-                                )
-                                buildAccordsIoFailureFeedback(
-                                    context = context,
-                                    actionLabel = sAccordsActionDelete,
-                                    io = ioResult
-                                )?.let { showAccordsIoFailureToast(it) }
-                                return@deletePersisted false
-                            }
-                            return@deletePersisted true
-                        }
-
-                        val ioResult = runCatching {
-                            runAccordsDeleteIo(
-                                deleteAccords = {
-                                    deleteAccordsFromSplByTrackUri(
-                                        context = context,
-                                        trackUriString = lockedTrackUri,
-                                        preferredLrcFileName = editingResolvedLrcFileName
-                                    )
-                                }
-                            )
-                        }.getOrElse {
-                            com.patrick.lrcreader.core.AccordsIoResult(
-                                success = false,
-                                stage = "exception:${it::class.simpleName ?: "Unknown"}"
-                            )
-                        }
-
-                        val previous = AccordsUiTruth(
-                            lines = persistedChordLines,
-                            hasSource = persistedHasChordsSource
-                        )
-                        val resolved = resolveAccordsUiTruthAfterDelete(
-                            previous = previous,
-                            io = ioResult
-                        )
-                        persistedChordLines = resolved.lines
-                        persistedHasChordsSource = resolved.hasSource
-                        parsedChordLines = resolved.lines
-                        hasChordsSource = resolved.hasSource
-                        if (selectedViewMode == LyricsViewMode.CHORDS) {
-                            recomputeCurrentIndexForActiveView()
-                        }
-
-                        if (!ioResult.success) {
-                            Log.e(
-                                "LrcDebug",
-                                buildAccordsIoFailureLog(
-                                    action = "delete",
-                                    trackUri = lockedTrackUri,
-                                    io = ioResult
-                                )
-                            )
-                            buildAccordsIoFailureFeedback(
-                                context = context,
-                                actionLabel = sAccordsActionDelete,
-                                io = ioResult
-                            )
-                                ?.let { showAccordsIoFailureToast(it) }
-                            return@deletePersisted false
-                        }
-                        return@deletePersisted true
+                onDeletePersisted = {
+                    persistEditorLinesForMode(editingTargetMode, emptyList())
+                },
+                onDraftLinesPrepared = { mode, lines ->
+                    val draftDirty = if (mode == LyricsViewMode.CHORDS) {
+                        chordsDraftDirty || (mode == editingTargetMode && editingLinesDirty)
+                    } else {
+                        lyricsDraftDirty || (mode == editingTargetMode && editingLinesDirty)
                     }
-
-                    currentTrackUri?.let { trackUri ->
-                        LyricsMemoryCache.invalidate(trackUri)
-                        val deleted = withContext(Dispatchers.IO) {
-                            runCatching {
-                                Log.d(PLAYER_LRC_TAG, "delete_lyrics trackUri=$trackUri")
-                                LrcStorage.deleteForTrack(context, trackUri)
-                                TrackSettingsStore.clearLyricsLineColorsByUri(context, trackUri)
-                                LrcStorage.loadForTrack(context, trackUri).isNullOrBlank()
-                            }.getOrDefault(false)
-                        }
-                        if (deleted && latestCurrentTrackUri == trackUri) {
-                            updateResolvedLyricsFileName(null, "source=LYRICS_DELETE")
-                        }
-                        return@deletePersisted deleted
-                    }
-                    true
+                    setSongEditorDraft(
+                        mode = mode,
+                        rawText = rawLyricsText,
+                        lines = lines,
+                        dirty = draftDirty
+                    )
+                },
+                onSaveEditorSession = { activeMode, activeLines, closeAfterSave ->
+                    saveSongEditorSession(
+                        activeMode = activeMode,
+                        activeLines = activeLines,
+                        closeAfterSave = closeAfterSave
+                    )
                 },
                 currentContentMode = editingTargetMode,
                 onContentModeChange = { mode ->
@@ -2864,6 +3072,7 @@ fun PlayerScreen(
                                         "EDITOR_OPEN songId=${currentSongId ?: currentTrackUri.orEmpty()} source=PlayerScreen.parsedLines lineCount=${parsedLines.size} colorCount=${parsedLines.count { it.colorArgb != null }}"
                                     )
                                 }
+                                initializeSongEditorDrafts()
                                 loadSongEditorContent(
                                     mode = initialMode,
                                     initialTab = if (initialMode == LyricsViewMode.CHORDS) 1 else 0
