@@ -53,9 +53,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -266,6 +264,7 @@ fun TimelineEditorSection(
     onSeekPreparedClipLoopToPosition: ((Long) -> Unit)? = null,
     onMoveMarkerPosition: (Int, Long) -> Unit,
     onRenameMarker: (Int, String, Long?) -> Unit,
+    playbackControlContent: @Composable () -> Unit = {},
     onDeleteMarker: (Int) -> Unit
 ) {
     val context = LocalContext.current
@@ -527,38 +526,6 @@ fun TimelineEditorSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Start
         ) {
-            IconButton(
-                onClick = {
-                    if (tempoStructurePreviewActive) {
-                        tempoStructurePreviewUserStopRequest += 1
-                        return@IconButton
-                    }
-                    if (editorMode == TimelineEditorMode.GRID_SETUP && isPreparedClipLoopTestActive) {
-                        onStopPreparedClipLoopTest()
-                    }
-                    if (isPlaying) {
-                        onIsPlayingChange(false)
-                    } else if (durationMs > 0) {
-                        onIsPlayingChange(true)
-                        runCatching { FillerSoundManager.fadeOutAndStop(200) }
-                    }
-                }
-            ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = stringResource(R.string.lyrics_editor_cd_sync_play_pause),
-                    tint = Color.White
-                )
-            }
-
-            IconButton(onClick = { runCatching { seekToMs(0L) } }) {
-                Icon(
-                    imageVector = Icons.Filled.SkipPrevious,
-                    contentDescription = stringResource(R.string.lyrics_editor_cd_back_to_start),
-                    tint = Color.White
-                )
-            }
-
             Text(
                 text = formatTimelinePositionLabel(
                     displayMode = displayMode,
@@ -896,6 +863,9 @@ fun TimelineEditorSection(
                 )
             }
         }
+
+        Spacer(Modifier.height(8.dp))
+        playbackControlContent()
     }
 
     val safePositionEditIndex = positionEditIndex
