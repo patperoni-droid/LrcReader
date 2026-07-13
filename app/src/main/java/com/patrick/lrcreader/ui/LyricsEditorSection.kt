@@ -20,9 +20,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
@@ -157,6 +155,7 @@ fun LyricsEditorSection(
     chordPaletteStorageKey: String? = null,
     tabletFocusEditingMode: Boolean = false,
     onTabletFocusEditingChange: (Boolean) -> Unit = {},
+    playbackControlContent: @Composable () -> Unit = {},
     headerEndContent: @Composable RowScope.() -> Unit = {}
 ) {
     if (!isEditingLyrics) return
@@ -1074,50 +1073,6 @@ fun LyricsEditorSection(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    // Mini player synchro (Play/Pause + retour début + timecode)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Start
-                    ) {
-                        IconButton(
-                            onClick = {
-                                if (isPlaying) {
-                                    onIsPlayingChange(false)
-                                } else {
-                                    if (durationMs > 0) {
-                                        onIsPlayingChange(true)
-                                        runCatching { FillerSoundManager.fadeOutAndStop(200) }
-                                    }
-                                }
-                            }
-                        ) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                contentDescription = stringResource(R.string.lyrics_editor_cd_sync_play_pause),
-                                tint = Color.White
-                            )
-                        }
-
-                        IconButton(
-                            onClick = { runCatching { seekToMs(0L) } }
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.SkipPrevious,
-                                contentDescription = stringResource(R.string.lyrics_editor_cd_back_to_start),
-                                tint = Color.White
-                            )
-                        }
-
-                        Text(
-                            text = formatMsLyricsEditor(positionMs),
-                            color = Color.LightGray,
-                            fontSize = 12.sp
-                        )
-                    }
-
                     if (showChordPalette && displayedPalette.isNotEmpty()) {
                         ChordPaletteChipsRow()
                         Spacer(Modifier.height(8.dp))
@@ -1522,20 +1477,14 @@ fun LyricsEditorSection(
                 } // <-- ferme Column onglet Synchro
             }     // <-- ferme "1 -> {"
         }         // <-- ferme when
+
+        Spacer(Modifier.height(8.dp))
+        playbackControlContent()
     }             // <-- ferme Column principale
 }                 // <-- ferme composable
 // ─────────────────────────────
 //  FONCTIONS UTILITAIRES
 // ─────────────────────────────
-
-private fun formatMsLyricsEditor(ms: Int): String {
-    if (ms <= 0) return "00:00"
-    val totalSeconds = ms / 1000
-    val s = totalSeconds % 60
-    val m = (totalSeconds / 60) % 60
-    val h = totalSeconds / 3600
-    return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
-}
 
 private fun formatLrcTime(ms: Long): String {
     if (ms <= 0L) return "00:00.00"
