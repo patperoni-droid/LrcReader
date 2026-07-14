@@ -4809,12 +4809,15 @@ class MainActivity : AppCompatActivity() {
                                 }
 
                                 val waveformPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    val waveformSongId =
+                                        quickPlaylistPreparedSelectionSongId ?: currentPlayingSongId
                                     WaveformPreviewScreen(
                                         modifier = paneModifier,
                                         onBack = {
                                             tabletRightPanel = TabletSplitRightPanel.LYRICS
                                         },
-                                        initialSongId = currentPlayingSongId,
+                                        initialSongId = waveformSongId,
+                                        preparedSelectionSongId = quickPlaylistPreparedSelectionSongId,
                                         currentPlayingSongId = currentPlayingSongId,
                                         onStopCurrentPlayback = {
                                             isPlaying = false

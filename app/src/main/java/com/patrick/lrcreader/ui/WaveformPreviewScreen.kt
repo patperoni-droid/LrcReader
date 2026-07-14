@@ -131,6 +131,7 @@ fun WaveformPreviewScreen(
     modifier: Modifier = Modifier,
     onBack: () -> Unit,
     initialSongId: String? = null,
+    preparedSelectionSongId: String? = null,
     currentPlayingSongId: String? = null,
     onStopCurrentPlayback: () -> Unit = {}
 ) {
@@ -164,6 +165,7 @@ fun WaveformPreviewScreen(
     var showWaveformSaveProDialog by remember { mutableStateOf(false) }
     var restoredScrollPx by remember { mutableStateOf<Int?>(null) }
     var lastInitialSongId by remember { mutableStateOf<String?>(null) }
+    var preparedVisualSongId by remember { mutableStateOf<String?>(null) }
     val sWaveformSaveProTitle = stringResource(R.string.waveform_save_pro_dialog_title)
     val sWaveformSaveProMessage = stringResource(R.string.waveform_save_pro_dialog_message)
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
@@ -385,6 +387,27 @@ fun WaveformPreviewScreen(
         }
         val (resolvedUri, resolvedTitle) = resolved
         loadAudioUri(songId = songId, uri = resolvedUri, displayNameHint = resolvedTitle)
+    }
+
+    LaunchedEffect(initialSongId, preparedSelectionSongId, currentPlayingSongId) {
+        val preparedSongId = preparedSelectionSongId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val displayedSongId = initialSongId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val activeSongId = currentPlayingSongId
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        preparedVisualSongId = if (
+            preparedSongId != null &&
+            preparedSongId == displayedSongId &&
+            preparedSongId != activeSongId
+        ) {
+            preparedSongId
+        } else {
+            null
+        }
     }
 
     fun nudgePlayhead(deltaMs: Int) {
@@ -840,6 +863,9 @@ fun WaveformPreviewScreen(
                 WaveformPlaybackControls(
                     enabled = controlsEnabled,
                     isPlaying = isPlayingWave,
+                    isPreparedToPlay = !isPlayingWave &&
+                        selectedSongId != null &&
+                        selectedSongId == preparedVisualSongId,
                     onReturnToStart = {
                         if (selectedUri == null || durationMs <= 0) return@WaveformPlaybackControls
                         val target = if (durationMs > 0 && inMs > 0) inMs else 0
@@ -865,6 +891,7 @@ fun WaveformPreviewScreen(
                             isPlayingWave = false
                         } else {
                             val safePlayhead = playheadMs.coerceIn(0, durationMs)
+                            preparedVisualSongId = null
                             playheadMs = safePlayhead
                             WaveformSessionPrefs.savePlayhead(context, safePlayhead)
                             exoPlayer.seekTo(safePlayhead.toLong())
@@ -898,6 +925,7 @@ fun WaveformPreviewScreen(
 private fun WaveformPlaybackControls(
     enabled: Boolean,
     isPlaying: Boolean,
+    isPreparedToPlay: Boolean,
     onReturnToStart: () -> Unit,
     onPlayPause: () -> Unit,
     onStop: () -> Unit,
@@ -912,10 +940,12 @@ private fun WaveformPlaybackControls(
     val buttonShape = RoundedCornerShape(7.dp)
     val consoleGreen = Color(0xFF18B857)
     val consoleRed = Color(0xFFD93636)
+    val consoleYellow = Color(0xFFE2B93B)
     val disabledBackground = Color.White.copy(alpha = 0.08f)
     val controlBorder = Color.White.copy(alpha = 0.22f)
     val primaryButtonColor = when {
         !enabled -> disabledBackground
+        isPreparedToPlay -> consoleYellow
         else -> consoleGreen
     }
     val stopButtonColor = when {
