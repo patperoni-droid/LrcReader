@@ -916,7 +916,6 @@ private fun WaveformPlaybackControls(
     val controlBorder = Color.White.copy(alpha = 0.22f)
     val primaryButtonColor = when {
         !enabled -> disabledBackground
-        isPlaying -> consoleRed
         else -> consoleGreen
     }
     val stopButtonColor = when {
