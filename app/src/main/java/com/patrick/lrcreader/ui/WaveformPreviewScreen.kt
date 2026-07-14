@@ -718,58 +718,6 @@ fun WaveformPreviewScreen(
                 val detectEnabled = controlsEnabled && peaks.isNotEmpty() && !isLoading && !isDetectingSilence
                 val hasOutTrim = controlsEnabled && outMs in 1 until durationMs
 
-                WaveformPlaybackControls(
-                    enabled = controlsEnabled,
-                    isPlaying = isPlayingWave,
-                    onReturnToStart = {
-                        if (selectedUri == null || durationMs <= 0) return@WaveformPlaybackControls
-                        val target = if (durationMs > 0 && inMs > 0) inMs else 0
-                        val safeTarget = target.coerceIn(0, durationMs.coerceAtLeast(0))
-                        playheadMs = safeTarget
-                        WaveformSessionPrefs.savePlayhead(context, safeTarget)
-                        exoPlayer.seekTo(safeTarget.toLong())
-                        if (isPlayingWave) {
-                            exoPlayer.playWhenReady = true
-                            exoPlayer.play()
-                        } else {
-                            exoPlayer.pause()
-                            exoPlayer.playWhenReady = false
-                        }
-                    },
-                    onPlayPause = {
-                        if (selectedUri == null || durationMs <= 0) return@WaveformPlaybackControls
-                        if (isPlayingWave) {
-                            exoPlayer.pause()
-                            val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
-                            playheadMs = current.coerceIn(0, durationMs)
-                            WaveformSessionPrefs.savePlayhead(context, playheadMs)
-                            isPlayingWave = false
-                        } else {
-                            val safePlayhead = playheadMs.coerceIn(0, durationMs)
-                            playheadMs = safePlayhead
-                            WaveformSessionPrefs.savePlayhead(context, safePlayhead)
-                            exoPlayer.seekTo(safePlayhead.toLong())
-                            exoPlayer.playWhenReady = true
-                            exoPlayer.play()
-                            isPlayingWave = true
-                        }
-                    },
-                    onStop = {
-                        exoPlayer.pause()
-                        exoPlayer.playWhenReady = false
-                        val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
-                        playheadMs = if (durationMs > 0) current.coerceIn(0, durationMs) else current
-                        WaveformSessionPrefs.savePlayhead(context, playheadMs)
-                        isPlayingWave = false
-                        if (
-                            selectedSongId != null &&
-                            selectedSongId == currentPlayingSongId
-                        ) {
-                            onStopCurrentPlayback()
-                        }
-                    }
-                )
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -888,6 +836,58 @@ fun WaveformPreviewScreen(
                         }
                     )
                 }
+
+                WaveformPlaybackControls(
+                    enabled = controlsEnabled,
+                    isPlaying = isPlayingWave,
+                    onReturnToStart = {
+                        if (selectedUri == null || durationMs <= 0) return@WaveformPlaybackControls
+                        val target = if (durationMs > 0 && inMs > 0) inMs else 0
+                        val safeTarget = target.coerceIn(0, durationMs.coerceAtLeast(0))
+                        playheadMs = safeTarget
+                        WaveformSessionPrefs.savePlayhead(context, safeTarget)
+                        exoPlayer.seekTo(safeTarget.toLong())
+                        if (isPlayingWave) {
+                            exoPlayer.playWhenReady = true
+                            exoPlayer.play()
+                        } else {
+                            exoPlayer.pause()
+                            exoPlayer.playWhenReady = false
+                        }
+                    },
+                    onPlayPause = {
+                        if (selectedUri == null || durationMs <= 0) return@WaveformPlaybackControls
+                        if (isPlayingWave) {
+                            exoPlayer.pause()
+                            val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
+                            playheadMs = current.coerceIn(0, durationMs)
+                            WaveformSessionPrefs.savePlayhead(context, playheadMs)
+                            isPlayingWave = false
+                        } else {
+                            val safePlayhead = playheadMs.coerceIn(0, durationMs)
+                            playheadMs = safePlayhead
+                            WaveformSessionPrefs.savePlayhead(context, safePlayhead)
+                            exoPlayer.seekTo(safePlayhead.toLong())
+                            exoPlayer.playWhenReady = true
+                            exoPlayer.play()
+                            isPlayingWave = true
+                        }
+                    },
+                    onStop = {
+                        exoPlayer.pause()
+                        exoPlayer.playWhenReady = false
+                        val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
+                        playheadMs = if (durationMs > 0) current.coerceIn(0, durationMs) else current
+                        WaveformSessionPrefs.savePlayhead(context, playheadMs)
+                        isPlayingWave = false
+                        if (
+                            selectedSongId != null &&
+                            selectedSongId == currentPlayingSongId
+                        ) {
+                            onStopCurrentPlayback()
+                        }
+                    }
+                )
 
             }
         }
