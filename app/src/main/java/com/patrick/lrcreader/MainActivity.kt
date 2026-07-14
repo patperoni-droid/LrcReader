@@ -1417,6 +1417,17 @@ class MainActivity : AppCompatActivity() {
                     return true
                 }
 
+                fun resumeFillerAfterPlayerStopIfAllowed() {
+                    val shouldStartFiller =
+                        PlaybackCoordinator.peekNextTrack() == null &&
+                            !isChaining &&
+                            FillerSoundPrefs.isEnabled(ctx)
+                    if (shouldStartFiller) {
+                        PlaybackCoordinator.onFillerStart()
+                        runCatching { FillerSoundManager.startIfConfigured(ctx) }
+                    }
+                }
+
                 fun togglePlaybackFromMainBus() {
                     if (manualCrossfadeTransitionTitle != null) return
                     val shouldPlay = !isPlaying
@@ -1427,6 +1438,8 @@ class MainActivity : AppCompatActivity() {
                         exoPlayer.play()
                     } else {
                         exoPlayer.pause()
+                        PlaybackCoordinator.onPlayerStop()
+                        resumeFillerAfterPlayerStopIfAllowed()
                     }
                 }
 
@@ -1983,12 +1996,7 @@ class MainActivity : AppCompatActivity() {
                     isPlaying = false
                     LightCueDispatcher.resetGlobal()
                     PlaybackCoordinator.onPlayerStop()
-                    val shouldStartFiller =
-                        PlaybackCoordinator.peekNextTrack() == null && !isChaining
-                    if (shouldStartFiller) {
-                        PlaybackCoordinator.onFillerStart()
-                        runCatching { FillerSoundManager.startIfConfigured(ctx) }
-                    }
+                    resumeFillerAfterPlayerStopIfAllowed()
                     backingEndedSignal++
                 }
 
@@ -2235,6 +2243,8 @@ class MainActivity : AppCompatActivity() {
                         exoPlayer.play()
                     } else {
                         exoPlayer.pause()
+                        PlaybackCoordinator.onPlayerStop()
+                        resumeFillerAfterPlayerStopIfAllowed()
                     }
                 }
 
