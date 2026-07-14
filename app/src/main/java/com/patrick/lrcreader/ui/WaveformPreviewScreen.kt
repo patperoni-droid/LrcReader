@@ -11,7 +11,9 @@ import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -30,12 +32,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -711,79 +718,57 @@ fun WaveformPreviewScreen(
                 val detectEnabled = controlsEnabled && peaks.isNotEmpty() && !isLoading && !isDetectingSilence
                 val hasOutTrim = controlsEnabled && outMs in 1 until durationMs
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(
-                        onClick = {
-                            if (selectedUri == null || durationMs <= 0) return@TextButton
-                            val target = if (durationMs > 0 && inMs > 0) inMs else 0
-                            val safeTarget = target.coerceIn(0, durationMs.coerceAtLeast(0))
-                            playheadMs = safeTarget
-                            WaveformSessionPrefs.savePlayhead(context, safeTarget)
-                            exoPlayer.seekTo(safeTarget.toLong())
-                            if (isPlayingWave) {
-                                exoPlayer.playWhenReady = true
-                                exoPlayer.play()
-                            } else {
-                                exoPlayer.pause()
-                                exoPlayer.playWhenReady = false
-                            }
-                        },
-                        enabled = selectedUri != null && durationMs > 0,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text("⏮", fontSize = 12.sp)
-                    }
-
-                    TextButton(
-                        onClick = {
-                            if (selectedUri == null || durationMs <= 0) return@TextButton
-                            if (isPlayingWave) {
-                                exoPlayer.pause()
-                                val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
-                                playheadMs = current.coerceIn(0, durationMs)
-                                WaveformSessionPrefs.savePlayhead(context, playheadMs)
-                                isPlayingWave = false
-                            } else {
-                                val safePlayhead = playheadMs.coerceIn(0, durationMs)
-                                playheadMs = safePlayhead
-                                WaveformSessionPrefs.savePlayhead(context, safePlayhead)
-                                exoPlayer.seekTo(safePlayhead.toLong())
-                                exoPlayer.playWhenReady = true
-                                exoPlayer.play()
-                                isPlayingWave = true
-                            }
-                        },
-                        enabled = selectedUri != null && durationMs > 0,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(stringResource(R.string.waveform_play), fontSize = 12.sp)
-                    }
-
-                    TextButton(
-                        onClick = {
+                WaveformPlaybackControls(
+                    enabled = controlsEnabled,
+                    isPlaying = isPlayingWave,
+                    onReturnToStart = {
+                        if (selectedUri == null || durationMs <= 0) return@WaveformPlaybackControls
+                        val target = if (durationMs > 0 && inMs > 0) inMs else 0
+                        val safeTarget = target.coerceIn(0, durationMs.coerceAtLeast(0))
+                        playheadMs = safeTarget
+                        WaveformSessionPrefs.savePlayhead(context, safeTarget)
+                        exoPlayer.seekTo(safeTarget.toLong())
+                        if (isPlayingWave) {
+                            exoPlayer.playWhenReady = true
+                            exoPlayer.play()
+                        } else {
                             exoPlayer.pause()
                             exoPlayer.playWhenReady = false
+                        }
+                    },
+                    onPlayPause = {
+                        if (selectedUri == null || durationMs <= 0) return@WaveformPlaybackControls
+                        if (isPlayingWave) {
+                            exoPlayer.pause()
                             val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
-                            playheadMs = if (durationMs > 0) current.coerceIn(0, durationMs) else current
+                            playheadMs = current.coerceIn(0, durationMs)
                             WaveformSessionPrefs.savePlayhead(context, playheadMs)
                             isPlayingWave = false
-                            if (
-                                selectedSongId != null &&
-                                selectedSongId == currentPlayingSongId
-                            ) {
-                                onStopCurrentPlayback()
-                            }
-                        },
-                        enabled = selectedUri != null && durationMs > 0,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(stringResource(R.string.waveform_stop), fontSize = 12.sp)
+                        } else {
+                            val safePlayhead = playheadMs.coerceIn(0, durationMs)
+                            playheadMs = safePlayhead
+                            WaveformSessionPrefs.savePlayhead(context, safePlayhead)
+                            exoPlayer.seekTo(safePlayhead.toLong())
+                            exoPlayer.playWhenReady = true
+                            exoPlayer.play()
+                            isPlayingWave = true
+                        }
+                    },
+                    onStop = {
+                        exoPlayer.pause()
+                        exoPlayer.playWhenReady = false
+                        val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
+                        playheadMs = if (durationMs > 0) current.coerceIn(0, durationMs) else current
+                        WaveformSessionPrefs.savePlayhead(context, playheadMs)
+                        isPlayingWave = false
+                        if (
+                            selectedSongId != null &&
+                            selectedSongId == currentPlayingSongId
+                        ) {
+                            onStopCurrentPlayback()
+                        }
                     }
-                }
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -905,6 +890,93 @@ fun WaveformPreviewScreen(
                 }
 
             }
+        }
+    }
+}
+
+@Composable
+private fun WaveformPlaybackControls(
+    enabled: Boolean,
+    isPlaying: Boolean,
+    onReturnToStart: () -> Unit,
+    onPlayPause: () -> Unit,
+    onStop: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val controlButtonSize = 48.dp
+    val controlIconSize = 36.dp
+    val primaryButtonWidth = 126.dp
+    val primaryButtonHeight = 50.dp
+    val primaryIconSize = 27.dp
+    val itemSpacing = 8.dp
+    val buttonShape = RoundedCornerShape(7.dp)
+    val consoleGreen = Color(0xFF18B857)
+    val consoleRed = Color(0xFFD93636)
+    val disabledBackground = Color.White.copy(alpha = 0.08f)
+    val controlBorder = Color.White.copy(alpha = 0.22f)
+    val primaryButtonColor = when {
+        !enabled -> disabledBackground
+        isPlaying -> consoleRed
+        else -> consoleGreen
+    }
+    val stopButtonColor = when {
+        !enabled -> disabledBackground
+        isPlaying -> consoleRed
+        else -> Color.White.copy(alpha = 0.10f)
+    }
+    val iconColor = if (enabled) Color.White else Color.White.copy(alpha = 0.42f)
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 0.dp),
+        horizontalArrangement = Arrangement.spacedBy(itemSpacing, Alignment.Start),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(primaryButtonWidth)
+                .height(primaryButtonHeight)
+                .background(primaryButtonColor, buttonShape)
+                .border(1.dp, controlBorder, buttonShape)
+                .clickable(enabled = enabled, onClick = onPlayPause),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = stringResource(R.string.player_cd_play_pause),
+                tint = iconColor,
+                modifier = Modifier.size(primaryIconSize)
+            )
+        }
+
+        IconButton(
+            onClick = onReturnToStart,
+            enabled = enabled,
+            modifier = Modifier.size(controlButtonSize)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.SkipPrevious,
+                contentDescription = stringResource(R.string.player_cd_prev),
+                tint = iconColor,
+                modifier = Modifier.size(controlIconSize)
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .size(controlButtonSize)
+                .background(stopButtonColor, buttonShape)
+                .border(1.dp, controlBorder, buttonShape)
+                .clickable(enabled = enabled, onClick = onStop),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Stop,
+                contentDescription = stringResource(R.string.waveform_stop),
+                tint = iconColor,
+                modifier = Modifier.size(controlIconSize)
+            )
         }
     }
 }
