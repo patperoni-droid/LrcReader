@@ -4819,6 +4819,7 @@ class MainActivity : AppCompatActivity() {
                                         initialSongId = waveformSongId,
                                         preparedSelectionSongId = quickPlaylistPreparedSelectionSongId,
                                         currentPlayingSongId = currentPlayingSongId,
+                                        isOfficialPlaybackPlaying = isPlaying,
                                         onStopCurrentPlayback = {
                                             isPlaying = false
                                             exoPlayer.pause()

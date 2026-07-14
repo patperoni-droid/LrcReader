@@ -245,6 +245,7 @@ fun MoreScreen(
             onBack = { navigate("root") },
             initialSongId = currentWaveformSongId,
             currentPlayingSongId = currentPlayingSongId,
+            isOfficialPlaybackPlaying = isCurrentTrackPlaying(),
             onStopCurrentPlayback = onStopCurrentPlayback
         )
 

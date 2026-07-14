@@ -133,6 +133,7 @@ fun WaveformPreviewScreen(
     initialSongId: String? = null,
     preparedSelectionSongId: String? = null,
     currentPlayingSongId: String? = null,
+    isOfficialPlaybackPlaying: Boolean = false,
     onStopCurrentPlayback: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -891,6 +892,9 @@ fun WaveformPreviewScreen(
                             isPlayingWave = false
                         } else {
                             val safePlayhead = playheadMs.coerceIn(0, durationMs)
+                            if (isOfficialPlaybackPlaying) {
+                                onStopCurrentPlayback()
+                            }
                             preparedVisualSongId = null
                             playheadMs = safePlayhead
                             WaveformSessionPrefs.savePlayhead(context, safePlayhead)
