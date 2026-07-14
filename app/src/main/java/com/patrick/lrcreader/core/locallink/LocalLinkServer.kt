@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.core.locallink
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -8,6 +9,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.Closeable
 import java.net.ServerSocket
+
+private const val LOCAL_LINK_DIAG_TAG = "LOCAL_LINK_DIAG"
+
+private fun logLocalLinkDiag(message: String) {
+    runCatching { Log.d(LOCAL_LINK_DIAG_TAG, message) }
+}
+
+private fun logLocalLinkDiagWarning(message: String, throwable: Throwable) {
+    runCatching { Log.w(LOCAL_LINK_DIAG_TAG, message, throwable) }
+}
 
 class LocalLinkServer(
     private val sessionId: String,
@@ -34,15 +45,30 @@ class LocalLinkServer(
         scope: CoroutineScope,
         onMessage: (LocalLinkMessage) -> Unit = {}
     ): Int = withContext(dispatcher) {
-        if (serverSocket != null) return@withContext boundPort
+        if (serverSocket != null) {
+            logLocalLinkDiag(
+                "server_start_reused startedPort=$boundPort socketLocalPort=${serverSocket?.localPort} isClosed=${serverSocket?.isClosed}"
+            )
+            return@withContext boundPort
+        }
 
+        logLocalLinkDiag("server_start_requested requestedPort=$port")
         val socket = ServerSocket(port)
         serverSocket = socket
         boundPort = socket.localPort
+        logLocalLinkDiag(
+            "server_socket_bound startedPort=$boundPort socketLocalPort=${socket.localPort} isClosed=${socket.isClosed}"
+        )
         acceptJob = scope.launch(dispatcher) {
+            logLocalLinkDiag(
+                "server_accept_loop_listening startedPort=$boundPort socketLocalPort=${socket.localPort} isClosed=${socket.isClosed}"
+            )
             while (!socket.isClosed) {
                 runCatching {
                     val clientSocket = socket.accept()
+                    logLocalLinkDiag(
+                        "server_client_accepted startedPort=$boundPort localPort=${clientSocket.localPort} remote=${clientSocket.inetAddress?.hostAddress}:${clientSocket.port}"
+                    )
                     val nextConnection = LocalLinkConnection(
                         socket = clientSocket,
                         dispatcher = dispatcher,
@@ -58,6 +84,7 @@ class LocalLinkServer(
                     nextConnection.send(localHello())
                 }.onFailure {
                     if (!socket.isClosed) {
+                        logLocalLinkDiagWarning("server_accept_failed startedPort=$boundPort", it)
                         markDisconnected()
                     }
                 }
@@ -106,6 +133,9 @@ class LocalLinkServer(
     }
 
     override fun close() {
+        logLocalLinkDiag(
+            "server_close startedPort=$boundPort socketLocalPort=${serverSocket?.localPort} isClosed=${serverSocket?.isClosed}"
+        )
         acceptJob?.cancel()
         acceptJob = null
         connection?.close()

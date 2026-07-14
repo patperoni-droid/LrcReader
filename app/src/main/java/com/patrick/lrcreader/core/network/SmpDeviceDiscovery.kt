@@ -12,7 +12,10 @@ import com.patrick.lrcreader.exo.BuildConfig
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.nio.charset.StandardCharsets
+import java.util.Collections
 
 data class SmpDiscoveredDevice(
     val deviceId: String,
@@ -55,25 +58,40 @@ class SmpDeviceAdvertiser(
     private val nsdManager = appContext.getSystemService(Context.NSD_SERVICE) as NsdManager
     private var registrationListener: NsdManager.RegistrationListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var advertisedPort: Int? = null
 
     fun start(port: Int) {
         if (port !in 1..65535) {
             Log.w(SMP_NSD_TAG, "advertiser_invalid_port port=$port")
             return
         }
-        if (registrationListener != null) return
+        val deviceId = SmpDeviceIdentity.deviceId(appContext)
+        val localHosts = localIpv4Addresses().joinToString()
+        if (registrationListener != null) {
+            Log.d(
+                SMP_NSD_TAG,
+                "advertiser_start_ignored requestedPort=$port advertisedPort=$advertisedPort portsMatch=${advertisedPort == port} deviceId=$deviceId localHosts=$localHosts"
+            )
+            return
+        }
+        Log.d(
+            SMP_NSD_TAG,
+            "advertiser_start requestedPort=$port deviceId=$deviceId localHosts=$localHosts"
+        )
+        advertisedPort = port
         multicastLock = acquireMulticastLock(appContext, "SmpDeviceAdvertiser")
         val listener = object : NsdManager.RegistrationListener {
             override fun onServiceRegistered(serviceInfo: NsdServiceInfo) {
                 Log.d(
                     SMP_NSD_TAG,
-                    "advertiser_registered name=${serviceInfo.serviceName} port=${serviceInfo.port}"
+                    "advertiser_registered name=${serviceInfo.serviceName} advertisedPort=${serviceInfo.port} deviceId=$deviceId localHosts=$localHosts"
                 )
             }
 
             override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
                 Log.w(SMP_NSD_TAG, "advertiser_registration_failed code=$errorCode")
                 registrationListener = null
+                advertisedPort = null
                 releaseMulticastLock()
             }
 
@@ -91,13 +109,16 @@ class SmpDeviceAdvertiser(
         }.onFailure { error ->
             Log.w(SMP_NSD_TAG, "advertiser_start_failed", error)
             registrationListener = null
+            advertisedPort = null
             releaseMulticastLock()
         }
     }
 
     fun stop() {
         val listener = registrationListener ?: return
+        Log.d(SMP_NSD_TAG, "advertiser_stop advertisedPort=$advertisedPort")
         registrationListener = null
+        advertisedPort = null
         runCatching { nsdManager.unregisterService(listener) }
         releaseMulticastLock()
     }
@@ -201,6 +222,10 @@ class SmpDeviceDiscovery(
                     override fun onServiceResolved(resolvedInfo: NsdServiceInfo) {
                         resolvingServiceNames.remove(serviceName)
                         val device = resolvedInfo.toSmpDevice() ?: return
+                        Log.d(
+                            SMP_NSD_TAG,
+                            "discovery_resolved serviceName=${device.serviceName} host=${device.hostAddress} discoveredPort=${device.port} deviceId=${device.deviceId} protocolVersion=${device.protocolVersion} capabilities=${device.capabilities.joinToString()}"
+                        )
                         _devices.update { current ->
                             val filtered = current.filterNot {
                                 it.deviceId == device.deviceId || it.serviceName == device.serviceName
@@ -268,4 +293,22 @@ private fun acquireMulticastLock(
             acquire()
         }
     }.getOrNull()
+}
+
+private fun localIpv4Addresses(): List<String> {
+    return runCatching {
+        Collections.list(NetworkInterface.getNetworkInterfaces())
+            .asSequence()
+            .filter { it.isUp && !it.isLoopback }
+            .flatMap { networkInterface ->
+                Collections.list(networkInterface.inetAddresses)
+                    .asSequence()
+                    .filterIsInstance<Inet4Address>()
+                    .filter { !it.isLoopbackAddress }
+                    .map { address -> address.hostAddress.orEmpty() }
+            }
+            .filter { it.isNotBlank() }
+            .distinct()
+            .toList()
+    }.getOrDefault(emptyList())
 }
