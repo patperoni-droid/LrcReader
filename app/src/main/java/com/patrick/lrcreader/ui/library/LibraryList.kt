@@ -314,20 +314,6 @@ fun LibraryList(
                                 )
                             }
 
-                            if (isSmp) {
-                                Spacer(Modifier.width(6.dp))
-                                Box(
-                                    modifier = Modifier
-                                        .background(Color(0xFF2E7D32), shape = androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "SMP",
-                                        color = Color.White,
-                                        fontSize = 10.sp
-                                    )
-                                }
-                            }
                         }
 
                         if (isPrompter) {
