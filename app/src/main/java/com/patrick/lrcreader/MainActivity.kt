@@ -159,7 +159,8 @@ class MainActivity : AppCompatActivity() {
         BACKGROUND_SOUND,
         DJ,
         MAIN_BUS,
-        TUNER
+        TUNER,
+        WAVEFORM
     }
 
     private data class SessionSnapshot(
@@ -4003,6 +4004,12 @@ class MainActivity : AppCompatActivity() {
                                     tabletRightPanel = TabletSplitRightPanel.TUNER
                                 }
 
+                                fun openTabletSplitWaveform() {
+                                    prepareTabletSplitMenuNavigation()
+                                    isTabletCockpitDestinationOpen = false
+                                    tabletRightPanel = TabletSplitRightPanel.WAVEFORM
+                                }
+
                                 fun openTabletSplitSearch() {
                                     prepareTabletSplitMenuNavigation()
                                     isTabletCockpitDestinationOpen = false
@@ -4383,9 +4390,13 @@ class MainActivity : AppCompatActivity() {
                                         requestedNavigationTarget = playerNavigationTarget,
                                         requestedNavigationToken = playerNavigationToken,
                                         onOpenWaveform = {
-                                            moreNavigationTarget = "waveform_preview"
-                                            moreNavigationToken += 1
-                                            setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
+                                            if (adaptiveTokens.tabletMode && tabletExperimentalModeEnabled) {
+                                                openTabletSplitWaveform()
+                                            } else {
+                                                moreNavigationTarget = "waveform_preview"
+                                                moreNavigationToken += 1
+                                                setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
+                                            }
                                         },
                                         getPositionMs = { exoPlayer.currentPosition },
                                         getEffectiveDurationMs = {
@@ -4797,6 +4808,22 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 }
 
+                                val waveformPane: @Composable (Modifier) -> Unit = { paneModifier ->
+                                    WaveformPreviewScreen(
+                                        modifier = paneModifier,
+                                        onBack = {
+                                            tabletRightPanel = TabletSplitRightPanel.LYRICS
+                                        },
+                                        initialSongId = currentPlayingSongId,
+                                        currentPlayingSongId = currentPlayingSongId,
+                                        onStopCurrentPlayback = {
+                                            isPlaying = false
+                                            exoPlayer.pause()
+                                            exoPlayer.playWhenReady = false
+                                        }
+                                    )
+                                }
+
                                 val quickPlaylistsPane: @Composable (Modifier) -> Unit = { paneModifier ->
                                     QuickPlaylistsScreen(
                                         modifier = paneModifier,
@@ -5104,6 +5131,17 @@ class MainActivity : AppCompatActivity() {
                                                             )
                                                         }
                                                     }
+
+                                                    TabletSplitRightPanel.WAVEFORM -> {
+                                                        Column(Modifier.fillMaxSize()) {
+                                                            TabletSplitTopNavigationShortcuts()
+                                                            waveformPane(
+                                                                Modifier
+                                                                    .weight(1f)
+                                                                    .fillMaxWidth()
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -5404,9 +5442,13 @@ class MainActivity : AppCompatActivity() {
                                         requestedNavigationTarget = playerNavigationTarget,
                                         requestedNavigationToken = playerNavigationToken,
                                         onOpenWaveform = {
-                                            moreNavigationTarget = "waveform_preview"
-                                            moreNavigationToken += 1
-                                            setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
+                                            if (adaptiveTokens.tabletMode && tabletExperimentalModeEnabled) {
+                                                openTabletSplitWaveform()
+                                            } else {
+                                                moreNavigationTarget = "waveform_preview"
+                                                moreNavigationToken += 1
+                                                setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
+                                            }
                                         },
                                         getPositionMs = { exoPlayer.currentPosition },
                                         getEffectiveDurationMs = {

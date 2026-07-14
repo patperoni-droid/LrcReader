@@ -709,9 +709,7 @@ fun WaveformPreviewScreen(
             ) {
                 val controlsEnabled = selectedUri != null && durationMs > 0
                 val detectEnabled = controlsEnabled && peaks.isNotEmpty() && !isLoading && !isDetectingSilence
-                val matchVolumeEnabled = controlsEnabled && peaks.isNotEmpty() && !isLoading && !isMatchingVolume
                 val hasOutTrim = controlsEnabled && outMs in 1 until durationMs
-                val effectiveLufs = estimatedTrackLufs?.plus(pendingVolumeDb.toFloat())
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -858,37 +856,6 @@ fun WaveformPreviewScreen(
 
                     TextButton(
                         onClick = {
-                            if (!matchVolumeEnabled) return@TextButton
-                            val snapshotPeaks = peaks.toFloatArray()
-                            isMatchingVolume = true
-                            scope.launch {
-                                try {
-                                    val matchedVolumeDb = withContext(Dispatchers.Default) {
-                                        estimateMatchedVolumeDbFromPeaks(snapshotPeaks)
-                                    } ?: return@launch
-                                    pendingVolumeDb = matchedVolumeDb
-                                    pendingVolumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(
-                                            R.string.waveform_level_adjusted,
-                                            matchedVolumeDb.toFloat()
-                                        ),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } finally {
-                                    isMatchingVolume = false
-                                }
-                            }
-                        },
-                        enabled = matchVolumeEnabled,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Text(stringResource(R.string.waveform_match_volume), fontSize = 12.sp)
-                    }
-
-                    TextButton(
-                        onClick = {
                             if (durationMs <= 0) return@TextButton
                             if (EditionConfig.isLite) {
                                 showWaveformSaveProDialog = true
@@ -937,11 +904,6 @@ fun WaveformPreviewScreen(
                     )
                 }
 
-                LufsLevelIndicator(
-                    currentLufs = effectiveLufs,
-                    targetLufs = MATCH_VOLUME_TARGET_LUFS,
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         }
     }
