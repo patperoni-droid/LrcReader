@@ -37,9 +37,7 @@ import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.log10
 import kotlin.math.pow
-import kotlin.math.roundToInt
 
 private fun defaultDocumentsTreeUriOrNull(): Uri? {
     // ⚠️ Sur la majorité des Android, l’autorité “externalstorage” existe.
@@ -122,16 +120,6 @@ fun FillerSoundScreen(
     fun realToUiVolume(r: Float): Float {
         val clamped = r.coerceIn(0f, 1f)
         return clamped.toDouble().pow(1.0 / 3.0).toFloat() // racine cubique
-    }
-
-    fun realVolumeToDb(volume: Float): Int {
-        val safe = volume.coerceIn(0f, 1f)
-        if (safe <= 0f) return -60
-        return (20.0 * log10(safe.toDouble())).roundToInt().coerceIn(-60, 0)
-    }
-
-    fun dbToRealVolume(db: Int): Float {
-        return 10.0.pow(db.coerceIn(-60, 0) / 20.0).toFloat().coerceIn(0f, 1f)
     }
 
     val initialReal = FillerSoundPrefs.getFillerVolume(context)
@@ -530,17 +518,12 @@ fun FillerSoundScreen(
                 },
                 isPlaying = isPlaying,
                 isStarting = isStarting,
-                gainDb = realVolumeToDb(uiToRealVolume(uiFillerVolume)),
                 onPlay = ::startFillerFromUi,
                 onStop = ::stopFillerFromUi,
                 onPrev = {
                     playbackPositionMs = 0
                     playbackDragPositionMs = 0
                     FillerSoundManager.seekTo(0)
-                },
-                onGainDelta = { deltaDb ->
-                    val currentDb = realVolumeToDb(uiToRealVolume(uiFillerVolume))
-                    setFillerVolumeReal(dbToRealVolume(currentDb + deltaDb))
                 }
             )
             Spacer(Modifier.height(10.dp))
@@ -594,17 +577,14 @@ private fun FillerLocalPlaybackControls(
     onSeekCommit: (Int) -> Unit,
     isPlaying: Boolean,
     isStarting: Boolean,
-    gainDb: Int,
     onPlay: () -> Unit,
     onStop: () -> Unit,
-    onPrev: () -> Unit,
-    onGainDelta: (Int) -> Unit
+    onPrev: () -> Unit
 ) {
     val panelShape = RoundedCornerShape(10.dp)
     val buttonShape = RoundedCornerShape(6.dp)
     val controlButtonSize = 44.dp
     val controlIconSize = 28.dp
-    val gainButtonSize = 36.dp
     val fillerAccent = Color(0xFF90A4AE)
     val fillerPanel = Color(0xFF171C1F)
     val fillerBorder = Color(0xFF78909C).copy(alpha = 0.30f)
@@ -613,7 +593,6 @@ private fun FillerLocalPlaybackControls(
     val disabledButtonColor = Color.White.copy(alpha = 0.08f)
     val disabledIconColor = Color.White.copy(alpha = 0.42f)
     val controlBorder = Color.White.copy(alpha = 0.18f)
-    val gainButtonBackground = Color.White.copy(alpha = 0.10f)
 
     Column(
         modifier = Modifier
@@ -675,45 +654,6 @@ private fun FillerLocalPlaybackControls(
                     contentDescription = stringResource(R.string.player_cd_prev),
                     tint = Color.White,
                     modifier = Modifier.size(controlIconSize)
-                )
-            }
-
-            Box(
-                modifier = Modifier
-                    .size(gainButtonSize)
-                    .background(gainButtonBackground, buttonShape)
-                    .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
-                    .clickable { onGainDelta(-1) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.playback_control_gain_decrease),
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Text(
-                text = stringResource(R.string.library_lufs_db_value, gainDb),
-                color = Color.White,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Box(
-                modifier = Modifier
-                    .size(gainButtonSize)
-                    .background(gainButtonBackground, buttonShape)
-                    .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
-                    .clickable { onGainDelta(1) },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.playback_control_gain_increase),
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
