@@ -411,36 +411,58 @@ fun FillerSoundScreen(
         ) {
             Column(Modifier.padding(12.dp)) {
                 val isDefaultSource = !customFolderAvailable || !isUsingCustomSource
-                SourceOptionRow(
-                    title = stringResource(R.string.filler_source_default_title),
-                    subtitle = stringResource(R.string.filler_source_default_subtitle),
-                    selected = isDefaultSource,
-                    activeColor = accent,
-                    titleColor = onBg,
-                    subtitleColor = sub,
-                    onClick = {
-                        FillerSoundPrefs.setUseCustomFolder(context, false)
-                        isUsingCustomSource = false
-                        fillerName = sAssetsIntegrated
+                val defaultSourceOption: @Composable (Modifier) -> Unit = { optionModifier ->
+                    Box(modifier = optionModifier) {
+                        SourceOptionRow(
+                            title = stringResource(R.string.filler_source_default_title),
+                            subtitle = stringResource(R.string.filler_source_default_subtitle),
+                            selected = isDefaultSource,
+                            activeColor = accent,
+                            titleColor = onBg,
+                            subtitleColor = sub,
+                            onClick = {
+                                FillerSoundPrefs.setUseCustomFolder(context, false)
+                                isUsingCustomSource = false
+                                fillerName = sAssetsIntegrated
+                            }
+                        )
                     }
-                )
-                Spacer(Modifier.height(10.dp))
-                SourceOptionRow(
-                    title = stringResource(R.string.filler_source_custom_folder),
-                    subtitle = stringResource(R.string.filler_source_custom_subtitle),
-                    selected = !isDefaultSource,
-                    activeColor = accent,
-                    titleColor = onBg,
-                    subtitleColor = sub,
-                    onClick = {
-                        if (EditionConfig.isLite) {
-                            showCustomFolderProDialog = true
-                        } else {
-                            FillerSoundPrefs.setUseCustomFolder(context, true)
-                            isUsingCustomSource = true
-                        }
+                }
+                val customSourceOption: @Composable (Modifier) -> Unit = { optionModifier ->
+                    Box(modifier = optionModifier) {
+                        SourceOptionRow(
+                            title = stringResource(R.string.filler_source_custom_folder),
+                            subtitle = stringResource(R.string.filler_source_custom_subtitle),
+                            selected = !isDefaultSource,
+                            activeColor = accent,
+                            titleColor = onBg,
+                            subtitleColor = sub,
+                            onClick = {
+                                if (EditionConfig.isLite) {
+                                    showCustomFolderProDialog = true
+                                } else {
+                                    FillerSoundPrefs.setUseCustomFolder(context, true)
+                                    isUsingCustomSource = true
+                                }
+                            }
+                        )
                     }
-                )
+                }
+
+                if (adaptiveTokens.tabletMode) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        defaultSourceOption(Modifier.weight(1f))
+                        customSourceOption(Modifier.weight(1f))
+                    }
+                } else {
+                    defaultSourceOption(Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(10.dp))
+                    customSourceOption(Modifier.fillMaxWidth())
+                }
                 if (customFolderAvailable) {
                     Spacer(Modifier.height(10.dp))
                     TextButton(
