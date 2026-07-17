@@ -127,6 +127,8 @@
     <string name="filler_default_music_name">Music</string>
 
     <string name="filler_bus_title">BACKGROUND BUS</string>
+    <string name="filler_local_controller_title">Background sound player</string>
+    <string name="filler_main_playback_controller_title">Main playback</string>
 
     <string name="filler_enable">Enable background sound</string>
     <string name="filler_volume">Volume</string>

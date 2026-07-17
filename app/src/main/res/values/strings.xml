@@ -133,6 +133,8 @@
     <string name="filler_dj_scan_wait">Scan DJ en cours… patiente 🙂</string>
 
     <string name="filler_bus_title">BUS FOND SONORE</string>
+    <string name="filler_local_controller_title">Lecteur Fond sonore</string>
+    <string name="filler_main_playback_controller_title">Playback principal</string>
     <string name="filler_enable">Activer le fond sonore</string>
     <string name="filler_volume">Volume</string>
     <string name="filler_percent">%1$d %%</string>

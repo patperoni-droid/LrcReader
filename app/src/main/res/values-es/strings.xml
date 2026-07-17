@@ -125,6 +125,8 @@
     <string name="filler_default_music_name">Música</string>
 
     <string name="filler_bus_title">BUS DE FONDO</string>
+    <string name="filler_local_controller_title">Reproductor de fondo</string>
+    <string name="filler_main_playback_controller_title">Playback principal</string>
 
     <string name="filler_enable">Activar sonido de fondo</string>
     <string name="filler_volume">Volumen</string>

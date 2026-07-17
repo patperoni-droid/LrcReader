@@ -287,7 +287,7 @@ fun FillerSoundScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 172.dp)
+                .padding(bottom = 210.dp)
         ) {
             Spacer(Modifier.height(10.dp))
 
@@ -508,6 +508,11 @@ fun FillerSoundScreen(
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
         ) {
+            FillerControlLabel(
+                text = stringResource(R.string.filler_local_controller_title),
+                color = Color(0xFFB0BEC5)
+            )
+            Spacer(Modifier.height(4.dp))
             FillerLocalPlaybackControls(
                 positionMs = if (playbackDragging) playbackDragPositionMs else playbackPositionMs,
                 durationMs = playbackDurationMs,
@@ -523,7 +528,6 @@ fun FillerSoundScreen(
                     playbackPositionMs = safe
                     FillerSoundManager.seekTo(safe)
                 },
-                highlightColor = accent,
                 isPlaying = isPlaying,
                 isStarting = isStarting,
                 gainDb = realVolumeToDb(uiToRealVolume(uiFillerVolume)),
@@ -539,7 +543,12 @@ fun FillerSoundScreen(
                     setFillerVolumeReal(dbToRealVolume(currentDb + deltaDb))
                 }
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
+            FillerControlLabel(
+                text = stringResource(R.string.filler_main_playback_controller_title),
+                color = Color(0xFFFFECB3)
+            )
+            Spacer(Modifier.height(4.dp))
             PlaybackControl(
                 positionMs = if (mainPlaybackDragging) mainPlaybackDragPositionMs else mainPlaybackPositionMs,
                 durationMs = mainPlaybackDurationMs,
@@ -583,7 +592,6 @@ private fun FillerLocalPlaybackControls(
     durationMs: Int,
     onSeekLivePreview: (Int) -> Unit,
     onSeekCommit: (Int) -> Unit,
-    highlightColor: Color,
     isPlaying: Boolean,
     isStarting: Boolean,
     gainDb: Int,
@@ -592,27 +600,34 @@ private fun FillerLocalPlaybackControls(
     onPrev: () -> Unit,
     onGainDelta: (Int) -> Unit
 ) {
-    val buttonShape = RoundedCornerShape(7.dp)
-    val controlButtonSize = 48.dp
-    val controlIconSize = 34.dp
-    val primaryButtonWidth = 126.dp
-    val primaryButtonHeight = 50.dp
-    val primaryIconSize = 27.dp
+    val panelShape = RoundedCornerShape(10.dp)
+    val buttonShape = RoundedCornerShape(6.dp)
+    val controlButtonSize = 44.dp
+    val controlIconSize = 28.dp
     val gainButtonSize = 36.dp
-    val consoleGreen = Color(0xFF18B857)
-    val consoleRed = Color(0xFFD93636)
+    val fillerAccent = Color(0xFF90A4AE)
+    val fillerPanel = Color(0xFF171C1F)
+    val fillerBorder = Color(0xFF78909C).copy(alpha = 0.30f)
+    val playButtonColor = Color(0xFF455A64)
+    val stopButtonColor = Color(0xFF5D4037)
     val disabledButtonColor = Color.White.copy(alpha = 0.08f)
     val disabledIconColor = Color.White.copy(alpha = 0.42f)
-    val controlBorder = Color.White.copy(alpha = 0.22f)
+    val controlBorder = Color.White.copy(alpha = 0.18f)
     val gainButtonBackground = Color.White.copy(alpha = 0.10f)
 
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(fillerPanel, panelShape)
+            .border(1.dp, fillerBorder, panelShape)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+    ) {
         TimeBar(
             positionMs = positionMs,
             durationMs = durationMs,
             onSeekLivePreview = onSeekLivePreview,
             onSeekCommit = onSeekCommit,
-            highlightColor = highlightColor
+            highlightColor = fillerAccent
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -621,9 +636,8 @@ private fun FillerLocalPlaybackControls(
         ) {
             Box(
                 modifier = Modifier
-                    .width(primaryButtonWidth)
-                    .height(primaryButtonHeight)
-                    .background(if (isStarting) disabledButtonColor else consoleGreen, buttonShape)
+                    .size(controlButtonSize)
+                    .background(if (isStarting) disabledButtonColor else playButtonColor, buttonShape)
                     .border(1.dp, controlBorder, buttonShape)
                     .clickable(enabled = !isStarting && !isPlaying, onClick = onPlay),
                 contentAlignment = Alignment.Center
@@ -632,14 +646,14 @@ private fun FillerLocalPlaybackControls(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = stringResource(R.string.player_cd_play),
                     tint = if (isStarting) disabledIconColor else Color.White,
-                    modifier = Modifier.size(primaryIconSize)
+                    modifier = Modifier.size(controlIconSize)
                 )
             }
 
             Box(
                 modifier = Modifier
                     .size(controlButtonSize)
-                    .background(if (isPlaying || isStarting) consoleRed else disabledButtonColor, buttonShape)
+                    .background(if (isPlaying || isStarting) stopButtonColor else disabledButtonColor, buttonShape)
                     .border(1.dp, controlBorder, buttonShape)
                     .clickable(enabled = isPlaying || isStarting, onClick = onStop),
                 contentAlignment = Alignment.Center
@@ -704,6 +718,20 @@ private fun FillerLocalPlaybackControls(
             }
         }
     }
+}
+
+@Composable
+private fun FillerControlLabel(
+    text: String,
+    color: Color
+) {
+    Text(
+        text = text,
+        color = color,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 2.dp)
+    )
 }
 
 @Composable
