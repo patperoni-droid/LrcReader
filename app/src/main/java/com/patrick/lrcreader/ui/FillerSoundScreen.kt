@@ -62,7 +62,8 @@ fun FillerSoundScreen(
     getMainPositionMs: () -> Long = { 0L },
     getMainDurationMs: () -> Long = { 0L },
     seekMainToMs: (Long) -> Unit = {},
-    onMainPlaybackPlayPause: () -> Unit = {}
+    onMainPlaybackPlayPause: () -> Unit = {},
+    mainPlaybackSelectionInSync: Boolean = true
 ) {
     val adaptiveTokens = rememberSmpAdaptiveTokens()
     // ✅ IMPORTANT :
@@ -569,7 +570,8 @@ fun FillerSoundScreen(
                         onMainLiveGainDelta(deltaDb)
                     }
                 },
-                liveConsoleMode = adaptiveTokens.tabletMode
+                liveConsoleMode = adaptiveTokens.tabletMode,
+                liveSelectionInSync = mainPlaybackSelectionInSync
             )
         }
     }

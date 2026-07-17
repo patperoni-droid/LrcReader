@@ -3839,7 +3839,8 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 },
                                 seekMainToMs = { ms -> exoPlayer.seekTo(ms) },
-                                onMainPlaybackPlayPause = ::togglePlaybackFromMainBus
+                                onMainPlaybackPlayPause = ::togglePlaybackFromMainBus,
+                                mainPlaybackSelectionInSync = quickPlaylistLiveSelectionInSync
                             )
                         }
                     } else if (isGlobalMixOpen && EditionConfig.isPro) {
@@ -4652,6 +4653,7 @@ class MainActivity : AppCompatActivity() {
                                         onLiveGainDelta = ::adjustLiveGain,
                                         seekCurrentTrackToMs = { ms -> exoPlayer.seekTo(ms) },
                                         onPlaybackControlPlayPause = ::togglePlaybackFromMainBus,
+                                        playbackControlSelectionInSync = quickPlaylistLiveSelectionInSync,
                                         loadCurrentParsedLines = {
                                             val uri = currentPlayingUri
                                             when {
@@ -4778,7 +4780,8 @@ class MainActivity : AppCompatActivity() {
                                                 )
                                             },
                                             seekMainToMs = { ms -> exoPlayer.seekTo(ms) },
-                                            onMainPlaybackPlayPause = ::togglePlaybackFromMainBus
+                                            onMainPlaybackPlayPause = ::togglePlaybackFromMainBus,
+                                            mainPlaybackSelectionInSync = quickPlaylistLiveSelectionInSync
                                         )
                                     }
                                 }
@@ -5887,6 +5890,7 @@ class MainActivity : AppCompatActivity() {
                                         onLiveGainDelta = ::adjustLiveGain,
                                         seekCurrentTrackToMs = { ms -> exoPlayer.seekTo(ms) },
                                         onPlaybackControlPlayPause = ::togglePlaybackFromMainBus,
+                                        playbackControlSelectionInSync = quickPlaylistLiveSelectionInSync,
                                         loadCurrentParsedLines = {
                                             val uri = currentPlayingUri
                                             when {

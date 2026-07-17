@@ -133,6 +133,7 @@ fun MoreScreen(
     onLiveGainDelta: (Int) -> Unit = {},
     seekCurrentTrackToMs: (Long) -> Unit = {},
     onPlaybackControlPlayPause: () -> Unit = {},
+    playbackControlSelectionInSync: Boolean = true,
     loadCurrentParsedLines: suspend () -> List<LrcLine> = { currentParsedLines },
     requestedRoute: String? = null,
     requestedRouteToken: Int = 0,
@@ -214,7 +215,8 @@ fun MoreScreen(
             getMainPositionMs = getCurrentPositionMs,
             getMainDurationMs = { getCurrentDurationMs() ?: 0L },
             seekMainToMs = seekCurrentTrackToMs,
-            onMainPlaybackPlayPause = onPlaybackControlPlayPause
+            onMainPlaybackPlayPause = onPlaybackControlPlayPause,
+            mainPlaybackSelectionInSync = playbackControlSelectionInSync
         )
 
         MoreSection.History -> HistoryScreen(
