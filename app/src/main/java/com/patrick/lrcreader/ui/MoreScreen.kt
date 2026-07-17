@@ -128,6 +128,11 @@ fun MoreScreen(
     getCurrentPositionMs: () -> Long = { 0L },
     getCurrentDurationMs: () -> Long? = { null },
     isCurrentTrackPlaying: () -> Boolean = { false },
+    currentTrackGainDb: Int = 0,
+    liveGainControlsEnabled: Boolean = false,
+    onLiveGainDelta: (Int) -> Unit = {},
+    seekCurrentTrackToMs: (Long) -> Unit = {},
+    onPlaybackControlPlayPause: () -> Unit = {},
     loadCurrentParsedLines: suspend () -> List<LrcLine> = { currentParsedLines },
     requestedRoute: String? = null,
     requestedRouteToken: Int = 0,
@@ -201,7 +206,15 @@ fun MoreScreen(
 
         MoreSection.Filler -> FillerSoundScreen(
             context = context,
-            onBack = { navigate("root") }
+            onBack = { navigate("root") },
+            isMainPlaybackPlaying = isCurrentTrackPlaying(),
+            currentMainTrackGainDb = currentTrackGainDb,
+            liveGainControlsEnabled = liveGainControlsEnabled,
+            onMainLiveGainDelta = onLiveGainDelta,
+            getMainPositionMs = getCurrentPositionMs,
+            getMainDurationMs = { getCurrentDurationMs() ?: 0L },
+            seekMainToMs = seekCurrentTrackToMs,
+            onMainPlaybackPlayPause = onPlaybackControlPlayPause
         )
 
         MoreSection.History -> HistoryScreen(

@@ -3823,7 +3823,23 @@ class MainActivity : AppCompatActivity() {
                                 onBack = {
                                     isTabletCockpitDestinationOpen = false
                                     isFillerSettingsOpen = false
-                                }
+                                },
+                                isMainPlaybackPlaying = isPlaying,
+                                currentMainTrackGainDb = currentTrackGainDb,
+                                liveGainControlsEnabled = canAdjustLiveGain(),
+                                onMainLiveGainDelta = ::adjustLiveGain,
+                                getMainPositionMs = { exoPlayer.currentPosition },
+                                getMainDurationMs = {
+                                    resolveEffectiveDurationMs(
+                                        requestedUri = currentPlayingUri,
+                                        activeUri = exoPlayer.currentMediaItem
+                                            ?.localConfiguration
+                                            ?.uri
+                                            ?.toString()
+                                    )
+                                },
+                                seekMainToMs = { ms -> exoPlayer.seekTo(ms) },
+                                onMainPlaybackPlayPause = ::togglePlaybackFromMainBus
                             )
                         }
                     } else if (isGlobalMixOpen && EditionConfig.isPro) {
@@ -4631,6 +4647,11 @@ class MainActivity : AppCompatActivity() {
                                         isCurrentTrackPlaying = {
                                             runCatching { exoPlayer.isPlaying }.getOrDefault(isPlaying)
                                         },
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        onLiveGainDelta = ::adjustLiveGain,
+                                        seekCurrentTrackToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onPlaybackControlPlayPause = ::togglePlaybackFromMainBus,
                                         loadCurrentParsedLines = {
                                             val uri = currentPlayingUri
                                             when {
@@ -4741,7 +4762,23 @@ class MainActivity : AppCompatActivity() {
                                             context = ctx,
                                             onBack = {
                                                 tabletRightPanel = TabletSplitRightPanel.LYRICS
-                                            }
+                                            },
+                                            isMainPlaybackPlaying = isPlaying,
+                                            currentMainTrackGainDb = currentTrackGainDb,
+                                            liveGainControlsEnabled = canAdjustLiveGain(),
+                                            onMainLiveGainDelta = ::adjustLiveGain,
+                                            getMainPositionMs = { exoPlayer.currentPosition },
+                                            getMainDurationMs = {
+                                                resolveEffectiveDurationMs(
+                                                    requestedUri = currentPlayingUri,
+                                                    activeUri = exoPlayer.currentMediaItem
+                                                        ?.localConfiguration
+                                                        ?.uri
+                                                        ?.toString()
+                                                )
+                                            },
+                                            seekMainToMs = { ms -> exoPlayer.seekTo(ms) },
+                                            onMainPlaybackPlayPause = ::togglePlaybackFromMainBus
                                         )
                                     }
                                 }
@@ -5845,6 +5882,11 @@ class MainActivity : AppCompatActivity() {
                                         isCurrentTrackPlaying = {
                                             runCatching { exoPlayer.isPlaying }.getOrDefault(isPlaying)
                                         },
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        onLiveGainDelta = ::adjustLiveGain,
+                                        seekCurrentTrackToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onPlaybackControlPlayPause = ::togglePlaybackFromMainBus,
                                         loadCurrentParsedLines = {
                                             val uri = currentPlayingUri
                                             when {

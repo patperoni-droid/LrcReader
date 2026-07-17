@@ -9,11 +9,16 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.EditionConfig
@@ -48,7 +54,15 @@ private fun defaultDocumentsTreeUriOrNull(): Uri? {
 @Composable
 fun FillerSoundScreen(
     context: Context,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    isMainPlaybackPlaying: Boolean = false,
+    currentMainTrackGainDb: Int = 0,
+    liveGainControlsEnabled: Boolean = false,
+    onMainLiveGainDelta: (Int) -> Unit = {},
+    getMainPositionMs: () -> Long = { 0L },
+    getMainDurationMs: () -> Long = { 0L },
+    seekMainToMs: (Long) -> Unit = {},
+    onMainPlaybackPlayPause: () -> Unit = {}
 ) {
     val adaptiveTokens = rememberSmpAdaptiveTokens()
     // ✅ IMPORTANT :
@@ -135,6 +149,13 @@ fun FillerSoundScreen(
     var playbackDurationMs by remember { mutableIntStateOf(0) }
     var playbackDragging by remember { mutableStateOf(false) }
     var playbackDragPositionMs by remember { mutableIntStateOf(0) }
+    var mainPlaybackPositionMs by remember { mutableIntStateOf(0) }
+    var mainPlaybackDurationMs by remember { mutableIntStateOf(0) }
+    var mainPlaybackDragging by remember { mutableStateOf(false) }
+    var mainPlaybackDragPositionMs by remember { mutableIntStateOf(0) }
+    val latestGetMainPositionMs by rememberUpdatedState(getMainPositionMs)
+    val latestGetMainDurationMs by rememberUpdatedState(getMainDurationMs)
+    val latestIsMainPlaybackPlaying by rememberUpdatedState(isMainPlaybackPlaying)
 
     // ✅ démarrage fiable (on lance directement en coroutine, pas via LaunchedEffect)
     val scope = rememberCoroutineScope()
@@ -151,6 +172,52 @@ fun FillerSoundScreen(
             }
             delay(if (managerPlaying) 250L else 500L)
         }
+    }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            mainPlaybackDurationMs = latestGetMainDurationMs()
+                .coerceAtLeast(0L)
+                .coerceAtMost(Int.MAX_VALUE.toLong())
+                .toInt()
+            if (!mainPlaybackDragging) {
+                mainPlaybackPositionMs = latestGetMainPositionMs()
+                    .coerceAtLeast(0L)
+                    .coerceAtMost(Int.MAX_VALUE.toLong())
+                    .toInt()
+            }
+            delay(if (latestIsMainPlaybackPlaying) 250L else 500L)
+        }
+    }
+
+    fun startFillerFromUi() {
+        if (isStarting) return
+
+        if (!isEnabled) {
+            isEnabled = true
+            FillerSoundPrefs.setEnabled(context, true)
+        }
+
+        if (!FillerSoundManager.isPlaying()) {
+            isStarting = true
+            startJob?.cancel()
+            startJob = scope.launch {
+                runCatching {
+                    FillerSoundManager.startFromUi(context)
+                    FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
+                }
+                isPlaying = FillerSoundManager.isPlaying()
+                playbackDurationMs = FillerSoundManager.getDurationMs()
+                playbackPositionMs = FillerSoundManager.getCurrentPositionMs()
+                isStarting = false
+            }
+        }
+    }
+
+    fun stopFillerFromUi() {
+        FillerSoundManager.fadeOutAndStop(200)
+        isPlaying = false
+        isStarting = false
     }
 
     // ✅ Hint d’ouverture : essayer d’ouvrir directement dans "Documents"
@@ -219,7 +286,7 @@ fun FillerSoundScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 96.dp)
+                .padding(bottom = 172.dp)
         ) {
             Spacer(Modifier.height(10.dp))
 
@@ -440,7 +507,7 @@ fun FillerSoundScreen(
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
         ) {
-            PlaybackControl(
+            FillerLocalPlaybackControls(
                 positionMs = if (playbackDragging) playbackDragPositionMs else playbackPositionMs,
                 durationMs = playbackDurationMs,
                 onSeekLivePreview = { newPos ->
@@ -457,46 +524,182 @@ fun FillerSoundScreen(
                 },
                 highlightColor = accent,
                 isPlaying = isPlaying,
-                onPlayPause = onPlayPause@{
-                    if (isStarting) return@onPlayPause
-
-                    if (!isEnabled) {
-                        isEnabled = true
-                        FillerSoundPrefs.setEnabled(context, true)
-                    }
-
-                    if (!FillerSoundManager.isPlaying()) {
-                        isStarting = true
-                        startJob?.cancel()
-                        startJob = scope.launch {
-                            runCatching {
-                                FillerSoundManager.startFromUi(context)
-                                FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
-                            }
-                            isPlaying = FillerSoundManager.isPlaying()
-                            playbackDurationMs = FillerSoundManager.getDurationMs()
-                            playbackPositionMs = FillerSoundManager.getCurrentPositionMs()
-                            isStarting = false
-                        }
-                    } else {
-                        FillerSoundManager.fadeOutAndStop(200)
-                        isPlaying = false
-                        isStarting = false
-                    }
-                },
+                isStarting = isStarting,
+                gainDb = realVolumeToDb(uiToRealVolume(uiFillerVolume)),
+                onPlay = ::startFillerFromUi,
+                onStop = ::stopFillerFromUi,
                 onPrev = {
                     playbackPositionMs = 0
                     playbackDragPositionMs = 0
                     FillerSoundManager.seekTo(0)
                 },
-                onNext = {},
-                gainDb = realVolumeToDb(uiToRealVolume(uiFillerVolume)),
                 onGainDelta = { deltaDb ->
                     val currentDb = realVolumeToDb(uiToRealVolume(uiFillerVolume))
                     setFillerVolumeReal(dbToRealVolume(currentDb + deltaDb))
+                }
+            )
+            Spacer(Modifier.height(8.dp))
+            PlaybackControl(
+                positionMs = if (mainPlaybackDragging) mainPlaybackDragPositionMs else mainPlaybackPositionMs,
+                durationMs = mainPlaybackDurationMs,
+                onSeekLivePreview = { newPos ->
+                    if (mainPlaybackDurationMs > 0) {
+                        mainPlaybackDragging = true
+                        mainPlaybackDragPositionMs = newPos
+                    }
+                },
+                onSeekCommit = { newPos ->
+                    val safe = newPos.coerceIn(0, mainPlaybackDurationMs.coerceAtLeast(0))
+                    mainPlaybackDragging = false
+                    mainPlaybackPositionMs = safe
+                    seekMainToMs(safe.toLong())
+                },
+                highlightColor = accent,
+                isPlaying = isMainPlaybackPlaying,
+                onPlayPause = onMainPlaybackPlayPause,
+                onPrev = {
+                    mainPlaybackPositionMs = 0
+                    mainPlaybackDragPositionMs = 0
+                    seekMainToMs(0L)
+                },
+                onNext = {},
+                gainDb = currentMainTrackGainDb,
+                onGainDelta = { deltaDb ->
+                    if (liveGainControlsEnabled) {
+                        onMainLiveGainDelta(deltaDb)
+                    }
                 },
                 liveConsoleMode = adaptiveTokens.tabletMode
             )
+        }
+    }
+}
+
+@Composable
+private fun FillerLocalPlaybackControls(
+    positionMs: Int,
+    durationMs: Int,
+    onSeekLivePreview: (Int) -> Unit,
+    onSeekCommit: (Int) -> Unit,
+    highlightColor: Color,
+    isPlaying: Boolean,
+    isStarting: Boolean,
+    gainDb: Int,
+    onPlay: () -> Unit,
+    onStop: () -> Unit,
+    onPrev: () -> Unit,
+    onGainDelta: (Int) -> Unit
+) {
+    val buttonShape = RoundedCornerShape(7.dp)
+    val controlButtonSize = 48.dp
+    val controlIconSize = 34.dp
+    val primaryButtonWidth = 126.dp
+    val primaryButtonHeight = 50.dp
+    val primaryIconSize = 27.dp
+    val gainButtonSize = 36.dp
+    val consoleGreen = Color(0xFF18B857)
+    val consoleRed = Color(0xFFD93636)
+    val disabledButtonColor = Color.White.copy(alpha = 0.08f)
+    val disabledIconColor = Color.White.copy(alpha = 0.42f)
+    val controlBorder = Color.White.copy(alpha = 0.22f)
+    val gainButtonBackground = Color.White.copy(alpha = 0.10f)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        TimeBar(
+            positionMs = positionMs,
+            durationMs = durationMs,
+            onSeekLivePreview = onSeekLivePreview,
+            onSeekCommit = onSeekCommit,
+            highlightColor = highlightColor
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.Start),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(primaryButtonWidth)
+                    .height(primaryButtonHeight)
+                    .background(if (isStarting) disabledButtonColor else consoleGreen, buttonShape)
+                    .border(1.dp, controlBorder, buttonShape)
+                    .clickable(enabled = !isStarting && !isPlaying, onClick = onPlay),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.PlayArrow,
+                    contentDescription = stringResource(R.string.player_cd_play),
+                    tint = if (isStarting) disabledIconColor else Color.White,
+                    modifier = Modifier.size(primaryIconSize)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(controlButtonSize)
+                    .background(if (isPlaying || isStarting) consoleRed else disabledButtonColor, buttonShape)
+                    .border(1.dp, controlBorder, buttonShape)
+                    .clickable(enabled = isPlaying || isStarting, onClick = onStop),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Stop,
+                    contentDescription = stringResource(R.string.library_lufs_preview_stop),
+                    tint = if (isPlaying || isStarting) Color.White else disabledIconColor,
+                    modifier = Modifier.size(controlIconSize)
+                )
+            }
+
+            IconButton(
+                onClick = onPrev,
+                modifier = Modifier.size(controlButtonSize)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.SkipPrevious,
+                    contentDescription = stringResource(R.string.player_cd_prev),
+                    tint = Color.White,
+                    modifier = Modifier.size(controlIconSize)
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(gainButtonSize)
+                    .background(gainButtonBackground, buttonShape)
+                    .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
+                    .clickable { onGainDelta(-1) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.playback_control_gain_decrease),
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.library_lufs_db_value, gainDb),
+                color = Color.White,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(gainButtonSize)
+                    .background(gainButtonBackground, buttonShape)
+                    .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
+                    .clickable { onGainDelta(1) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.playback_control_gain_increase),
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
     }
 }
