@@ -197,11 +197,28 @@ FIRST LAUNCH / PERMISSIONS
 
 First launch must ask only for what is strictly needed to create the usable Library workspace.
 
+Official first-launch workflow:
+- SMP shows one simple welcome screen
+- the only SMP action is `Continue`
+- SMP opens the Android SAF folder picker directly, initially positioned on the Music folder when Android allows it
+- the user either confirms that folder or navigates to another folder
+- Android asks for the SAF authorization
+- after returning to SMP, the Demo Library is installed automatically
+- SMP then starts directly in the application
+
 Rules:
 - avoid duplicate permission prompts between SMP UI and Android system popups
-- the setup flow starts with the SAF work folder selection
-- SMP must warn the user before Android asks to confirm `Use this folder`
+- the setup flow starts with a welcome screen, then immediately opens the SAF work folder selection
+- SMP may explain that Android will ask the user to confirm `Use this folder`, but it must not add another setup decision
 - Android media permissions must not be requested during first launch if the SAF workspace flow is enough
+- the demo library is installed automatically after the SAF workspace is authorized
+- importing personal music is a normal Library action, not a first-launch installation step
+
+Removed first-launch decisions:
+- no `Use Music folder` choice inside SMP
+- no `Choose my folder` choice inside SMP
+- no `Install demo` choice
+- no `Import my music` choice
 
 Deferred permissions:
 - DJ must not request audio permission or a DJ folder until the user opens or uses DJ features

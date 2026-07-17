@@ -50,6 +50,12 @@ Tablette :
 
 Sur une installation vierge de la bêta publique :
 
+- le premier lancement ne demande qu'une seule action SMP : `Continuer`
+- SMP ouvre ensuite directement le sélecteur Android SAF, positionné sur le dossier Music lorsque Android le permet
+- l'utilisateur peut valider ce dossier ou naviguer vers un autre dossier
+- Android demande l'autorisation SAF
+- au retour dans SMP, la bibliothèque Démo est installée automatiquement
+- l'application démarre directement
 - le Bus principal est visible par défaut
 - le Mode DJ est visible par défaut
 - ces valeurs par défaut ne s'appliquent que si aucune préférence utilisateur n'existe encore
@@ -61,6 +67,15 @@ Principe :
 ✔ téléphone = interface téléphone  
 ✔ tablette = expérience split par défaut  
 ✔ les choix existants de l'utilisateur restent prioritaires
+
+Le premier lancement ne propose plus :
+
+- `Utiliser le dossier Music`
+- `Choisir mon dossier`
+- `Installer la démo`
+- `Importer ma musique`
+
+L'import de musique personnelle devient une action normale de la Bibliothèque après découverte de l'application.
 
 ### 🧭 Cockpit tablette
 
@@ -140,8 +155,11 @@ Recherche tablette :
 
 Installation initiale :
 
+- un écran de bienvenue simple précède le sélecteur Android SAF
+- aucune étape SMP ne demande de choisir entre dossier Music, dossier personnalisé, démo ou import personnel
 - après validation SAF Android, SMP affiche un état de préparation du workspace
 - l'initialisation SAF du workspace s'exécute hors thread UI
+- la bibliothèque Démo est installée automatiquement
 - l'utilisateur ne doit pas voir d'écran noir pendant cette préparation
 - la préparation initiale doit rester claire même si Android met plusieurs secondes à finaliser l'accès dossier
 
