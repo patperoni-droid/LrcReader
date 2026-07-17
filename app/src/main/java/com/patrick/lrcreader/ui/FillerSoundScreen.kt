@@ -351,9 +351,6 @@ fun FillerSoundScreen(
 
                 Spacer(Modifier.height(12.dp))
 
-                // VOLUME GLOBAL
-                Text(stringResource(R.string.filler_volume), color = sub, fontSize = 11.sp)
-
                 val realDisplay = uiToRealVolume(uiFillerVolume)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -438,7 +435,7 @@ fun FillerSoundScreen(
                     Box(modifier = optionModifier) {
                         SourceOptionRow(
                             title = stringResource(R.string.filler_source_custom_folder),
-                            subtitle = stringResource(R.string.filler_source_custom_subtitle),
+                            subtitle = null,
                             selected = !isDefaultSource,
                             activeColor = accent,
                             titleColor = onBg,
@@ -705,7 +702,7 @@ private fun FillerControlLabel(
 @Composable
 private fun SourceOptionRow(
     title: String,
-    subtitle: String,
+    subtitle: String?,
     selected: Boolean,
     activeColor: Color,
     titleColor: Color,
@@ -743,12 +740,14 @@ private fun SourceOptionRow(
                 color = titleColor,
                 fontSize = 12.sp
             )
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = subtitle,
-                color = subtitleColor,
-                fontSize = 10.sp
-            )
+            if (subtitle != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    color = subtitleColor,
+                    fontSize = 10.sp
+                )
+            }
         }
     }
 }
