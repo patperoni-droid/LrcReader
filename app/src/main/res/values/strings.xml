@@ -581,6 +581,9 @@
     <string name="setup_music_access_message">Pour lire vos fichiers audio et utiliser le mode DJ, l’application a besoin d’accéder à votre musique.</string>
     <string name="setup_music_access_button">Autoriser l’accès à la musique</string>
     <string name="setup_music_access_denied">Accès à la musique refusé. Vous pourrez l’autoriser plus tard.</string>
+    <string name="setup_welcome_title">Bienvenue dans Stage Music Player</string>
+    <string name="setup_welcome_message">Nous allons préparer votre espace de travail et installer la bibliothèque Démo.</string>
+    <string name="setup_continue">Continuer</string>
     <string name="setup_workspace_title">Choisissez votre dossier de travail</string>
     <string name="setup_workspace_explainer">Ce dossier sera utilisé pour organiser vos morceaux, vos fichiers SMP et vos sauvegardes.</string>
     <string name="setup_workspace_music_recommended">Dossier recommandé : Music</string>
@@ -588,7 +591,7 @@
     <string name="setup_use_music_workspace">Utiliser le dossier Music</string>
     <string name="setup_choose_workspace">Choisir mon dossier</string>
     <string name="setup_workspace_unavailable_title">Ce dossier ne convient pas</string>
-    <string name="setup_workspace_unavailable_message">Choisissez le dossier Music ou un autre dossier de travail.</string>
+    <string name="setup_workspace_unavailable_message">Réessayez depuis le sélecteur Android et choisissez un dossier de travail accessible.</string>
     <string name="setup_choose_another_workspace">Choisir un autre dossier</string>
     <string name="setup_workspace_recommended_error">Impossible d’ouvrir le dossier recommandé.</string>
     <string name="setup_workspace_prepare_error">Impossible de préparer ce dossier de travail.</string>

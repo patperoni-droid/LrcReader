@@ -465,6 +465,9 @@
     <string name="setup_music_access_message">To play your audio files and use DJ mode, the app needs access to your music.</string>
     <string name="setup_music_access_button">Allow music access</string>
     <string name="setup_music_access_denied">Music access was denied. You can allow it later.</string>
+    <string name="setup_welcome_title">Welcome to Stage Music Player</string>
+    <string name="setup_welcome_message">We will prepare your workspace and install the Demo Library.</string>
+    <string name="setup_continue">Continue</string>
     <string name="setup_workspace_title">Choose your work folder</string>
     <string name="setup_workspace_explainer">This folder will be used to organize your songs, SMP files, and backups.</string>
     <string name="setup_workspace_music_recommended">Recommended folder: Music</string>
@@ -472,7 +475,7 @@
     <string name="setup_use_music_workspace">Use Music folder</string>
     <string name="setup_choose_workspace">Choose my folder</string>
     <string name="setup_workspace_unavailable_title">This folder won\'t work</string>
-    <string name="setup_workspace_unavailable_message">Choose the Music folder or another work folder.</string>
+    <string name="setup_workspace_unavailable_message">Try again from the Android picker and choose an accessible work folder.</string>
     <string name="setup_choose_another_workspace">Choose another folder</string>
     <string name="setup_workspace_recommended_error">Could not open the recommended folder.</string>
     <string name="setup_workspace_prepare_error">Could not prepare this work folder.</string>
