@@ -354,27 +354,33 @@ fun FillerSoundScreen(
                 // VOLUME GLOBAL
                 Text(stringResource(R.string.filler_volume), color = sub, fontSize = 11.sp)
 
-                Slider(
-                    value = uiFillerVolume,
-                    onValueChange = { v ->
-                        setFillerVolumeReal(uiToRealVolume(v))
-                    },
-                    valueRange = 0f..1f,
-                    enabled = isEnabled,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = SliderDefaults.colors(
-                        activeTrackColor = accent,
-                        inactiveTrackColor = Color(0xFF424242),
-                        thumbColor = accent
-                    )
-                )
-
                 val realDisplay = uiToRealVolume(uiFillerVolume)
-                Text(
-                    text = stringResource(R.string.filler_percent, (realDisplay * 100).toInt()),
-                    color = onBg,
-                    fontSize = 11.sp
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Slider(
+                        value = uiFillerVolume,
+                        onValueChange = { v ->
+                            setFillerVolumeReal(uiToRealVolume(v))
+                        },
+                        valueRange = 0f..1f,
+                        enabled = isEnabled,
+                        modifier = Modifier.weight(1f),
+                        colors = SliderDefaults.colors(
+                            activeTrackColor = accent,
+                            inactiveTrackColor = Color(0xFF424242),
+                            thumbColor = accent
+                        )
+                    )
+                    Text(
+                        text = stringResource(R.string.filler_percent, (realDisplay * 100).toInt()),
+                        color = onBg,
+                        fontSize = 11.sp,
+                        modifier = Modifier.width(48.dp)
+                    )
+                }
 
                 if (isStarting) {
                     Spacer(Modifier.height(6.dp))
