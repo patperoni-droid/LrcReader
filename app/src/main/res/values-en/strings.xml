@@ -466,7 +466,7 @@
     <string name="setup_music_access_button">Allow music access</string>
     <string name="setup_music_access_denied">Music access was denied. You can allow it later.</string>
     <string name="setup_welcome_title">Welcome to Stage Music Player</string>
-    <string name="setup_welcome_message">We will prepare your workspace and install the Demo Library.</string>
+    <string name="setup_welcome_message">We will prepare your workspace.\n\nAndroid will now ask you to authorize access to your music.\n\nThe Music folder is selected by default.</string>
     <string name="setup_continue">Continue</string>
     <string name="setup_workspace_title">Choose your work folder</string>
     <string name="setup_workspace_explainer">This folder will be used to organize your songs, SMP files, and backups.</string>

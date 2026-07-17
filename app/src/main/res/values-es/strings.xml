@@ -424,7 +424,7 @@
     <!-- Setup install -->
     <string name="setup_title">Instalación</string>
     <string name="setup_welcome_title">Bienvenido a Stage Music Player</string>
-    <string name="setup_welcome_message">Prepararemos tu espacio de trabajo e instalaremos la biblioteca Demo.</string>
+    <string name="setup_welcome_message">Prepararemos tu espacio de trabajo.\n\nAndroid te pedirá ahora que autorices el acceso a tu música.\n\nLa carpeta Music se propone de forma predeterminada.</string>
     <string name="setup_continue">Continuar</string>
     <string name="setup_workspace_unavailable_title">Esta carpeta no funcionará</string>
     <string name="setup_workspace_unavailable_message">Vuelve a intentarlo desde el selector de Android y elige una carpeta de trabajo accesible.</string>
