@@ -4836,7 +4836,16 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         },
                                         seekToMs = { ms -> exoPlayer.seekTo(ms) },
-                                        onPlaybackControlPlayPause = ::togglePlaybackFromMainBus
+                                        onPlaybackControlPlayPause = ::togglePlaybackFromMainBus,
+                                        onPlaybackControlLivePlay = {
+                                            val selectedTrackStarted =
+                                                requestQuickPlaylistSelectedPlayback()
+                                            if (!selectedTrackStarted && !isPlaying) {
+                                                togglePlaybackFromMainBus()
+                                            }
+                                        },
+                                        playbackControlSelectionInSync =
+                                            quickPlaylistLiveSelectionInSync
                                     )
                                 }
 

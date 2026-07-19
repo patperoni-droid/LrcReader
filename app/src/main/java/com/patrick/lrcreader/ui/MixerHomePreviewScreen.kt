@@ -89,7 +89,9 @@ fun MixerHomePreviewScreen(
     getPositionMs: () -> Long = { 0L },
     getEffectiveDurationMs: () -> Long = { 0L },
     seekToMs: (Long) -> Unit = {},
-    onPlaybackControlPlayPause: () -> Unit = {}
+    onPlaybackControlPlayPause: () -> Unit = {},
+    onPlaybackControlLivePlay: (() -> Unit)? = null,
+    playbackControlSelectionInSync: Boolean = true
 ) {
 
     val context = LocalContext.current
@@ -450,7 +452,9 @@ fun MixerHomePreviewScreen(
                     }
                 },
                 compact = compactTabletMode,
-                liveConsoleMode = compactTabletMode
+                liveConsoleMode = compactTabletMode,
+                liveSelectionInSync = playbackControlSelectionInSync,
+                onLivePlay = onPlaybackControlLivePlay
             )
 
             Spacer(Modifier.height(8.dp))
