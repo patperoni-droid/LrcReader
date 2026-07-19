@@ -38,7 +38,7 @@ Lecture
 
 La navigation ne déclenche jamais une lecture automatiquement.
 
-Lorsque le mode AUTO du PlaybackControl est armé, Sequential Navigation conserve exactement la même mission : elle prépare uniquement une sélection. Le PlaybackControl peut utiliser cette sélection comme prochaine cible, mais seulement lorsque le morceau actif atteint sa fin effective.
+Lorsque le mode AUTO du PlaybackControl tablette est armé, Sequential Navigation conserve exactement la même mission : elle prépare uniquement une sélection. Le PlaybackControl tablette peut utiliser cette sélection comme prochaine cible, mais seulement lorsque le morceau actif atteint sa fin effective.
 
 ---
 
@@ -96,7 +96,9 @@ Sequential Navigation ne connaît pas ces comportements.
 
 Il se contente de déplacer la sélection.
 
-Même avec AUTO activé, il ne surveille pas la fin du morceau et ne lance jamais lui-même le moteur audio.
+Même avec AUTO activé sur tablette, il ne surveille pas la fin du morceau et ne lance jamais lui-même le moteur audio.
+
+Le téléphone ne possède pas de bouton AUTO dans son PlaybackControl et conserve son comportement historique.
 
 ---
 

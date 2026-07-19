@@ -158,17 +158,24 @@ Valider et affiner le réglage rapide du gain dans le `Playback Control`.
 
 ### Objectif
 
-Permettre au musicien d'armer l'enchaînement du prochain titre depuis le `Playback Control`, sans intervention à la fin du morceau en cours.
+Permettre au musicien d'armer, sur tablette uniquement, l'enchaînement du prochain titre depuis le `Playback Control`, sans intervention à la fin du morceau en cours.
 
 ### Périmètre
 
-- ajouter un bouton AUTO distinct de Play et Pause ;
+- ajouter sur tablette un bouton AUTO distinct de Play et Pause ;
 - conserver le bouton Play jaune comme indicateur du morceau préparé ;
 - utiliser le morceau préparé en priorité, sinon le prochain morceau jouable de la playlist ;
 - respecter une cible `Define Next` explicitement définie ;
 - lancer la cible dès la fin effective du morceau actif ou à son point OUT ;
 - utiliser exclusivement le pipeline de transition live officiel ;
 - rendre l'état AUTO visible et stable pendant toute la session.
+
+### Exclusion Téléphone
+
+- aucun bouton AUTO n'est ajouté au Playback Control téléphone ;
+- aucune place supplémentaire n'est consommée dans l'interface téléphone ;
+- le comportement historique téléphone reste inchangé ;
+- toute implémentation doit vérifier explicitement l'absence de régression sur téléphone.
 
 ### Règle Musicale
 
@@ -198,7 +205,8 @@ Les respirations entre les titres proviennent uniquement du contenu musical exis
 - désactivation de AUTO pendant la lecture ;
 - absence de cible valide ;
 - transitions avec gain, pitch ou speed non neutres ;
-- validation sur téléphone et tablette réels.
+- validation fonctionnelle sur tablette réelle ;
+- validation de non-régression sur téléphone réel, sans bouton AUTO visible.
 
 ### État
 

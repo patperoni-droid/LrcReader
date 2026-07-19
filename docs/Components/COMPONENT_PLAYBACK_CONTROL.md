@@ -39,7 +39,7 @@ Cette séparation permet de préparer le morceau suivant sans interrompre celui 
 
 **Le bouton Play confirme.**
 
-**Le bouton AUTO peut armer cette confirmation pour la fin naturelle du morceau en cours.**
+**Sur tablette uniquement, le bouton AUTO peut armer cette confirmation pour la fin naturelle du morceau en cours.**
 
 ---
 
@@ -164,6 +164,10 @@ Un appui sur un morceau de la playlist lance immédiatement sa lecture.
 
 Cette règle privilégie la rapidité d'action sur un écran compact.
 
+Le téléphone n'affiche pas de bouton AUTO et ne propose pas ce mode d'enchaînement dans le Playback Control.
+
+Cette exclusion est volontaire afin de ne pas surcharger l'interface téléphone.
+
 ---
 
 ### Tablette (Mode Live)
@@ -256,11 +260,15 @@ Lorsque ce morceau est lancé, il devient le nouveau Playback actif et le bouton
 
 ---
 
-## Bouton AUTO
+## Bouton AUTO — Tablette uniquement
 
-Le bouton AUTO active ou désactive l'enchaînement automatique du Playback principal.
+Le bouton AUTO est réservé au Playback Control du mode Live tablette.
+
+Il active ou désactive l'enchaînement automatique du Playback principal sur tablette.
 
 Il reste une commande distincte du bouton Play et ne change jamais la signification ni la couleur du bouton Play.
+
+Il n'est jamais affiché sur téléphone et ne modifie jamais le comportement historique du Playback Control téléphone.
 
 ### AUTO désactivé
 
@@ -297,7 +305,7 @@ Si aucune cible jouable et valide ne peut être résolue :
 
 ### État live
 
-L'état AUTO doit être immédiatement visible et ne jamais dépendre de l'écran affiché.
+Sur tablette, l'état AUTO doit être immédiatement visible et ne jamais dépendre de l'écran affiché.
 
 Il doit survivre :
 
@@ -434,7 +442,9 @@ En mode Live (tablette), il sépare volontairement :
 - la préparation du morceau suivant ;
 - le contrôle du morceau actuellement en lecture.
 
-Le mode AUTO ajoute un enchaînement préalablement armé sans supprimer cette séparation.
+Sur tablette, le mode AUTO ajoute un enchaînement préalablement armé sans supprimer cette séparation.
+
+Sur téléphone, cette évolution ne change rien : aucun bouton AUTO n'est ajouté et le comportement historique reste prioritaire.
 
 Cette séparation constitue une règle officielle de l'architecture SMP.
 
