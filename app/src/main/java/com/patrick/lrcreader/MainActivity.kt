@@ -4901,14 +4901,37 @@ class MainActivity : AppCompatActivity() {
                                             tabletRightPanel = TabletSplitRightPanel.LYRICS
                                         },
                                         initialSongId = waveformSongId,
-                                        preparedSelectionSongId = quickPlaylistPreparedSelectionSongId,
-                                        currentPlayingSongId = currentPlayingSongId,
                                         isOfficialPlaybackPlaying = isPlaying,
                                         onStopCurrentPlayback = {
                                             isPlaying = false
                                             exoPlayer.pause()
                                             exoPlayer.playWhenReady = false
-                                        }
+                                        },
+                                        showOfficialPlaybackControl = true,
+                                        currentTrackGainDb = currentTrackGainDb,
+                                        liveGainControlsEnabled = canAdjustLiveGain(),
+                                        onLiveGainDelta = ::adjustLiveGain,
+                                        getOfficialPositionMs = { exoPlayer.currentPosition },
+                                        getOfficialDurationMs = {
+                                            resolveEffectiveDurationMs(
+                                                requestedUri = currentPlayingUri,
+                                                activeUri = exoPlayer.currentMediaItem
+                                                    ?.localConfiguration
+                                                    ?.uri
+                                                    ?.toString()
+                                            )
+                                        },
+                                        seekOfficialToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        onOfficialPlaybackPlayPause = ::togglePlaybackFromMainBus,
+                                        onOfficialPlaybackLivePlay = {
+                                            val selectedTrackStarted =
+                                                requestQuickPlaylistSelectedPlayback()
+                                            if (!selectedTrackStarted && !isPlaying) {
+                                                togglePlaybackFromMainBus()
+                                            }
+                                        },
+                                        officialPlaybackSelectionInSync =
+                                            quickPlaylistLiveSelectionInSync
                                     )
                                 }
 

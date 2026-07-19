@@ -698,6 +698,8 @@
 
     <!-- Waveform preview -->
     <string name="waveform_title">Waveform</string>
+    <string name="waveform_preview_controls">Waveform preview</string>
+    <string name="waveform_official_playback_controls">Main playback</string>
     <string name="waveform_no_song_selected">No SMP song selected</string>
     <string name="waveform_analyzing">Analyzing…</string>
     <string name="waveform_generate_error">Unable to generate waveform</string>

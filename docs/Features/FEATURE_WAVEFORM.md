@@ -16,25 +16,45 @@ En mode tablette Split, Waveform est integre au cockpit live :
 
 Lorsqu'un morceau est selectionne dans la playlist du Split :
 
+- il devient la selection officielle de la playlist SMP ;
 - Waveform se met immediatement a jour ;
 - la forme d'onde du morceau selectionne est chargee ;
 - les informations du morceau sont chargees ;
 - les marqueurs IN / OUT existants sont charges ;
 - le lecteur local Waveform est prepare.
 
-Une simple selection ne declenche jamais de lecture.
+Une simple selection ne declenche jamais de lecture et n'interrompt jamais le Playback principal actif.
 
 ## Selection et lancement
 
-Dans Waveform, selectionner un morceau et lancer sa lecture sont deux actions distinctes.
+Dans Waveform, selectionner un morceau, le lancer dans le Playback principal et l'ecouter dans le lecteur local Waveform sont trois actions distinctes.
 
-La selection prepare uniquement Waveform. Elle peut provenir de la playlist Split tablette et met a jour l'editeur sans produire de son.
+La selection peut provenir de la playlist Split tablette. Elle prepare simultanement :
 
-Le demarrage de la lecture Waveform reste toujours une action volontaire de l'utilisateur via le bouton Play du bloc de lecture Waveform.
+- le titre cible du Playback principal officiel ;
+- le contenu de l'editeur Waveform ;
+- le lecteur local d'apercu Waveform.
+
+Cette preparation ne produit aucun son.
+
+## PlaybackControl officiel — tablette
+
+En mode Split tablette, Waveform affiche le vrai `PlaybackControl` SMP.
+
+Il conserve exactement la meme mission et le meme comportement que dans les autres ecrans tablette :
+
+- il pilote exclusivement le Playback principal actif ;
+- il utilise la selection officielle de la playlist gauche ;
+- son bouton Play devient jaune lorsque le titre selectionne differe du titre actif ;
+- un seul appui sur le bouton Play jaune lance immediatement le titre selectionne dans le Playback principal ;
+- le titre precedemment actif n'est pas arrete au moment de la selection, mais uniquement lorsque le lancement est confirme ;
+- la commande Pause reste separee du bouton Play.
+
+Le PlaybackControl officiel n'est pas ajoute a l'ecran Waveform du telephone. Le comportement historique du telephone reste inchange.
 
 ## Bloc de lecture Waveform
 
-Waveform possede un bloc de lecture visuellement harmonise avec le PlaybackControl utilise dans le Player.
+Waveform conserve un bloc de lecture local pour ecouter et controler la zone de travail de la forme d'onde.
 
 Ce bloc reste independant du PlaybackControl officiel :
 
@@ -43,7 +63,9 @@ Ce bloc reste independant du PlaybackControl officiel :
 - il ne modifie pas le Playback actif SMP ;
 - il conserve les commandes propres a Waveform, dont Stop et Retour au debut.
 
-Le bouton Play peut indiquer qu'un morceau est pret a etre lance. Dans cet etat, aucune lecture n'a encore demarre.
+Lorsque les deux controles sont visibles sur tablette, le bloc local doit etre clairement identifie comme un controle d'apercu et ne doit pas reproduire l'etat jaune du PlaybackControl officiel.
+
+Le demarrage de la lecture locale Waveform reste toujours une action volontaire de l'utilisateur via le bouton Play du bloc d'apercu Waveform.
 
 ## Lecture exclusive
 
@@ -57,8 +79,8 @@ Concretement :
 
 - une simple selection dans la playlist ne modifie jamais la lecture en cours ;
 - si le Playback officiel SMP est en cours, il continue pendant la preparation Waveform ;
-- lorsqu'un utilisateur clique sur Play dans Waveform, le Playback officiel est d'abord arrete s'il est actif ;
+- lorsqu'un utilisateur clique sur Play dans le bloc d'apercu Waveform, le Playback officiel est d'abord arrete s'il est actif ;
 - le lecteur local Waveform demarre ensuite.
+- lorsqu'un utilisateur lance le Playback officiel depuis le vrai PlaybackControl, le lecteur local Waveform est d'abord arrete s'il est actif ;
 
 L'utilisateur ne peut donc pas obtenir simultanement le Playback officiel SMP et la lecture locale Waveform.
-
