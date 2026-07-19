@@ -405,6 +405,20 @@ Cette intégration est implémentée et validée sur tablette.
 
 ---
 
+## Intégration Arrangement — conception validée, implémentation à venir
+
+En mode Arrangement tablette :
+
+- le `Playback Control` officiel reste fixé en bas de l'écran et toujours visible ;
+- le contenu d'édition ne doit jamais le repousser hors de l'écran ;
+- la playlist de gauche est remplacée uniquement dans ce mode par la liste unique ordonnée des occurrences de segments ;
+- le composant continue de contrôler le Playback principal ;
+- la preview de Structure reste un moteur secondaire isolé et ne doit pas être présentée comme une variante du `Playback Control` officiel.
+
+La définition complète de l'interface à liste unique, des répétitions, du mute et de la duplication se trouve dans `docs/Features/FEATURE_TEMPO_ARRANGEMENT.md`.
+
+---
+
 ## Principes UX
 
 Le Playback Control doit :

@@ -69,6 +69,120 @@ Segment A → Segment B → Segment C
 
 ---
 
+## 🧭 UX CIBLE — LISTE UNIQUE D'ARRANGEMENT
+
+**Statut : conception validée, non encore implémentée.**
+
+La future interface ne doit plus séparer :
+
+- une colonne contenant les segments disponibles ;
+- une seconde colonne contenant leur disposition dans la Structure.
+
+En mode Arrangement, une seule liste ordonnée devient à la fois le récepteur de segments et la Structure finale.
+
+### Disposition tablette
+
+- uniquement pendant l'édition d'un Arrangement, la playlist habituelle située à gauche est remplacée par le récepteur de segments ;
+- en dehors du mode Arrangement, la playlist conserve exactement son fonctionnement actuel ;
+- le récepteur reprend une présentation proche de la playlist pour conserver les repères visuels et les gestes connus ;
+- la partie droite libérée devient la zone principale de réglage du segment sélectionné ;
+- le `Playback Control` officiel reste visible et fixé en bas de l'écran ;
+- aucun contenu d'édition ne doit repousser le `Playback Control` hors de l'écran.
+
+### Création directe dans la Structure
+
+Flux cible :
+
+1. l'utilisateur place le point IN et le point OUT sur le titre ;
+2. il appuie sur `Ajouter` ;
+3. le nouveau segment est inséré en haut du récepteur ;
+4. il déplace ensuite ce segment à la position désirée dans la Structure.
+
+Il n'existe donc plus d'étape intermédiaire consistant à créer un segment dans une bibliothèque locale puis à l'ajouter séparément à la Structure.
+
+### Édition d'un segment existant
+
+- toucher une ligne sélectionne cette occurrence ;
+- ses points IN et OUT sont rechargés dans l'éditeur de droite ;
+- l'utilisateur peut corriger IN ou OUT sans recréer le segment ;
+- les modifications restent non destructives pour l'audio source ;
+- la durée visible de la ligne est recalculée depuis `endMs - startMs`.
+
+### Actions sur une occurrence
+
+Chaque ligne de la liste unique doit pouvoir être :
+
+- déplacée par glisser-déposer ;
+- copiée puis collée ;
+- dupliquée ;
+- supprimée explicitement ;
+- mise en mute sans être supprimée ;
+- configurée pour être jouée plusieurs fois consécutivement.
+
+La ligne doit pouvoir afficher au minimum :
+
+- son nom ;
+- ses points IN et OUT ou sa durée ;
+- son nombre de répétitions ;
+- son état actif ou muet ;
+- une poignée de déplacement ;
+- un accès aux actions secondaires.
+
+### Répétition et duplication
+
+Ces deux actions restent distinctes :
+
+- `répétition ×N` rejoue plusieurs fois de suite la même occurrence avec les mêmes points IN et OUT ;
+- `dupliquer` crée une nouvelle occurrence indépendante, déplaçable et éditable séparément.
+
+Exemple :
+
+```text
+Intro ×1
+Couplet ×2
+Refrain ×2
+Pont muet
+Refrain final ×3
+```
+
+Si une occurrence réglée sur `×3` est retouchée, ses trois lectures utilisent les mêmes nouveaux points IN et OUT. Pour obtenir une dernière répétition différente, l'utilisateur doit dupliquer l'occurrence puis modifier cette copie.
+
+### Modèle cible d'une occurrence
+
+Une entrée de la Structure doit posséder une identité stable indépendante de sa position dans la liste :
+
+```text
+ArrangementEntry
+- entryId
+- name
+- startMs
+- endMs
+- repeatCount
+- muted
+```
+
+Règles :
+
+- l'ordre visuel de la liste définit l'ordre de préparation de la Structure ;
+- un déplacement ne modifie jamais `entryId` ;
+- une duplication crée un nouvel `entryId` ;
+- `repeatCount` est toujours supérieur ou égal à 1 ;
+- une occurrence muette est conservée dans le projet mais exclue de la lecture et de l'export ;
+- copier/coller et duplication ne recopient jamais le fichier audio source.
+
+### Préparation audio
+
+Avant toute lecture de Structure :
+
+1. ignorer les occurrences en mute ;
+2. développer chaque `repeatCount` en occurrences de lecture consécutives ;
+3. préparer la liste complète de segments clipés Media3 ;
+4. seulement ensuite démarrer la preview Arrangement.
+
+Cette UX à liste unique ne change pas la règle d'architecture audio : aucun réordonnancement, mute, collage ou changement de répétition ne doit reconstruire la Structure pendant sa lecture.
+
+---
+
 ## 🎛️ COMPORTEMENTS UX
 
 ### Recalage précis
@@ -122,16 +236,16 @@ Règles :
 
 Bouton Ajouter :
 
-- mode + → 1 segment (IN → OUT)
-- mode - → 2 segments (extérieur)
+- mode + → 1 segment (IN → OUT), inséré en haut de la liste unique
+- mode - → 2 segments (extérieur), insérés en haut de la liste unique
 
 ---
 
 ### Suppression rapide
 
-- bouton suppression directement dans la liste Segments
-- suppression instantanée
-- nettoyage automatique dans Structure
+- bouton suppression directement dans la liste unique
+- suppression explicite de l'occurrence concernée
+- aucune seconde Structure à nettoyer ou synchroniser
 
 👉 remplace l’ancien appui long
 

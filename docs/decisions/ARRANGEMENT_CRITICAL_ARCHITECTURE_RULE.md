@@ -95,6 +95,13 @@ ArrangementSegment :
 Structure :
 - liste ordonnée de segments
 
+Évolution UX validée :
+- l'interface cible présente directement cette Structure sous la forme d'une seule liste ordonnée
+- chaque ligne est une occurrence indépendante avec une identité stable, ses propres `startMs` / `endMs`, un `repeatCount` et un état `muted`
+- `repeatCount` est développé en segments de lecture avant le démarrage
+- les occurrences muettes sont exclues de la liste Media3 préparée sans être supprimées du projet
+- cette évolution supprime les deux colonnes visibles, mais ne change pas l'obligation de préparer toute la playlist Media3 avant lecture
+
 ⸻
 
 CONTRAINTES SMP_RULES

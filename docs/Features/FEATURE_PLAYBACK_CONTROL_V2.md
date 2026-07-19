@@ -23,8 +23,7 @@ Le `Playback Control` devient progressivement le centre de contrôle compact et 
 - aucune ergonomie ne doit être généralisée avant validation terrain ;
 - aucun développement n'est prévu pour DJ dans cette roadmap ;
 - DJ conserve pour l'instant sa propre ergonomie ;
-- rien n'est décidé concernant Arrangement ;
-- la question d'Arrangement sera évaluée plus tard.
+- l'UX cible d'Arrangement est désormais documentée, mais son implémentation reste une étape future distincte.
 
 ---
 
@@ -140,7 +139,7 @@ Valider et affiner le réglage rapide du gain dans le `Playback Control`.
 ### Exclusions
 
 - aucun développement pour DJ ;
-- aucune décision concernant Arrangement ;
+- aucune implémentation Arrangement dans cette étape ;
 - aucune intégration automatique dans tous les écrans ;
 - aucune variante locale du composant.
 
@@ -166,6 +165,8 @@ Déploiement tablette réalisé et validé dans :
 - Timeline, avec suppression des commandes locales et maintien de l'écran ouvert lors du passage du titre actif A au titre sélectionné B.
 
 La Timeline utilise désormais le Playback Control officiel comme unique contrôle principal de lecture.
+
+Pour le futur écran Arrangement, la règle validée est de conserver le Playback Control officiel fixé en bas et toujours visible. Cette conception est documentée dans `FEATURE_TEMPO_ARRANGEMENT.md` mais n'est pas encore implémentée.
 
 ---
 
