@@ -301,6 +301,7 @@ Active-track rule:
 - pressing the yellow Play button launches the selected track through the official Playback pipeline
 - only after that launch does the selected track become active and its Timeline replace the previous one
 - the Timeline editor must remain open during this active-track handoff
+- the official `Playback Control` remains anchored at the bottom of the Timeline screen, consistently with the other tablet screens
 
 Example:
 

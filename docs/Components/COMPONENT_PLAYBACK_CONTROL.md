@@ -397,6 +397,7 @@ Règles validées :
 - un appui sur Play jaune lance le morceau sélectionné avec le pipeline Playback officiel ;
 - seulement après ce lancement, le nouveau morceau devient actif et sa Timeline remplace la précédente ;
 - l'écran Timeline reste ouvert pendant ce changement de morceau ;
+- le `Playback Control` reste placé en bas de l'écran Timeline, comme dans les autres écrans tablette ;
 - les anciennes commandes locales Play, Pause et Retour de la Timeline ont été supprimées ;
 - aucun lecteur secondaire, lecteur d'aperçu ou état audio propre à la Timeline ne doit être créé.
 

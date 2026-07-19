@@ -519,10 +519,6 @@ fun TimelineEditorSection(
 
         Spacer(Modifier.height(8.dp))
 
-        playbackControlContent()
-
-        Spacer(Modifier.height(8.dp))
-
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -867,6 +863,8 @@ fun TimelineEditorSection(
                 )
             }
         }
+        Spacer(Modifier.height(8.dp))
+        playbackControlContent()
     }
 
     val safePositionEditIndex = positionEditIndex
