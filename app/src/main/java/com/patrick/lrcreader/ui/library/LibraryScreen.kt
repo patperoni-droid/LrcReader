@@ -567,6 +567,8 @@ fun LibraryScreen(
     getActivePlaybackDurationMs: () -> Long = { 0L },
     seekActivePlaybackToMs: (Long) -> Unit = {},
     onActivePlaybackPlayPause: () -> Unit = {},
+    onActivePlaybackLivePlay: (() -> Unit)? = null,
+    playbackControlSelectionInSync: Boolean = true,
     onActivePlaybackGainDelta: (Int) -> Unit = {},
     onPlayFromLibrary: (String, Boolean, Long?) -> Unit,
     hardwareCommandToken: Int = 0,
@@ -2626,7 +2628,9 @@ fun LibraryScreen(
                 gainDb = gainDb,
                 onGainDelta = onGainDelta,
                 compact = compactTabletLayout,
-                liveConsoleMode = compactTabletLayout
+                liveConsoleMode = compactTabletLayout,
+                liveSelectionInSync = playbackControlSelectionInSync,
+                onLivePlay = onActivePlaybackLivePlay
             )
         }
     }
@@ -4459,7 +4463,9 @@ fun LibraryScreen(
                                             adjustLufsManualDb(song, deltaDb)
                                         },
                                         compact = compactTabletLayout,
-                                        liveConsoleMode = compactTabletLayout
+                                        liveConsoleMode = compactTabletLayout,
+                                        liveSelectionInSync = playbackControlSelectionInSync,
+                                        onLivePlay = onActivePlaybackLivePlay
                                     )
                                 }
                                     TrackGainDrawer(
