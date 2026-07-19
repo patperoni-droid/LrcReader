@@ -73,6 +73,7 @@ Ce Playback principal peut avoir été démarré depuis :
 - Bibliothèque ;
 - LEVELS ;
 - Bus Principal ;
+- Track Console ;
 - toute autre interface autorisée.
 
 Lorsqu'un nouveau morceau est lancé :
@@ -391,7 +392,8 @@ Exemples :
 - Player → Gain Playback ;
 - LEVELS → Gain Playback ;
 - Bibliothèque → Gain Playback ;
-- Bus Principal → Gain Playback.
+- Bus Principal → Gain Playback ;
+- Track Console → Gain Playback.
 
 Le GainDrawer reste le réglage précis.
 
@@ -400,6 +402,24 @@ Le Playback Control permet un ajustement rapide.
 Le volume du Fond sonore est réglé par les commandes locales du lecteur Fond sonore.
 
 Le volume des autres moteurs audio n'est jamais piloté par Playback Control.
+
+---
+
+## Intégration Track Console
+
+Track Console affiche le `Playback Control` officiel du Playback principal.
+
+En mode Live tablette :
+
+- la sélection reste pilotée par la playlist gauche ;
+- sélectionner un autre titre ne coupe pas le titre actif ;
+- le bouton Play devient jaune ;
+- un appui sur Play lance le titre sélectionné avec le pipeline Playback officiel ;
+- les commandes Lecture, Pause, Retour début, position et gain utilisent exactement les mêmes actions que dans le Player.
+
+Track Console ne possède aucune copie locale de la logique Playback.
+
+L'ancienne zone basse `TOUCH HERE TO RETURN` n'existe plus. La navigation hors de Track Console utilise les commandes permanentes de l'application, notamment la navigation supérieure du mode Split tablette.
 
 ---
 

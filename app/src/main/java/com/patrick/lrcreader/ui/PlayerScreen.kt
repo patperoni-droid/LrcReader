@@ -2606,6 +2606,108 @@ fun PlayerScreen(
         )
     )
 
+    @Composable
+    fun OfficialPlaybackControl() {
+        PlaybackControl(
+            positionMs = if (isDragging) dragPosMs else positionMs,
+            durationMs = durationMs,
+            onSeekLivePreview = { newPos ->
+                isDragging = true
+                dragPosMs = newPos
+            },
+            onSeekCommit = { newPos ->
+                isDragging = false
+                val safe = min(max(newPos, 0), durationMs)
+                runCatching { seekToMs(safe.toLong()) }
+                positionMs = safe
+                timelineLightPreviewPositionMs = null
+                if (currentTrackUri != null && hasLightCues) {
+                    LightCueDispatcher.syncToPosition(
+                        trackUri = currentTrackUri,
+                        positionMs = safe.toLong()
+                    )
+                }
+            },
+            highlightColor = highlightColor,
+            isPlaying = isPlaying,
+            onPlayPause = playPause@{
+                if (isPlaying) {
+                    if (isTimelinePreparedLoopActive) {
+                        timelinePreparedLoopResumeRelativeMs = exoPlayer.currentPosition
+                    }
+                    AudioEngine.pause(durationMs = 1000L)
+                    scope.launch {
+                        delay(420)
+                        onIsPlayingChange(false)
+                        PlaybackCoordinator.onFillerStart()
+                        runCatching { FillerSoundManager.startFromPlayerPause(context) }
+                    }
+                } else {
+                    if (onPlaySelectedPlaylistItem()) return@playPause
+                    if (durationMs > 0) {
+                        PlaybackCoordinator.onPlayerStart()
+                        if (isTimelinePreparedLoopActive &&
+                            timelinePreparedLoopEndMs > timelinePreparedLoopStartMs
+                        ) {
+                            playTimelinePreparedLoopFrom(
+                                relativePositionMs = timelinePreparedLoopResumeRelativeMs,
+                                shouldPlay = true
+                            )
+                            onIsPlayingChange(true)
+                        } else {
+                            onIsPlayingChange(true)
+                        }
+                        centerCurrentLineLazy(listState)
+                    }
+                }
+            },
+            onLivePlay = livePlay@{
+                if (onPlaySelectedPlaylistItem()) return@livePlay
+                if (!isPlaying && durationMs > 0) {
+                    PlaybackCoordinator.onPlayerStart()
+                    if (isTimelinePreparedLoopActive &&
+                        timelinePreparedLoopEndMs > timelinePreparedLoopStartMs
+                    ) {
+                        playTimelinePreparedLoopFrom(
+                            relativePositionMs = timelinePreparedLoopResumeRelativeMs,
+                            shouldPlay = true
+                        )
+                        onIsPlayingChange(true)
+                    } else {
+                        onIsPlayingChange(true)
+                    }
+                    centerCurrentLineLazy(listState)
+                }
+            },
+            onPrev = onPrev@{
+                val trackUri = currentTrackUri ?: return@onPrev
+                if (durationMs <= 0) return@onPrev
+                seekToMs(0L)
+                timelineLightPreviewPositionMs = null
+                if (hasLightCues) {
+                    LightCueDispatcher.syncToPosition(
+                        trackUri = trackUri,
+                        positionMs = 0L
+                    )
+                }
+                centerCurrentLineLazy(listState)
+            },
+            onNext = {
+                val end = max(durationMs - 1, 0)
+                seekToMs(end.toLong())
+                onIsPlayingChange(false)
+                LightCueDispatcher.resetGlobal()
+                PlaybackCoordinator.onFillerStart()
+                runCatching { FillerSoundManager.startIfConfigured(context) }
+            },
+            gainDb = currentTrackGainDb,
+            onGainDelta = onLiveGainDelta,
+            compact = compactTabletLayout,
+            liveConsoleMode = compactTabletLayout,
+            liveSelectionInSync = playbackControlSelectionInSync
+        )
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -3468,104 +3570,7 @@ fun PlayerScreen(
                                 )
                             }
                         }
-                        PlaybackControl(
-                            positionMs = if (isDragging) dragPosMs else positionMs,
-                            durationMs = durationMs,
-                            onSeekLivePreview = { newPos ->
-                                isDragging = true
-                                dragPosMs = newPos
-                            },
-                            onSeekCommit = { newPos ->
-                                isDragging = false
-                                val safe = min(max(newPos, 0), durationMs)
-                                runCatching { seekToMs(safe.toLong()) }
-                                positionMs = safe
-                                timelineLightPreviewPositionMs = null
-                                if (currentTrackUri != null && hasLightCues) {
-                                    LightCueDispatcher.syncToPosition(
-                                        trackUri = currentTrackUri,
-                                        positionMs = safe.toLong()
-                                    )
-                                }
-                            },
-                            highlightColor = highlightColor,
-                            isPlaying = isPlaying,
-                            onPlayPause = playPause@{
-                                if (isPlaying) {
-                                    if (isTimelinePreparedLoopActive) {
-                                        timelinePreparedLoopResumeRelativeMs = exoPlayer.currentPosition
-                                    }
-                                    AudioEngine.pause(durationMs = 1000L)
-                                    scope.launch {
-                                        delay(420)
-                                        onIsPlayingChange(false)
-                                        PlaybackCoordinator.onFillerStart()
-                                        runCatching { FillerSoundManager.startFromPlayerPause(context) }
-                                    }
-                                } else {
-                                    if (onPlaySelectedPlaylistItem()) return@playPause
-                                    if (durationMs > 0) {
-                                        PlaybackCoordinator.onPlayerStart()
-                                        if (isTimelinePreparedLoopActive &&
-                                            timelinePreparedLoopEndMs > timelinePreparedLoopStartMs
-                                        ) {
-                                            playTimelinePreparedLoopFrom(
-                                                relativePositionMs = timelinePreparedLoopResumeRelativeMs,
-                                                shouldPlay = true
-                                            )
-                                            onIsPlayingChange(true)
-                                        } else {
-                                            onIsPlayingChange(true)
-                                        }
-                                        centerCurrentLineLazy(listState)
-                                    }
-                                }
-                            },
-                            onLivePlay = livePlay@{
-                                if (onPlaySelectedPlaylistItem()) return@livePlay
-                                if (!isPlaying && durationMs > 0) {
-                                    PlaybackCoordinator.onPlayerStart()
-                                    if (isTimelinePreparedLoopActive &&
-                                        timelinePreparedLoopEndMs > timelinePreparedLoopStartMs
-                                    ) {
-                                        playTimelinePreparedLoopFrom(
-                                            relativePositionMs = timelinePreparedLoopResumeRelativeMs,
-                                            shouldPlay = true
-                                        )
-                                        onIsPlayingChange(true)
-                                    } else {
-                                        onIsPlayingChange(true)
-                                    }
-                                    centerCurrentLineLazy(listState)
-                                }
-                            },
-                            onPrev = onPrev@{
-                                val trackUri = currentTrackUri ?: return@onPrev
-                                if (durationMs <= 0) return@onPrev
-                                seekToMs(0L)
-                                timelineLightPreviewPositionMs = null
-                                if (hasLightCues) {
-                                    LightCueDispatcher.syncToPosition(
-                                        trackUri = trackUri,
-                                        positionMs = 0L
-                                    )
-                                }
-                                centerCurrentLineLazy(listState)
-                            },
-                            onNext = {
-                                val end = max(durationMs - 1, 0)
-                                seekToMs(end.toLong())
-                                onIsPlayingChange(false)
-                                LightCueDispatcher.resetGlobal()
-                                PlaybackCoordinator.onFillerStart()
-                                runCatching { FillerSoundManager.startIfConfigured(context) }
-                            },
-                            gainDb = currentTrackGainDb,
-                            onGainDelta = onLiveGainDelta,
-                            compact = compactTabletLayout,
-                            liveConsoleMode = compactTabletLayout,
-                            liveSelectionInSync = playbackControlSelectionInSync
-                        )
+                        OfficialPlaybackControl()
                     }
                 }
             }
@@ -3627,14 +3632,8 @@ fun PlayerScreen(
                     },
                     currentTrackUri = currentTrackUri,
                     showLyricsReturnButton = compactTabletLayout,
-                    onClose = {
-                        if (EditionConfig.isLite && liteTrackMixModified) {
-                            showTrackMixProDialog = true
-                        } else {
-                            showMixScreen = false
-                        }
-                    },
-                    onReturnToLyrics = { showMixScreen = false }
+                    onReturnToLyrics = { showMixScreen = false },
+                    playbackControlContent = { OfficialPlaybackControl() }
                 )
             }
         }

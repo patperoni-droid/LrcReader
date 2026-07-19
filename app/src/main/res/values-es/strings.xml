@@ -1138,7 +1138,6 @@
     <string name="track_mix_eq_low">LOW</string>
     <string name="track_mix_eq_mid">MID</string>
     <string name="track_mix_eq_high">HIGH</string>
-    <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
     <string name="track_mix_lite_dialog_title">Ajustes Pro</string>
     <string name="track_mix_lite_dialog_message">Para que tus ajustes queden guardados, pásate a la versión Pro.</string>
     <string name="track_mix_lufs_volume_locked">Desactiva el modo LUFS para ajustar el volumen manualmente</string>

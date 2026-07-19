@@ -7,7 +7,6 @@ import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
@@ -60,9 +59,9 @@ fun TrackMixScreen(
     onPitchSemiChange: (Int) -> Unit,
 
     currentTrackUri: String?,
-    onClose: () -> Unit,
     showLyricsReturnButton: Boolean = false,
-    onReturnToLyrics: () -> Unit = onClose
+    onReturnToLyrics: () -> Unit = {},
+    playbackControlContent: @Composable () -> Unit = {}
 ) {
     val context = LocalContext.current
 
@@ -354,21 +353,7 @@ fun TrackMixScreen(
 
             Spacer(Modifier.weight(1f))
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(72.dp)
-                    .clickable { onClose() }
-                    .padding(bottom = 4.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.track_mix_touch_to_return),
-                    color = Color(0x66FFFFFF),
-                    fontSize = 11.sp,
-                    letterSpacing = 2.sp
-                )
-            }
+            playbackControlContent()
         }
 
     }
@@ -805,7 +790,6 @@ fun TrackMixScreenPreview() {
         onTempoChange = {},
         pitchSemi = 0,
         onPitchSemiChange = {},
-        currentTrackUri = "content://demo/track",
-        onClose = {}
+        currentTrackUri = "content://demo/track"
     )
 }

@@ -1223,7 +1223,6 @@
     <string name="track_mix_eq_low">LOW</string>
     <string name="track_mix_eq_mid">MID</string>
     <string name="track_mix_eq_high">HIGH</string>
-    <string name="track_mix_touch_to_return">TOUCH HERE TO RETURN</string>
     <string name="track_mix_lite_dialog_title">Pro Settings</string>
     <string name="track_mix_lite_dialog_message">Upgrade to Pro to keep your settings saved.</string>
     <string name="track_mix_lufs_volume_locked">Disable LUFS mode to adjust volume manually</string>
