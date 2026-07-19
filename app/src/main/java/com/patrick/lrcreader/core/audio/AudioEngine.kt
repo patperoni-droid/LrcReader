@@ -20,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.Collections
+import java.util.WeakHashMap
 import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.pow
@@ -41,6 +43,10 @@ object AudioEngine {
     private enum class PlayerPipeline { PURE_EXO, CUSTOM_ST_SINK }
 
     private val soundTouchProcessor = SoundTouchAudioProcessor()
+    private val playerBoostProcessors = Collections.synchronizedMap(
+        WeakHashMap<ExoPlayer, TrackBoostAudioProcessor>()
+    )
+    @Volatile private var activeTrackBoostProcessor: TrackBoostAudioProcessor? = null
     @Volatile private var timeStretchMode: TimeStretchMode = initialTimeStretchMode()
     @Volatile private var hqApplyPending = timeStretchMode == TimeStretchMode.HQ
     @Volatile private var activePlayerPipeline: PlayerPipeline? = null
@@ -95,19 +101,11 @@ object AudioEngine {
 
     private fun resolveDesiredPlayerPipeline(
         speed: Float = currentSpeed,
-        pitch: Float = currentPitchRatio,
-        trackGainDbOverride: Int? = null
+        pitch: Float = currentPitchRatio
     ): PlayerPipeline {
         val s = speed.coerceIn(0.5f, 2.0f)
         val pi = pitch.coerceIn(0.5f, 2.0f)
         val isNeutral = abs(s - 1f) < 0.0005f && abs(pi - 1f) < 0.0005f
-        val effectiveTrackGain = trackGainDbOverride
-            ?.let { dbToLinearGain(it.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)) }
-            ?: pendingTrackGainDb
-            ?.let { dbToLinearGain(it.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)) }
-            ?: trackGainLinear
-        val needsPositivePcmGain = effectiveTrackGain * playerBusLevel > 1.0005f
-        if (needsPositivePcmGain) return PlayerPipeline.CUSTOM_ST_SINK
         if (isNeutral) return PlayerPipeline.PURE_EXO
         return if (timeStretchMode == TimeStretchMode.HQ) {
             PlayerPipeline.CUSTOM_ST_SINK
@@ -120,31 +118,45 @@ object AudioEngine {
         _playerEpoch.value = _playerEpoch.value + 1
     }
 
-    private fun buildPlayer(appCtx: Context, pipeline: PlayerPipeline): ExoPlayer {
-        val player = when (pipeline) {
-            PlayerPipeline.PURE_EXO -> {
-                ExoPlayer.Builder(appCtx).build()
-            }
-            PlayerPipeline.CUSTOM_ST_SINK -> {
-                val renderersFactory = object : DefaultRenderersFactory(appCtx) {
-                    override fun buildAudioSink(
-                        context: Context,
-                        enableFloatOutput: Boolean,
-                        enableAudioTrackPlaybackParams: Boolean
-                    ): AudioSink {
-                        return DefaultAudioSink.Builder(context)
-                            .setAudioProcessors(arrayOf(soundTouchProcessor))
-                            .setEnableFloatOutput(enableFloatOutput)
-                            .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
-                            .build()
-                    }
-                }
-                    .setEnableAudioFloatOutput(false)
-                    .setEnableAudioTrackPlaybackParams(false)
+    private data class GainCapablePlayer(
+        val player: ExoPlayer,
+        val boostProcessor: TrackBoostAudioProcessor
+    )
 
-                ExoPlayer.Builder(appCtx, renderersFactory).build()
+    private fun createGainCapablePlayer(
+        appCtx: Context,
+        pipeline: PlayerPipeline
+    ): GainCapablePlayer {
+        val boostProcessor = TrackBoostAudioProcessor()
+        val renderersFactory = object : DefaultRenderersFactory(appCtx) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean
+            ): AudioSink {
+                val processors = when (pipeline) {
+                    PlayerPipeline.PURE_EXO -> arrayOf(boostProcessor)
+                    PlayerPipeline.CUSTOM_ST_SINK -> arrayOf(soundTouchProcessor, boostProcessor)
+                }
+                return DefaultAudioSink.Builder(context)
+                    .setAudioProcessors(processors)
+                    .setEnableFloatOutput(enableFloatOutput)
+                    .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                    .build()
             }
         }
+            .setEnableAudioFloatOutput(false)
+            .setEnableAudioTrackPlaybackParams(false)
+
+        val player = ExoPlayer.Builder(appCtx, renderersFactory).build()
+        playerBoostProcessors[player] = boostProcessor
+        return GainCapablePlayer(player, boostProcessor)
+    }
+
+    private fun buildPlayer(appCtx: Context, pipeline: PlayerPipeline): ExoPlayer {
+        val gainCapablePlayer = createGainCapablePlayer(appCtx, pipeline)
+        val player = gainCapablePlayer.player
+        activeTrackBoostProcessor = gainCapablePlayer.boostProcessor
 
         val l = EmbeddedLyricsListener()
         player.addListener(l)
@@ -351,7 +363,8 @@ object AudioEngine {
         val finalLinear = (trackGainLinear * playerBusLevel * fadeMultiplier).coerceIn(0f, 2f)
         val exoVolume = finalLinear.coerceAtMost(1f)
         val pcmGain = if (finalLinear > 1f) finalLinear else 1f
-        soundTouchProcessor.setOutputGainLinear(pcmGain)
+        soundTouchProcessor.setOutputGainLinear(1f)
+        activeTrackBoostProcessor?.setBoostLinear(pcmGain)
         p.volume = exoVolume
 
         Log.d("BUS", "applyFinalVolume exo.volume=$exoVolume pcmGain=$pcmGain track=$trackGainLinear bus=$playerBusLevel fade=$fadeMultiplier")
@@ -414,12 +427,9 @@ object AudioEngine {
         pitch: Float
     ): Boolean {
         val safeDb = gainDb.coerceIn(MIN_TRACK_GAIN_DB, MAX_TRACK_GAIN_DB)
-        val desiredPipeline = resolveDesiredPlayerPipeline(
-            speed = speed,
-            pitch = pitch,
-            trackGainDbOverride = safeDb
-        )
-        return desiredPipeline == PlayerPipeline.CUSTOM_ST_SINK ||
+        val needsPositiveBoost = dbToLinearGain(safeDb) * playerBusLevel > 1.0005f
+        val desiredPipeline = resolveDesiredPlayerPipeline(speed = speed, pitch = pitch)
+        return needsPositiveBoost ||
             (exoPlayer != null && activePlayerPipeline != desiredPipeline)
     }
 
@@ -797,7 +807,7 @@ object AudioEngine {
 
     fun createTransitionPlayer(context: Context): ExoPlayer {
         val appCtx = context.applicationContext
-        val player = ExoPlayer.Builder(appCtx).build()
+        val player = createGainCapablePlayer(appCtx, PlayerPipeline.PURE_EXO).player
         player.trackSelectionParameters =
             player.trackSelectionParameters
                 .buildUpon()
@@ -830,6 +840,7 @@ object AudioEngine {
         runCatching { player.addListener(lyricsListener) }
 
         exoPlayer = player
+        activeTrackBoostProcessor = playerBoostProcessors[player]
         embeddedLyricsListener = lyricsListener
         onNaturalEndCallback = onNaturalEnd
         smokeLastPlaybackState = player.playbackState
@@ -865,6 +876,7 @@ object AudioEngine {
         runCatching { player.addListener(lyricsListener) }
 
         exoPlayer = player
+        activeTrackBoostProcessor = playerBoostProcessors[player]
         embeddedLyricsListener = lyricsListener
         onNaturalEndCallback = onNaturalEnd
         smokeLastPlaybackState = player.playbackState
@@ -893,6 +905,8 @@ object AudioEngine {
         runCatching { soundTouchProcessor.setEnabled(false) }
         hqApplyPending = false
         activePlayerPipeline = null
+        activeTrackBoostProcessor = null
+        playerBoostProcessors.clear()
         playerAppContext = null
 
         exoPlayer?.release()

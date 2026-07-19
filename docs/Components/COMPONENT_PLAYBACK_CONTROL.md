@@ -405,6 +405,21 @@ Le volume des autres moteurs audio n'est jamais piloté par Playback Control.
 
 ---
 
+## Pipeline de gain stable
+
+Le téléphone et la tablette utilisent exactement le même chemin de gain dans `AudioEngine`.
+
+- un étage de gain léger est installé à la création de chaque Player principal ou de transition ;
+- le passage autour de `0 dB` ne sélectionne jamais un autre pipeline Player ;
+- une modification de gain ne doit jamais arrêter, libérer, reconstruire, préparer ou repositionner le Player actif ;
+- le gain neutre ou négatif conserve le réglage de volume ExoPlayer existant ;
+- le gain positif utilise uniquement l'étage de gain dédié ;
+- le gain positif n'active jamais SoundTouch à lui seul ;
+- la sélection du pipeline SoundTouch reste réservée à un pitch ou un speed non neutre ;
+- les futurs EQ, compresseur et limiteur restent hors de ce correctif de stabilisation du gain.
+
+---
+
 ## Intégration Track Console
 
 Track Console affiche le `Playback Control` officiel du Playback principal.
