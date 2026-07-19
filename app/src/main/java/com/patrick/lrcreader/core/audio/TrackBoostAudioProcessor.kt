@@ -44,7 +44,11 @@ internal class TrackBoostAudioProcessor : AudioProcessor {
 
         val gain = boostLinear
         if (gain <= 1.0005f) {
-            pendingOutput = inputBuffer.slice().order(ByteOrder.nativeOrder())
+            val input = inputBuffer.slice()
+            val output = replaceOutputBuffer(input.remaining())
+            output.put(input)
+            output.flip()
+            pendingOutput = output
             inputBuffer.position(inputBuffer.limit())
             return
         }

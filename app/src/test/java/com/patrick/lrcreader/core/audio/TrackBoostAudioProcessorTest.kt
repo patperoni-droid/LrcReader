@@ -23,6 +23,20 @@ class TrackBoostAudioProcessorTest {
     }
 
     @Test
+    fun neutralBoostDoesNotExposeCallerOwnedInputBuffer() {
+        val processor = configuredProcessor()
+        val input = pcm16Buffer(shortArrayOf(1_000, -1_000))
+
+        processor.queueInput(input)
+        input.putShort(0, 30_000)
+
+        assertArrayEquals(
+            shortArrayOf(1_000, -1_000),
+            readPcm16(processor.getOutput())
+        )
+    }
+
+    @Test
     fun positiveBoostAmplifiesAndClampsPcm16() {
         val processor = configuredProcessor()
         processor.setBoostLinear(2f)
