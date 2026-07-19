@@ -385,9 +385,9 @@ L'ancienne zone basse `TOUCH HERE TO RETURN` n'existe plus. La navigation hors d
 
 ---
 
-## Intégration Timeline — architecture validée, implémentation à venir
+## Intégration Timeline — implémentée
 
-La Timeline utilisera un seul contrôle de lecture : le `Playback Control` officiel du Playback principal.
+La Timeline utilise un seul contrôle principal de lecture : le `Playback Control` officiel du Playback principal.
 
 Règles validées :
 
@@ -397,10 +397,10 @@ Règles validées :
 - un appui sur Play jaune lance le morceau sélectionné avec le pipeline Playback officiel ;
 - seulement après ce lancement, le nouveau morceau devient actif et sa Timeline remplace la précédente ;
 - l'écran Timeline reste ouvert pendant ce changement de morceau ;
-- les commandes locales Play, Pause et Retour actuellement présentes dans la Timeline doivent disparaître ;
+- les anciennes commandes locales Play, Pause et Retour de la Timeline ont été supprimées ;
 - aucun lecteur secondaire, lecteur d'aperçu ou état audio propre à la Timeline ne doit être créé.
 
-Cette section décrit la prochaine étape validée. Elle ne doit pas être interprétée comme déjà implémentée.
+Cette intégration est implémentée et validée sur tablette.
 
 ---
 

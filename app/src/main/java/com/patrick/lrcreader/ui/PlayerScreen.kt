@@ -240,10 +240,10 @@ fun PlayerScreen(
     var activeLiveNoteFromTimeline by remember { mutableStateOf(false) }
     var lastLiveNoteTraceKey by remember(currentTrackUri) { mutableStateOf<String?>(null) }
     val openGridSetupOnEntry = requestedNavigationTarget == "grid_setup" && !currentTrackUri.isNullOrBlank()
-    var isEditingTimeline by rememberSaveable(currentTrackUri, requestedNavigationToken) {
+    var isEditingTimeline by rememberSaveable {
         mutableStateOf(openGridSetupOnEntry)
     }
-    var startTimelineInGridSetup by rememberSaveable(currentTrackUri, requestedNavigationToken) {
+    var startTimelineInGridSetup by rememberSaveable {
         mutableStateOf(openGridSetupOnEntry)
     }
     var editingTimelineMidiMarkerIndex by rememberSaveable(currentTrackUri) { mutableStateOf<Int?>(null) }
@@ -548,7 +548,6 @@ fun PlayerScreen(
         LightCueDispatcher.resetGlobal()
     }
     LaunchedEffect(currentTrackUri, isCurrentTrackSmp) {
-        isEditingTimeline = false
         editingTimelineMidiMarkerIndex = null
         editingTimelineLightCueTimeMs = null
         showLightGenerationDialog = false
@@ -782,8 +781,6 @@ fun PlayerScreen(
         isEditingLyrics = false
         editingTrackUri = null
         showUnsavedLyricsDialog = false
-        isEditingTimeline = openGridSetupOnEntry
-        startTimelineInGridSetup = openGridSetupOnEntry
         editingTimelineMidiMarkerIndex = null
         editingTimelineLightCueTimeMs = null
         showLightGenerationDialog = false
@@ -3008,6 +3005,7 @@ fun PlayerScreen(
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
+                playbackControlContent = { OfficialPlaybackControl() },
                 onCloseEditor = {
                     editingTimelineMidiMarkerIndex = null
                     editingTimelineLightCueTimeMs = null

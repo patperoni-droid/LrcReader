@@ -283,7 +283,7 @@ During live:
 
 ⸻
 
-PLAYBACK CONTROL INTEGRATION — ARCHITECTURE VALIDATED, NOT YET IMPLEMENTED
+PLAYBACK CONTROL INTEGRATION — IMPLEMENTED
 
 The Timeline must use the official SMP `Playback Control` as its only playback control.
 
@@ -312,10 +312,10 @@ Play is pressed -> B starts, Timeline B replaces Timeline A, Play becomes green
 
 All position, duration, seek, gain, MIDI, DMX and marker-capture operations remain tied to the active main Playback track.
 
-Current implementation note:
-- the Timeline still contains local Play / Pause / Return controls
-- replacing them with the official `Playback Control` is the next implementation step
-- documentation of the target behavior must not be interpreted as completed code
+Implementation status:
+- the official `Playback Control` is the Timeline's only main playback control
+- the former local Play / Pause / Return controls have been removed
+- the active-track handoff keeps the Timeline editor open and reloads the newly active track
 
 ⸻
 

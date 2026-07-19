@@ -162,9 +162,10 @@ Déploiement tablette réalisé et validé dans :
 - Bibliothèque : SONGS, LISTS, LYRICS et LEVEL ;
 - Accordeur ;
 - Waveform, avec suppression du lecteur d'aperçu secondaire ;
-- Track Console, avec suppression de l'ancien raccourci bas `TOUCH HERE TO RETURN`.
+- Track Console, avec suppression de l'ancien raccourci bas `TOUCH HERE TO RETURN` ;
+- Timeline, avec suppression des commandes locales et maintien de l'écran ouvert lors du passage du titre actif A au titre sélectionné B.
 
-La Timeline constitue la prochaine intégration étudiée. Son architecture est validée, mais son remplacement des commandes locales par le Playback Control officiel n'est pas encore implémenté.
+La Timeline utilise désormais le Playback Control officiel comme unique contrôle principal de lecture.
 
 ---
 
