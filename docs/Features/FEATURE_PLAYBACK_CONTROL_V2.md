@@ -154,6 +154,58 @@ Valider et affiner le réglage rapide du gain dans le `Playback Control`.
 
 ---
 
+## V2.5 — Enchaînement Automatique Live
+
+### Objectif
+
+Permettre au musicien d'armer l'enchaînement du prochain titre depuis le `Playback Control`, sans intervention à la fin du morceau en cours.
+
+### Périmètre
+
+- ajouter un bouton AUTO distinct de Play et Pause ;
+- conserver le bouton Play jaune comme indicateur du morceau préparé ;
+- utiliser le morceau préparé en priorité, sinon le prochain morceau jouable de la playlist ;
+- respecter une cible `Define Next` explicitement définie ;
+- lancer la cible dès la fin effective du morceau actif ou à son point OUT ;
+- utiliser exclusivement le pipeline de transition live officiel ;
+- rendre l'état AUTO visible et stable pendant toute la session.
+
+### Règle Musicale
+
+AUTO ne doit ajouter aucun temps entre les titres.
+
+Aucun délai, silence, compte à rebours ou système de détection vocale n'est introduit.
+
+Les respirations entre les titres proviennent uniquement du contenu musical existant : blanc enregistré, fin longue ou introduction du morceau suivant.
+
+### Sécurité Live
+
+- AUTO est désactivé par défaut après un redémarrage complet de l'application ;
+- désarmer AUTO n'interrompt jamais le morceau actif ;
+- une sélection préparée ne démarre jamais avant la fin du morceau, sauf appui manuel sur Play ;
+- aucune cible invalide ou ambiguë ne doit être lancée ;
+- l'automatisme ne dépend jamais de l'état visuel de la playlist ;
+- les règles de gain, pitch, speed, timeline et transition restent intégralement appliquées.
+
+### Validation Requise Avant Implémentation
+
+- enchaînement normal de plusieurs titres ;
+- choix d'un autre prochain titre pendant la lecture ;
+- priorité de `Define Next` ;
+- point OUT et fin naturelle ;
+- groupes et éléments non jouables ;
+- changement d'écran et recomposition ;
+- désactivation de AUTO pendant la lecture ;
+- absence de cible valide ;
+- transitions avec gain, pitch ou speed non neutres ;
+- validation sur téléphone et tablette réels.
+
+### État
+
+Architecture fonctionnelle documentée. Implémentation non commencée.
+
+---
+
 ## Principe Final
 
 Le `Playback Control` doit progresser par validation réelle.

@@ -2,123 +2,208 @@
 
 ## Mission
 
-La navigation séquentielle est un comportement officiel de SMP.
+Sequential Navigation est un composant officiel de Stage Music Player (SMP).
 
-Elle permet au musicien de sélectionner le morceau précédent ou suivant sans devoir viser directement une ligne de playlist.
+Sa mission est de déplacer la **sélection officielle de la playlist** de manière séquentielle, sans interaction directe avec les éléments affichés.
 
-Elle est indépendante de tout périphérique.
+Il est totalement indépendant :
 
-Elle décrit une intention musicale et ergonomique, pas une interface particulière.
+- de l'interface utilisateur ;
+- du périphérique ;
+- du moteur audio.
 
----
-
-## Objectifs
-
-La navigation séquentielle vise à :
-
-- améliorer la précision en concert ;
-- permettre un point d'appui naturel sur le bord de l'écran ;
-- limiter les erreurs de sélection ;
-- conserver le médiator en main ;
-- préparer les futures interfaces de contrôle.
-
-La priorité est la fiabilité du geste en conditions réelles.
+Il représente une intention métier de SMP.
 
 ---
 
-## Actions Officielles
+# Philosophie
 
-Les actions conceptuelles officielles sont :
+Sequential Navigation ne sert pas à lire le morceau suivant.
 
-```text
-SelectPrevious()
-SelectNext()
-PlaySelected()
+Il sert à **déplacer le curseur de sélection dans la playlist**.
+
+Cette distinction est fondamentale.
+
+La lecture reste entièrement sous la responsabilité de PlaybackControl.
+
+Le fonctionnement est toujours :
+
+```
+Sélection
+      ↓
+PlaybackControl
+      ↓
+Lecture
 ```
 
-Ces actions représentent la source officielle de navigation séquentielle.
+La navigation ne déclenche jamais une lecture automatiquement.
 
-Elles ne sont liées à aucune interface particulière.
-
-Elles doivent exprimer une intention unique :
-
-- sélectionner le morceau précédent ;
-- sélectionner le morceau suivant ;
-- lancer le morceau sélectionné.
+Lorsque le mode AUTO du PlaybackControl est armé, Sequential Navigation conserve exactement la même mission : elle prépare uniquement une sélection. Le PlaybackControl peut utiliser cette sélection comme prochaine cible, mais seulement lorsque le morceau actif atteint sa fin effective.
 
 ---
 
-## Interfaces Possibles
+# Objectifs
 
-Ces actions pourront être appelées par :
+Le composant vise à :
 
-- boutons tactiles ;
-- commandes situées sur le bord de l'écran ;
+- améliorer la fiabilité de la navigation en concert ;
+- réduire les erreurs de sélection ;
+- permettre un point d'appui naturel sur le bord de la tablette ;
+- limiter les erreurs liées au stress, à la transpiration ou aux tremblements ;
+- préparer les futures interfaces de contrôle (Bluetooth, MIDI, pédales, clavier, etc.).
+
+La priorité est la précision du geste, pas la rapidité.
+
+---
+
+# Fonctionnement
+
+Chaque pression sur :
+
+- ▲
+- ▼
+
+déplace la sélection d'un élément.
+
+La navigation parcourt la playlist exactement dans l'ordre où elle est affichée.
+
+Elle ne fait aucune différence entre les types d'éléments.
+
+Elle peut donc sélectionner :
+
+- un morceau ;
+- un groupe ;
+- un prompteur ;
+- ou tout autre élément présent dans la playlist.
+
+Sequential Navigation parcourt uniquement la sélection.
+
+Il ne décide jamais de la lecture.
+
+---
+
+# Interaction avec PlaybackControl
+
+PlaybackControl reste entièrement responsable de la lecture.
+
+Lorsque l'utilisateur appuie sur **Play** :
+
+- si la sélection est un morceau, ce morceau est joué ;
+- si la sélection est un groupe, le groupe est lancé selon le comportement officiel de SMP ;
+- les autres types d'éléments sont traités selon leur logique propre.
+
+Sequential Navigation ne connaît pas ces comportements.
+
+Il se contente de déplacer la sélection.
+
+Même avec AUTO activé, il ne surveille pas la fin du morceau et ne lance jamais lui-même le moteur audio.
+
+---
+
+# Défilement automatique
+
+Lorsque la sélection atteint la limite visible de la playlist :
+
+- la playlist défile automatiquement ;
+- la sélection reste toujours visible ;
+- la navigation continue tant qu'il reste des éléments à parcourir.
+
+Ainsi, l'intégralité de la playlist peut être parcourue uniquement avec les commandes ▲ ▼.
+
+---
+
+# Interfaces compatibles
+
+Le comportement métier est unique.
+
+Il pourra être utilisé par :
+
+- commandes tactiles ;
+- tablette ;
 - pédale Bluetooth ;
 - pédalier MIDI ;
 - clavier ;
 - télécommande ;
-- toute future interface.
+- Android Auto ;
+- toute future interface SMP.
 
-Le comportement métier devra toujours rester unique.
+Toutes ces interfaces utilisent exactement le même composant.
 
-Aucune duplication de logique n'est autorisée.
-
-Une interface déclenche une action officielle.
-
-Elle ne réimplémente jamais la navigation.
+Aucune ne possède sa propre logique de navigation.
 
 ---
 
-## Principe D'ergonomie SMP
+# Présentation selon le périphérique
 
-Les essais terrain montrent qu'en concert :
+## Téléphone
 
-- le musicien tient souvent un médiator ;
-- la main peut trembler légèrement ;
-- les doigts peuvent être humides.
+Le PlaybackControl reste inchangé.
 
-Dans ce contexte, viser précisément une ligne de playlist est moins fiable qu'utiliser des commandes situées sur le bord de l'écran.
+La navigation continue principalement par sélection tactile.
 
-Ces commandes permettent de prendre appui avec la paume et de déclencher une action plus stable.
+Aucune commande supplémentaire n'est affichée.
 
-La priorité de SMP est donc la fiabilité du geste plutôt que la vitesse absolue.
-
-La navigation séquentielle doit réduire les erreurs de sélection, même si elle demande parfois une action de plus.
+La priorité est la compacité.
 
 ---
 
-## Règles D'architecture
+## Tablette
 
-- La navigation séquentielle est indépendante du périphérique.
-- Le comportement métier est unique.
-- Les interfaces ne dupliquent pas la logique.
-- Les actions s'appliquent à la sélection officielle de playlist.
-- La sélection et la lecture restent deux intentions séparées.
-- `PlaySelected()` lit uniquement le morceau actuellement sélectionné.
+Le PlaybackControl est présenté dans une barre de contrôle élargie utilisant toute la largeur disponible.
 
-Cette séparation permet de conserver un contrôle clair en live :
+Les commandes ▲ ▼ sont intégrées dans cette barre afin d'offrir une navigation plus confortable pendant les concerts.
 
-```text
-Choisir
-↓
-Valider
-```
+Cette présentation améliore le confort d'utilisation sans modifier le comportement du composant.
+
+Le fonctionnement reste strictement identique à celui du téléphone.
 
 ---
 
-## Origine Du Concept
+# Règles d'architecture
 
-Cette architecture est née des essais réalisés en situation réelle de concert.
-
-L'objectif n'est pas d'accélérer la navigation, mais de la rendre plus fiable dans des conditions où la précision tactile est réduite : médiator, transpiration, stress, mouvements.
-
-Toute implémentation future devra préserver cette philosophie.
+- une seule logique officielle de navigation ;
+- aucune dépendance à l'interface utilisateur ;
+- aucune dépendance au moteur audio ;
+- aucune duplication selon le périphérique ;
+- séparation stricte entre **Sélection** et **Lecture** ;
+- PlaybackControl reste le seul responsable du lancement de la lecture.
 
 ---
 
-## Statut
+# Origine du composant
 
-Ce document ne valide pas encore une implémentation.
+Sequential Navigation est né des essais réalisés en situation réelle de concert.
 
-Il décrit une orientation d'architecture afin de préserver cette idée pour les futures évolutions de SMP.
+L'objectif n'était pas de rendre la navigation plus rapide.
+
+L'objectif était de la rendre **plus fiable**.
+
+En pratique, le musicien peut poser sa main sur le bord de la tablette et déplacer la sélection avec les commandes ▲ ▼ sans avoir à viser précisément les lignes de la playlist.
+
+Une fois l'élément souhaité sélectionné, il lui suffit d'appuyer sur **Play**.
+
+Cette approche réduit significativement les risques de mauvaise sélection lorsque les conditions de scène rendent le tactile moins précis.
+
+Sequential Navigation est donc un composant de **navigation de scène**, conçu pour offrir une sélection sûre, prévisible et confortable en utilisation live.
+
+---
+
+# Règle de conception
+
+PlaybackControl conserve toujours la même géométrie.
+
+Les positions des commandes ne doivent jamais varier selon l'écran affiché.
+
+Lorsqu'une fonctionnalité n'est pas disponible (par exemple Sequential Navigation sur un écran ne possédant pas de sélection de playlist), les commandes restent visibles mais apparaissent désactivées.
+
+Les commandes ne sont jamais supprimées si cela modifie l'équilibre visuel du composant.
+
+Cette règle permet de préserver la mémoire musculaire de l'utilisateur et garantit une expérience stable, prévisible et rassurante pendant les concerts.
+
+Principe SMP :
+
+> Les fonctions peuvent varier selon le contexte.
+>
+> Les commandes, elles, restent toujours à leur place.
+>
+> Lorsque la lecture est déclenchée via le bouton Play, PlaybackControl lance toujours l'élément actuellement sélectionné dans la playlist officielle de SMP.

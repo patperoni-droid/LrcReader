@@ -91,7 +91,13 @@ Il doit rester visible pendant les opérations de chargement lorsque ses actions
 Les écrans qui utilisent `PlaybackControl` doivent adapter leur contenu autour de lui, et non déplacer ou supprimer `PlaybackControl` en fonction de l'état local du contenu.
 
 ---
+## Overlays
 
+Lorsqu'un écran affiche un overlay (chargement, progression, indexation, etc.), celui-ci doit être limité à la zone de contenu.
+
+Un overlay ne doit pas masquer les composants du Shell lorsque ceux-ci restent utilisables.
+
+Le Shell demeure visible et interactif tant que ses actions restent valides.
 ## Philosophie SMP
 
 Un écran peut changer de contenu.
@@ -99,3 +105,25 @@ Un écran peut changer de contenu.
 Le Shell, lui, reste stable.
 
 Cette séparation constitue une règle d'architecture officielle de SMP.
+
+## Exemple
+
+Bibliothèque
+
+Shell :
+- Barre SMP
+- Onglets
+- PlaybackControl
+
+Contenu :
+- Songs
+- Lists
+- Lyrics
+- Scan
+- Recherche
+
+Pendant un scan Lyrics :
+
+Le contenu est remplacé par un indicateur de progression.
+
+Le Shell reste intégralement visible.

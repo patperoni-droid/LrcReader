@@ -1,0 +1,7 @@
+il faudra brancher le vrai playbackcontrol dans waveform
+
+install demo sur tel christine devant les titres le carré smp comme avant
+
+Les réglages de taille de police Android ne doivent jamais modifier
+les dimensions ou la disposition des composants de l'interface.
+Si un texte ne tient plus, il est tronqué plutôt que d'agrandir son conteneur.

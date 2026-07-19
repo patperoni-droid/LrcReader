@@ -2,7 +2,7 @@
 
 ## Mission
 
-Le `Playback Control` est le centre de contrôle universel du **Playback actif** de SMP.
+Le `Playback Control` est le centre de contrôle universel du **Playback principal actif** de SMP.
 
 Il permet au musicien de contrôler immédiatement le morceau actuellement en lecture sans revenir systématiquement dans le Player.
 
@@ -39,6 +39,8 @@ Cette séparation permet de préparer le morceau suivant sans interrompre celui 
 
 **Le bouton Play confirme.**
 
+**Le bouton AUTO peut armer cette confirmation pour la fin naturelle du morceau en cours.**
+
 ---
 
 ## Principes SMP
@@ -55,15 +57,17 @@ Le `Playback Control` appartient à SMP et jamais à un écran particulier.
 
 Il ne contrôle jamais un écran.
 
-Il contrôle toujours le Playback actif.
+Il contrôle toujours le Playback principal actif.
+
+Il ne contrôle jamais les moteurs audio complémentaires, notamment le Fond sonore.
 
 ---
 
-## Playback actif
+## Playback principal actif
 
-À un instant donné, SMP possède un unique Playback actif.
+À un instant donné, SMP possède un unique Playback principal actif.
 
-Ce Playback peut avoir été démarré depuis :
+Ce Playback principal peut avoir été démarré depuis :
 
 - Lecteur Audio / Paroles ;
 - Bibliothèque ;
@@ -75,9 +79,15 @@ Lorsqu'un nouveau morceau est lancé :
 
 - il devient automatiquement le Playback actif ;
 - le Playback précédent est arrêté conformément aux règles de coordination audio ;
-- tous les Playback Control pilotent désormais ce nouveau Playback actif.
+- tous les Playback Control pilotent désormais ce nouveau Playback principal actif.
 
-Le changement d'écran ne modifie jamais le Playback actif.
+Le changement d'écran ne modifie jamais le Playback principal actif.
+
+Le Fond sonore n'est pas un Playback principal.
+
+Il possède son propre lecteur, son propre état et ses propres commandes locales.
+
+Même sur l'écran Fond sonore, `Playback Control` conserve sa mission unique : piloter le Playback principal.
 
 ---
 
@@ -109,7 +119,8 @@ Dans tous les cas :
 
 - le morceau devient sélectionné ;
 - le Playback actif continue normalement ;
-- aucune lecture automatique n'est déclenchée.
+- aucune lecture immédiate n'est déclenchée ;
+- si AUTO est armé, cette sélection peut devenir la prochaine cible automatique.
 
 Cette séparation est volontaire.
 
@@ -123,7 +134,7 @@ Le `Playback Control` :
 
 - ne modifie jamais la playlist ;
 - ne déplace jamais la sélection ;
-- ne décide jamais du morceau suivant.
+- n'invente jamais un morceau suivant hors de la sélection et de l'ordre officiel de la playlist.
 
 Il agit uniquement sur le Playback actif et utilise la sélection fournie par la Navigation Séquentielle.
 
@@ -169,6 +180,7 @@ Elle comprend :
 - Retour début ;
 - bouton Play ;
 - bouton Pause ;
+- bouton AUTO ;
 - réglage rapide ;
 - affichage de la valeur.
 
@@ -185,7 +197,7 @@ La sélection peut provenir :
 - d'un appui tactile sur la playlist ;
 - de la Navigation Séquentielle.
 
-Le Playback actif continue normalement tant que le musicien n'appuie pas explicitement sur Play.
+Le Playback actif continue normalement tant que le musicien n'appuie pas explicitement sur Play ou que la fin du morceau n'est pas atteinte avec AUTO armé.
 
 Le bouton Play devient jaune lorsque la sélection ne correspond plus au Playback actif.
 
@@ -238,17 +250,74 @@ Cette sélection prépare un autre morceau sans déclencher de lecture automatiq
 
 Le bouton Play indique qu'un nouveau morceau est prêt à être lancé.
 
+Si AUTO est armé, ce morceau préparé devient prioritaire pour le prochain lancement automatique.
+
 Lorsque ce morceau est lancé, il devient le nouveau Playback actif et le bouton Play redevient vert.
+
+---
+
+## Bouton AUTO
+
+Le bouton AUTO active ou désactive l'enchaînement automatique du Playback principal.
+
+Il reste une commande distincte du bouton Play et ne change jamais la signification ni la couleur du bouton Play.
+
+### AUTO désactivé
+
+- le comportement manuel actuel est conservé ;
+- un bouton Play jaune indique uniquement qu'un autre morceau est préparé ;
+- le musicien doit appuyer sur Play pour le lancer.
+
+### AUTO activé
+
+À la fin naturelle du morceau actif ou lorsque son point OUT officiel est atteint :
+
+1. une cible explicitement définie par `Define Next` reste prioritaire ;
+2. sinon, un morceau sélectionné et préparé, signalé par le bouton Play jaune, devient la prochaine cible ;
+3. sinon, SMP utilise le prochain morceau jouable dans l'ordre officiel de la playlist.
+
+Le lancement utilise toujours le pipeline Playback officiel.
+
+AUTO n'ajoute :
+
+- aucun délai artificiel entre les titres ;
+- aucun silence supplémentaire ;
+- aucun compte à rebours ;
+- aucune analyse du silence ou de la voix.
+
+Les blancs, fins longues et introductions présents dans les morceaux restent les seuls espaces musicaux entre les titres.
+
+Le nouveau morceau démarre dès que la fin effective du morceau courant est confirmée par le moteur de lecture.
+
+Si aucune cible jouable et valide ne peut être résolue :
+
+- aucun morceau n'est lancé ;
+- le Playback s'arrête proprement ;
+- aucune cible de secours ambiguë n'est inventée.
+
+### État live
+
+L'état AUTO doit être immédiatement visible et ne jamais dépendre de l'écran affiché.
+
+Il doit survivre :
+
+- aux recompositions Compose ;
+- aux changements d'écran ;
+- aux changements de sélection pendant le morceau.
+
+Pour éviter un démarrage inattendu après une nouvelle ouverture de l'application, AUTO est un état de session et revient désactivé après un redémarrage complet.
+
+Le musicien peut désarmer AUTO à tout moment sans interrompre le morceau en cours.
 
 ---
 
 ## Bouton Pause
 
-Le bouton Pause agit uniquement sur le Playback actif.
+Le bouton Pause agit uniquement sur le Playback principal actif.
 
 Sur tablette, il constitue une commande distincte du bouton Play.
 
-Il suspend la lecture du Playback actif.
+Il suspend la lecture du Playback principal actif.
 
 Il ne modifie jamais :
 
@@ -262,7 +331,7 @@ Si le musicien a préparé un autre morceau par la sélection, cette préparatio
 
 ## Bouton Retour
 
-Le bouton Retour remet uniquement le Playback actif au début.
+Le bouton Retour remet uniquement le Playback principal actif au début.
 
 Il ne modifie jamais :
 
@@ -291,13 +360,15 @@ En mode Live tablette, elles produisent le même résultat qu'un appui tactile s
 
 Cette sélection peut être préparée pendant qu'un autre morceau continue de jouer.
 
-Le lancement reste toujours une décision explicite du musicien via le bouton Play.
+Lorsque AUTO est désactivé, le lancement reste une décision explicite du musicien via le bouton Play.
+
+Lorsque AUTO est activé, la Navigation Séquentielle continue uniquement à préparer la sélection ; seul le Playback Control déclenche le lancement à la fin effective du morceau actif.
 
 ---
 
 ## Réglage rapide contextuel
 
-Le Playback Control contient une zone de réglage rapide.
+Le Playback Control contient une zone de réglage rapide du Playback principal.
 
 ```
 [-] Valeur [+]
@@ -305,20 +376,22 @@ Le Playback Control contient une zone de réglage rapide.
 
 Le composant ne possède jamais de réglage propre.
 
-Il pilote toujours le réglage fourni par l'écran hôte.
+Il pilote uniquement un réglage lié au Playback principal.
 
 Exemples :
 
 - Player → Gain Playback ;
 - LEVELS → Gain Playback ;
 - Bibliothèque → Gain Playback ;
-- Bus Principal → Gain Playback ;
-- Fond sonore → Volume Fond sonore ;
-- DJ → Volume DJ.
+- Bus Principal → Gain Playback.
 
 Le GainDrawer reste le réglage précis.
 
 Le Playback Control permet un ajustement rapide.
+
+Le volume du Fond sonore est réglé par les commandes locales du lecteur Fond sonore.
+
+Le volume des autres moteurs audio n'est jamais piloté par Playback Control.
 
 ---
 
@@ -341,7 +414,7 @@ En mode Live tablette, toutes les méthodes de sélection possèdent le même co
 
 La préparation d'un morceau est indépendante de son lancement.
 
-Le lancement reste toujours une décision explicite du musicien.
+Le lancement est soit confirmé directement avec Play, soit préalablement autorisé par l'armement explicite de AUTO.
 
 Cette différence avec le téléphone est volontaire :
 
@@ -361,6 +434,8 @@ En mode Live (tablette), il sépare volontairement :
 - la préparation du morceau suivant ;
 - le contrôle du morceau actuellement en lecture.
 
+Le mode AUTO ajoute un enchaînement préalablement armé sans supprimer cette séparation.
+
 Cette séparation constitue une règle officielle de l'architecture SMP.
 
 ---
@@ -376,4 +451,9 @@ La préparation consiste à choisir ou déplacer la sélection.
 
 L'exécution consiste à lancer effectivement le morceau.
 
-Cette séparation garantit que le musicien conserve toujours la maîtrise du moment où un nouveau morceau est lancé.
+Cette séparation garantit que le musicien conserve la maîtrise du mode de lancement :
+
+- validation manuelle avec Play ;
+- ou lancement automatique armé à la fin effective du morceau.
+
+AUTO ne crée jamais de temps supplémentaire entre deux titres.

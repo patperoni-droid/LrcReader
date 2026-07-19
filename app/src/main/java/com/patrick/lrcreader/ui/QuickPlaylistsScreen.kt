@@ -1579,28 +1579,30 @@ fun QuickPlaylistsScreen(
                         }
                     }
 
-                    IconButton(
-                        onClick = {
-                            val next = !isMiniTunerVisible
-                            MiniTunerVisibilityStore.setVisible(context, next)
-                            if (next && !hasMicPermission) {
-                                micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    if (!compactTabletLayout) {
+                        IconButton(
+                            onClick = {
+                                val next = !isMiniTunerVisible
+                                MiniTunerVisibilityStore.setVisible(context, next)
+                                if (next && !hasMicPermission) {
+                                    micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                }
                             }
+                        ) {
+                            Icon(
+                                imageVector = if (isMiniTunerVisible) {
+                                    Icons.Filled.Visibility
+                                } else {
+                                    Icons.Filled.VisibilityOff
+                                },
+                                contentDescription = if (isMiniTunerVisible) {
+                                    stringResource(R.string.quickplaylists_cd_hide_mini_tuner)
+                                } else {
+                                    stringResource(R.string.quickplaylists_cd_show_mini_tuner)
+                                },
+                                tint = if (isMiniTunerVisible) Color(0xFF80DEEA) else Color(0xFF78909C)
+                            )
                         }
-                    ) {
-                        Icon(
-                            imageVector = if (isMiniTunerVisible) {
-                                Icons.Filled.Visibility
-                            } else {
-                                Icons.Filled.VisibilityOff
-                            },
-                            contentDescription = if (isMiniTunerVisible) {
-                                stringResource(R.string.quickplaylists_cd_hide_mini_tuner)
-                            } else {
-                                stringResource(R.string.quickplaylists_cd_show_mini_tuner)
-                            },
-                            tint = if (isMiniTunerVisible) Color(0xFF80DEEA) else Color(0xFF78909C)
-                        )
                     }
 
                 }
