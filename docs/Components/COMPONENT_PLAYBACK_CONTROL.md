@@ -39,7 +39,7 @@ Cette séparation permet de préparer le morceau suivant sans interrompre celui 
 
 **Le bouton Play confirme.**
 
-**Sur tablette uniquement, le bouton AUTO peut armer cette confirmation pour la fin naturelle du morceau en cours.**
+Le mode actuel reste entièrement manuel. Le projet de bouton AUTO est suspendu et ne fait pas partie du composant implémenté.
 
 ---
 
@@ -120,8 +120,7 @@ Dans tous les cas :
 
 - le morceau devient sélectionné ;
 - le Playback actif continue normalement ;
-- aucune lecture immédiate n'est déclenchée ;
-- si AUTO est armé, cette sélection peut devenir la prochaine cible automatique.
+- aucune lecture immédiate n'est déclenchée.
 
 Cette séparation est volontaire.
 
@@ -185,7 +184,6 @@ Elle comprend :
 - Retour début ;
 - bouton Play ;
 - bouton Pause ;
-- bouton AUTO ;
 - réglage rapide ;
 - affichage de la valeur.
 
@@ -202,7 +200,7 @@ La sélection peut provenir :
 - d'un appui tactile sur la playlist ;
 - de la Navigation Séquentielle.
 
-Le Playback actif continue normalement tant que le musicien n'appuie pas explicitement sur Play ou que la fin du morceau n'est pas atteinte avec AUTO armé.
+Le Playback actif continue normalement tant que le musicien n'appuie pas explicitement sur Play.
 
 Le bouton Play devient jaune lorsque la sélection ne correspond plus au Playback actif.
 
@@ -255,68 +253,17 @@ Cette sélection prépare un autre morceau sans déclencher de lecture automatiq
 
 Le bouton Play indique qu'un nouveau morceau est prêt à être lancé.
 
-Si AUTO est armé, ce morceau préparé devient prioritaire pour le prochain lancement automatique.
-
 Lorsque ce morceau est lancé, il devient le nouveau Playback actif et le bouton Play redevient vert.
 
 ---
 
-## Bouton AUTO — Tablette uniquement
+## Projet AUTO — suspendu
 
-Le bouton AUTO est réservé au Playback Control du mode Live tablette.
+Le bouton AUTO n'est implémenté ni sur tablette ni sur téléphone.
 
-Il active ou désactive l'enchaînement automatique du Playback principal sur tablette.
+Son étude est mise de côté tant que le comportement manuel du Playback Control, de la sélection officielle et des transitions n'est pas stabilisé sur tous les écrans concernés.
 
-Il reste une commande distincte du bouton Play et ne change jamais la signification ni la couleur du bouton Play.
-
-Il n'est jamais affiché sur téléphone et ne modifie jamais le comportement historique du Playback Control téléphone.
-
-### AUTO désactivé
-
-- le comportement manuel actuel est conservé ;
-- un bouton Play jaune indique uniquement qu'un autre morceau est préparé ;
-- le musicien doit appuyer sur Play pour le lancer.
-
-### AUTO activé
-
-À la fin naturelle du morceau actif ou lorsque son point OUT officiel est atteint :
-
-1. une cible explicitement définie par `Define Next` reste prioritaire ;
-2. sinon, un morceau sélectionné et préparé, signalé par le bouton Play jaune, devient la prochaine cible ;
-3. sinon, SMP utilise le prochain morceau jouable dans l'ordre officiel de la playlist.
-
-Le lancement utilise toujours le pipeline Playback officiel.
-
-AUTO n'ajoute :
-
-- aucun délai artificiel entre les titres ;
-- aucun silence supplémentaire ;
-- aucun compte à rebours ;
-- aucune analyse du silence ou de la voix.
-
-Les blancs, fins longues et introductions présents dans les morceaux restent les seuls espaces musicaux entre les titres.
-
-Le nouveau morceau démarre dès que la fin effective du morceau courant est confirmée par le moteur de lecture.
-
-Si aucune cible jouable et valide ne peut être résolue :
-
-- aucun morceau n'est lancé ;
-- le Playback s'arrête proprement ;
-- aucune cible de secours ambiguë n'est inventée.
-
-### État live
-
-Sur tablette, l'état AUTO doit être immédiatement visible et ne jamais dépendre de l'écran affiché.
-
-Il doit survivre :
-
-- aux recompositions Compose ;
-- aux changements d'écran ;
-- aux changements de sélection pendant le morceau.
-
-Pour éviter un démarrage inattendu après une nouvelle ouverture de l'application, AUTO est un état de session et revient désactivé après un redémarrage complet.
-
-Le musicien peut désarmer AUTO à tout moment sans interrompre le morceau en cours.
+La documentation de conception conservée dans la roadmap V2.5 décrit uniquement une possibilité future. Elle ne constitue pas un comportement disponible.
 
 ---
 
@@ -369,9 +316,7 @@ En mode Live tablette, elles produisent le même résultat qu'un appui tactile s
 
 Cette sélection peut être préparée pendant qu'un autre morceau continue de jouer.
 
-Lorsque AUTO est désactivé, le lancement reste une décision explicite du musicien via le bouton Play.
-
-Lorsque AUTO est activé, la Navigation Séquentielle continue uniquement à préparer la sélection ; seul le Playback Control déclenche le lancement à la fin effective du morceau actif.
+Le lancement reste une décision explicite du musicien via le bouton Play.
 
 ---
 
@@ -416,6 +361,8 @@ Le téléphone et la tablette utilisent exactement le même chemin de gain dans 
 - le gain positif utilise uniquement l'étage de gain dédié ;
 - le gain positif n'active jamais SoundTouch à lui seul ;
 - la sélection du pipeline SoundTouch reste réservée à un pitch ou un speed non neutre ;
+- le chemin neutre copie les données PCM dans un tampon détenu par le processeur avant de les transmettre, afin d'éviter toute réutilisation prématurée du tampon ExoPlayer ;
+- le son neutre, le pitch, le speed et les passages `-1 / 0 / +1 dB` ont été validés sur appareil réel ;
 - les futurs EQ, compresseur et limiteur restent hors de ce correctif de stabilisation du gain.
 
 ---
@@ -438,6 +385,25 @@ L'ancienne zone basse `TOUCH HERE TO RETURN` n'existe plus. La navigation hors d
 
 ---
 
+## Intégration Timeline — architecture validée, implémentation à venir
+
+La Timeline utilisera un seul contrôle de lecture : le `Playback Control` officiel du Playback principal.
+
+Règles validées :
+
+- la Timeline affichée appartient toujours au morceau actuellement actif dans le Playback principal ;
+- sélectionner un autre morceau dans la playlist ne change pas la Timeline affichée et n'interrompt pas la lecture ;
+- lorsque la sélection diffère du Playback actif, le bouton Play devient jaune selon la règle commune ;
+- un appui sur Play jaune lance le morceau sélectionné avec le pipeline Playback officiel ;
+- seulement après ce lancement, le nouveau morceau devient actif et sa Timeline remplace la précédente ;
+- l'écran Timeline reste ouvert pendant ce changement de morceau ;
+- les commandes locales Play, Pause et Retour actuellement présentes dans la Timeline doivent disparaître ;
+- aucun lecteur secondaire, lecteur d'aperçu ou état audio propre à la Timeline ne doit être créé.
+
+Cette section décrit la prochaine étape validée. Elle ne doit pas être interprétée comme déjà implémentée.
+
+---
+
 ## Principes UX
 
 Le Playback Control doit :
@@ -457,7 +423,7 @@ En mode Live tablette, toutes les méthodes de sélection possèdent le même co
 
 La préparation d'un morceau est indépendante de son lancement.
 
-Le lancement est soit confirmé directement avec Play, soit préalablement autorisé par l'armement explicite de AUTO.
+Le lancement est confirmé directement avec Play.
 
 Cette différence avec le téléphone est volontaire :
 
@@ -477,9 +443,7 @@ En mode Live (tablette), il sépare volontairement :
 - la préparation du morceau suivant ;
 - le contrôle du morceau actuellement en lecture.
 
-Sur tablette, le mode AUTO ajoute un enchaînement préalablement armé sans supprimer cette séparation.
-
-Sur téléphone, cette évolution ne change rien : aucun bouton AUTO n'est ajouté et le comportement historique reste prioritaire.
+Sur téléphone, le comportement historique reste prioritaire.
 
 Cette séparation constitue une règle officielle de l'architecture SMP.
 
@@ -496,9 +460,4 @@ La préparation consiste à choisir ou déplacer la sélection.
 
 L'exécution consiste à lancer effectivement le morceau.
 
-Cette séparation garantit que le musicien conserve la maîtrise du mode de lancement :
-
-- validation manuelle avec Play ;
-- ou lancement automatique armé à la fin effective du morceau.
-
-AUTO ne crée jamais de temps supplémentaire entre deux titres.
+Cette séparation garantit que le musicien conserve la maîtrise du lancement par validation manuelle avec Play.

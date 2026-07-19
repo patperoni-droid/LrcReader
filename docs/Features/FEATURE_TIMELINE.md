@@ -283,6 +283,42 @@ During live:
 
 ⸻
 
+PLAYBACK CONTROL INTEGRATION — ARCHITECTURE VALIDATED, NOT YET IMPLEMENTED
+
+The Timeline must use the official SMP `Playback Control` as its only playback control.
+
+The Timeline must never create or keep:
+- a secondary audio player
+- a preview player
+- a local copy of Play / Pause / Return-to-start behavior
+- a separate playback state
+
+Active-track rule:
+- the Timeline displayed and edited always belongs to the active main Playback track
+- selecting another playlist track does not change the displayed Timeline
+- selecting another track does not interrupt the active Playback
+- the official Play button becomes yellow when selection and active Playback differ
+- pressing the yellow Play button launches the selected track through the official Playback pipeline
+- only after that launch does the selected track become active and its Timeline replace the previous one
+- the Timeline editor must remain open during this active-track handoff
+
+Example:
+
+```text
+A is playing -> Timeline A is displayed
+B is selected -> Timeline A remains displayed, Play becomes yellow
+Play is pressed -> B starts, Timeline B replaces Timeline A, Play becomes green
+```
+
+All position, duration, seek, gain, MIDI, DMX and marker-capture operations remain tied to the active main Playback track.
+
+Current implementation note:
+- the Timeline still contains local Play / Pause / Return controls
+- replacing them with the official `Playback Control` is the next implementation step
+- documentation of the target behavior must not be interpreted as completed code
+
+⸻
+
 KNOWN PITFALLS
 
 - Using lyrics as timeline source
@@ -291,6 +327,9 @@ KNOWN PITFALLS
 - Retiggering all old cues after seek
 - Doing disk I/O during playback
 - Coupling DMX/MIDI to screen state
+- changing the displayed Timeline from playlist selection before the selected track becomes active
+- keeping local Timeline playback controls beside the official Playback Control
+- closing the Timeline editor when the yellow Play button activates the selected track
 
 👉 These are regression risks.
 
@@ -312,6 +351,10 @@ Test at least:
 - delete cue then replay
 - playback with lyrics screen visible
 - playback with chords screen visible
+- keep Timeline A displayed when B is only selected in the tablet playlist
+- show the official Play button in yellow while A is active and B is selected
+- launch B with one press on yellow Play, keep the Timeline editor open, then display Timeline B
+- verify that no local or secondary Timeline playback control remains
 
 👉 Must be tested on real device when possible.
 

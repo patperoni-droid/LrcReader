@@ -476,10 +476,14 @@ Common rules:
 - current active range is `-24 dB` to `+6 dB`
 - a visible future reserve may show `+6 dB` to `+12 dB`, but that zone is inactive until a future explicit boost feature exists
 
-Known limitation:
-- crossing around `0 dB` during active playback may still cause a small audible interruption because the player may need to switch between the normal Exo path and the positive-gain path
-- this limitation is accepted for now; stability of negative gain and predictable launch behavior have priority
-- any future fix must avoid crackles, avoid unstable SoundTouch changes, and must not reconfigure playback in a way that blocks live launch
+Stable gain pipeline:
+- crossing around `0 dB` during active playback must never rebuild or replace the active Player
+- neutral and negative gain use the regular ExoPlayer volume path
+- positive gain uses the lightweight gain stage installed when the Player is created
+- positive gain alone must never activate SoundTouch
+- SoundTouch pipeline selection remains reserved for non-neutral pitch or speed
+- the neutral path must never expose an input buffer still owned by ExoPlayer
+- neutral sound, pitch, speed and repeated `-1 / 0 / +1 dB` crossings were validated on a real tablet
 
 ⸻
 
@@ -540,13 +544,14 @@ Saved per-track gain must be applied to the selected track, not to the previousl
 Rules:
 - selecting a new track must launch it on the first tap
 - the saved gain of the new track must be loaded before playback handoff
-- if the target gain requires a positive-gain pipeline or a pipeline reset around `0 dB`, the Player must use a live-safe sequential start
-- the launch must not continue with a stale ExoPlayer instance after a pipeline rebuild
+- positive, neutral and negative gain must use the gain-capable Player created before playback
+- gain alone must never require a Player pipeline rebuild
+- crossing `0 dB` must remain a lightweight gain update
 - negative gain behavior must remain stable
 - phone behavior and tablet behavior must share the same playback safety rules
 
 Reason:
-positive gain can require a different playback pipeline than neutral or negative gain. Applying that change too late during `prepare()` can invalidate the player instance selected for launch.
+Pitch or speed may still require the dedicated SoundTouch pipeline, but gain no longer selects that pipeline. Keeping the gain stage ready from Player creation prevents stale instances, relaunches and audible interruptions around `0 dB`.
 
 ⸻
 

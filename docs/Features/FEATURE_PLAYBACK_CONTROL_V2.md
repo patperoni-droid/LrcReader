@@ -152,9 +152,25 @@ Valider et affiner le réglage rapide du gain dans le `Playback Control`.
 - la lecture reste contrôlable sans revenir systématiquement au Player ;
 - l'ergonomie reste identique à celle validée dans le Player.
 
+### État
+
+Déploiement tablette réalisé et validé dans :
+
+- Player ;
+- Fond sonore, pour le contrôle du Playback principal en complément des commandes locales du Fond sonore ;
+- Bus Principal ;
+- Bibliothèque : SONGS, LISTS, LYRICS et LEVEL ;
+- Accordeur ;
+- Waveform, avec suppression du lecteur d'aperçu secondaire ;
+- Track Console, avec suppression de l'ancien raccourci bas `TOUCH HERE TO RETURN`.
+
+La Timeline constitue la prochaine intégration étudiée. Son architecture est validée, mais son remplacement des commandes locales par le Playback Control officiel n'est pas encore implémenté.
+
 ---
 
 ## V2.5 — Enchaînement Automatique Live
+
+**Statut : SUSPENDU — conception conservée pour référence, aucune implémentation actuelle.**
 
 ### Objectif
 
@@ -210,7 +226,9 @@ Les respirations entre les titres proviennent uniquement du contenu musical exis
 
 ### État
 
-Architecture fonctionnelle documentée. Implémentation non commencée.
+Étude suspendue par décision du 19/07/2026.
+
+L'architecture exploratoire reste documentée pour référence, mais AUTO n'appartient pas au Playback Control actuellement implémenté et ne fait pas partie de la prochaine étape de développement.
 
 ---
 

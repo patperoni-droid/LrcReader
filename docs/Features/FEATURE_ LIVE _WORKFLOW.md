@@ -342,11 +342,13 @@ Plage actuelle :
 - plage active : `-24 dB` à `+6 dB`
 - réserve visuelle future possible : `+6 dB` à `+12 dB`, inactive pour l'instant
 
-Limite connue :
+Pipeline de gain validé :
 
-- le passage autour de `0 dB` pendant une lecture active peut encore provoquer une micro-coupure
-- cette limite est documentée tant qu'une solution sans craquement ni reconfiguration risquée n'est pas validée
-- priorité actuelle : démarrage fiable des morceaux, stabilité des gains négatifs et absence de craquements
+- le passage autour de `0 dB` ne reconstruit plus le Player actif
+- le gain positif utilise un étage léger préparé dès la création du Player
+- le gain positif seul n'active pas SoundTouch
+- le chemin neutre protège les tampons audio détenus par ExoPlayer
+- son neutre, pitch, speed et passages répétés `-1 / 0 / +1 dB` validés sur appareil réel
 
 Règles live :
 
