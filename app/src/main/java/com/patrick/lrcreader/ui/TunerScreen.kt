@@ -62,7 +62,9 @@ fun TunerScreen(
     getPositionMs: () -> Long = { 0L },
     getEffectiveDurationMs: () -> Long = { 0L },
     seekToMs: (Long) -> Unit = {},
-    onPlaybackControlPlayPause: () -> Unit = {}
+    onPlaybackControlPlayPause: () -> Unit = {},
+    onPlaybackControlLivePlay: (() -> Unit)? = null,
+    playbackControlSelectionInSync: Boolean = true
 ) {
     val adaptiveTokens = rememberSmpAdaptiveTokens()
     val context = LocalContext.current
@@ -447,7 +449,9 @@ fun TunerScreen(
                         onLiveGainDelta(deltaDb)
                     }
                 },
-                liveConsoleMode = adaptiveTokens.tabletMode
+                liveConsoleMode = adaptiveTokens.tabletMode,
+                liveSelectionInSync = playbackControlSelectionInSync,
+                onLivePlay = onPlaybackControlLivePlay
             )
 
             Spacer(Modifier.height(8.dp))
