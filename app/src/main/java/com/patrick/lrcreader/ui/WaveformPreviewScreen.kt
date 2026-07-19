@@ -11,9 +11,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.border
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -32,17 +30,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -77,9 +70,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastAny
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditSoundPrefs
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.TrackVolumePrefs
@@ -132,8 +122,7 @@ fun WaveformPreviewScreen(
     onBack: () -> Unit,
     initialSongId: String? = null,
     isOfficialPlaybackPlaying: Boolean = false,
-    onStopCurrentPlayback: () -> Unit = {},
-    showOfficialPlaybackControl: Boolean = false,
+    tabletLivePlaybackControl: Boolean = false,
     currentTrackGainDb: Int = 0,
     liveGainControlsEnabled: Boolean = false,
     onLiveGainDelta: (Int) -> Unit = {},
@@ -147,9 +136,6 @@ fun WaveformPreviewScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val appContext = context.applicationContext
-    val exoPlayer = remember(appContext) {
-        ExoPlayer.Builder(appContext).build().apply { playWhenReady = false }
-    }
     val smpLibraryScanner = remember(appContext) { SmpLibraryScanner(appContext) }
 
     var selectedSongId by remember { mutableStateOf<String?>(null) }
@@ -168,7 +154,6 @@ fun WaveformPreviewScreen(
     var estimatedTrackLufs by remember { mutableStateOf<Float?>(null) }
     var playheadMs by remember { mutableIntStateOf(0) }
     var stepMs by remember { mutableIntStateOf(50) }
-    var isPlayingWave by remember { mutableStateOf(false) }
     var isDetectingSilence by remember { mutableStateOf(false) }
     var isMatchingVolume by remember { mutableStateOf(false) }
     var showWaveformSaveProDialog by remember { mutableStateOf(false) }
@@ -230,9 +215,6 @@ fun WaveformPreviewScreen(
         peaks = emptyList()
         hasError = false
         isLoading = true
-        exoPlayer.pause()
-        exoPlayer.playWhenReady = false
-        isPlayingWave = false
         durationMs = 0
         inMs = 0
         outMs = 0
@@ -240,11 +222,6 @@ fun WaveformPreviewScreen(
         pendingVolumeSource = null
         estimatedTrackLufs = null
         playheadMs = 0
-        runCatching {
-            exoPlayer.setMediaItem(MediaItem.fromUri(uri))
-            exoPlayer.prepare()
-            exoPlayer.seekTo(0L)
-        }
 
         analysisJob?.cancel()
         analysisJob = scope.launch {
@@ -324,33 +301,6 @@ fun WaveformPreviewScreen(
         }
     }
 
-    DisposableEffect(exoPlayer) {
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED) {
-                    isPlayingWave = false
-                    playheadMs = durationMs.coerceAtLeast(0)
-                    WaveformSessionPrefs.savePlayhead(context, playheadMs)
-                }
-            }
-        }
-        exoPlayer.addListener(listener)
-        onDispose {
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
-        }
-    }
-
-    LaunchedEffect(isPlayingWave, durationMs) {
-        if (!isPlayingWave) return@LaunchedEffect
-        while (isPlayingWave) {
-            val rawPos = exoPlayer.currentPosition.coerceAtLeast(0L)
-            val safePos = if (durationMs > 0) rawPos.coerceAtMost(durationMs.toLong()) else rawPos
-            playheadMs = safePos.toInt()
-            delay(50)
-        }
-    }
-
     suspend fun resolveSongTarget(songId: String): Pair<Uri, String>? = withContext(Dispatchers.IO) {
         val cleanSongId = songId.trim().ifBlank { return@withContext null }
         val song = smpLibraryScanner.findSongById(cleanSongId) ?: return@withContext null
@@ -401,14 +351,18 @@ fun WaveformPreviewScreen(
         loadAudioUri(songId = songId, uri = resolvedUri, displayNameHint = resolvedTitle)
     }
 
-    LaunchedEffect(showOfficialPlaybackControl, isOfficialPlaybackPlaying) {
-        if (!showOfficialPlaybackControl) return@LaunchedEffect
+    LaunchedEffect(isOfficialPlaybackPlaying, officialPlaybackSelectionInSync, durationMs) {
         while (true) {
             val position = getOfficialPositionMs()
             val duration = getOfficialDurationMs()
             if (!officialPlaybackDragging) {
                 officialPlaybackPositionMs = position
                     .coerceIn(0L, Int.MAX_VALUE.toLong())
+                    .toInt()
+            }
+            if (officialPlaybackSelectionInSync && durationMs > 0) {
+                playheadMs = position
+                    .coerceIn(0L, durationMs.toLong())
                     .toInt()
             }
             officialPlaybackDurationMs = if (duration > 0L) {
@@ -425,30 +379,9 @@ fun WaveformPreviewScreen(
         val newPos = (playheadMs + deltaMs).coerceIn(0, durationMs)
         playheadMs = newPos
         WaveformSessionPrefs.savePlayhead(context, newPos)
-        exoPlayer.seekTo(newPos.toLong())
-        if (isPlayingWave) exoPlayer.play()
-    }
-
-    fun pauseWaveformPreview() {
-        exoPlayer.pause()
-        exoPlayer.playWhenReady = false
-        val current = exoPlayer.currentPosition.coerceAtLeast(0L).toInt()
-        playheadMs = if (durationMs > 0) current.coerceIn(0, durationMs) else current
-        WaveformSessionPrefs.savePlayhead(context, playheadMs)
-        isPlayingWave = false
-    }
-
-    fun startWaveformPreview(targetMs: Int) {
-        if (isOfficialPlaybackPlaying) {
-            onStopCurrentPlayback()
+        if (officialPlaybackSelectionInSync) {
+            seekOfficialToMs(newPos.toLong())
         }
-        val safeTarget = targetMs.coerceIn(0, durationMs.coerceAtLeast(0))
-        playheadMs = safeTarget
-        WaveformSessionPrefs.savePlayhead(context, safeTarget)
-        exoPlayer.seekTo(safeTarget.toLong())
-        exoPlayer.playWhenReady = true
-        exoPlayer.play()
-        isPlayingWave = true
     }
 
     suspend fun saveWaveformTrimEdit(
@@ -534,7 +467,7 @@ fun WaveformPreviewScreen(
             )
 
             Box(
-                modifier = (if (showOfficialPlaybackControl) {
+                modifier = (if (tabletLivePlaybackControl) {
                     Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -595,13 +528,12 @@ fun WaveformPreviewScreen(
                                 val safeTap = tapTimeMs.coerceIn(0, durationMs.coerceAtLeast(0))
                                 logWaveformGesture(
                                     "SEEK_TAP",
-                                    "tapTimeMs=$tapTimeMs safeTap=$safeTap isPlayingWave=$isPlayingWave"
+                                    "tapTimeMs=$tapTimeMs safeTap=$safeTap selectionInSync=$officialPlaybackSelectionInSync"
                                 )
                                 playheadMs = safeTap
                                 WaveformSessionPrefs.savePlayhead(context, safeTap)
-                                exoPlayer.seekTo(safeTap.toLong())
-                                if (isPlayingWave) {
-                                    exoPlayer.play()
+                                if (officialPlaybackSelectionInSync) {
+                                    seekOfficialToMs(safeTap.toLong())
                                 }
                             },
                             onDragInMs = { draggedInMs ->
@@ -626,12 +558,10 @@ fun WaveformPreviewScreen(
                                 if (selectedUri == null || durationMs <= 0) return@WaveformCanvas
                                 logWaveformGesture(
                                     "TOGGLE_PLAY",
-                                    "isPlayingWaveBefore=$isPlayingWave playheadMs=$playheadMs durationMs=$durationMs"
+                                    "isOfficialPlaying=$isOfficialPlaybackPlaying selectionInSync=$officialPlaybackSelectionInSync playheadMs=$playheadMs durationMs=$durationMs"
                                 )
-                                if (isPlayingWave) {
-                                    pauseWaveformPreview()
-                                } else {
-                                    startWaveformPreview(playheadMs)
+                                if (officialPlaybackSelectionInSync) {
+                                    onOfficialPlaybackPlayPause()
                                 }
                             },
                             onSetInFromPlayhead = {
@@ -890,187 +820,49 @@ fun WaveformPreviewScreen(
                     )
                 }
 
-                if (showOfficialPlaybackControl) {
-                    Text(
-                        text = stringResource(R.string.waveform_preview_controls),
-                        color = Color(0xFFBFC4C8),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                WaveformPreviewControls(
-                    enabled = controlsEnabled,
-                    isPlaying = isPlayingWave,
-                    onReturnToStart = {
-                        if (selectedUri == null || durationMs <= 0) return@WaveformPreviewControls
-                        val target = if (durationMs > 0 && inMs > 0) inMs else 0
-                        val safeTarget = target.coerceIn(0, durationMs.coerceAtLeast(0))
-                        playheadMs = safeTarget
-                        WaveformSessionPrefs.savePlayhead(context, safeTarget)
-                        exoPlayer.seekTo(safeTarget.toLong())
-                        if (isPlayingWave) {
-                            exoPlayer.playWhenReady = true
-                            exoPlayer.play()
-                        } else {
-                            exoPlayer.pause()
-                            exoPlayer.playWhenReady = false
+                PlaybackControl(
+                    positionMs = if (officialPlaybackDragging) {
+                        officialPlaybackDragPositionMs
+                    } else {
+                        officialPlaybackPositionMs
+                    },
+                    durationMs = officialPlaybackDurationMs,
+                    onSeekLivePreview = { newPos ->
+                        if (officialPlaybackDurationMs > 0) {
+                            officialPlaybackDragging = true
+                            officialPlaybackDragPositionMs = newPos
                         }
                     },
-                    onPlayPause = {
-                        if (selectedUri == null || durationMs <= 0) return@WaveformPreviewControls
-                        if (isPlayingWave) {
-                            pauseWaveformPreview()
-                        } else {
-                            startWaveformPreview(playheadMs)
+                    onSeekCommit = { newPos ->
+                        val safe = newPos.coerceIn(
+                            0,
+                            officialPlaybackDurationMs.coerceAtLeast(0)
+                        )
+                        officialPlaybackDragging = false
+                        officialPlaybackPositionMs = safe
+                        seekOfficialToMs(safe.toLong())
+                    },
+                    highlightColor = Color(0xFFFFC247),
+                    isPlaying = isOfficialPlaybackPlaying,
+                    onPlayPause = onOfficialPlaybackPlayPause,
+                    onPrev = {
+                        officialPlaybackPositionMs = 0
+                        officialPlaybackDragPositionMs = 0
+                        seekOfficialToMs(0L)
+                    },
+                    onNext = {},
+                    gainDb = currentTrackGainDb,
+                    onGainDelta = { deltaDb ->
+                        if (liveGainControlsEnabled) {
+                            onLiveGainDelta(deltaDb)
                         }
                     },
-                    onStop = {
-                        pauseWaveformPreview()
-                    }
+                    liveConsoleMode = tabletLivePlaybackControl,
+                    liveSelectionInSync = officialPlaybackSelectionInSync,
+                    onLivePlay = onOfficialPlaybackLivePlay
                 )
 
-                if (showOfficialPlaybackControl) {
-                    Text(
-                        text = stringResource(R.string.waveform_official_playback_controls),
-                        color = Color(0xFFBFC4C8),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-                    PlaybackControl(
-                        positionMs = if (officialPlaybackDragging) {
-                            officialPlaybackDragPositionMs
-                        } else {
-                            officialPlaybackPositionMs
-                        },
-                        durationMs = officialPlaybackDurationMs,
-                        onSeekLivePreview = { newPos ->
-                            if (officialPlaybackDurationMs > 0) {
-                                officialPlaybackDragging = true
-                                officialPlaybackDragPositionMs = newPos
-                            }
-                        },
-                        onSeekCommit = { newPos ->
-                            val safe = newPos.coerceIn(
-                                0,
-                                officialPlaybackDurationMs.coerceAtLeast(0)
-                            )
-                            officialPlaybackDragging = false
-                            officialPlaybackPositionMs = safe
-                            seekOfficialToMs(safe.toLong())
-                        },
-                        highlightColor = Color(0xFFFFC247),
-                        isPlaying = isOfficialPlaybackPlaying,
-                        onPlayPause = onOfficialPlaybackPlayPause,
-                        onPrev = {
-                            officialPlaybackPositionMs = 0
-                            officialPlaybackDragPositionMs = 0
-                            seekOfficialToMs(0L)
-                        },
-                        onNext = {},
-                        gainDb = currentTrackGainDb,
-                        onGainDelta = { deltaDb ->
-                            if (liveGainControlsEnabled) {
-                                onLiveGainDelta(deltaDb)
-                            }
-                        },
-                        liveConsoleMode = true,
-                        liveSelectionInSync = officialPlaybackSelectionInSync,
-                        onLivePlay = {
-                            pauseWaveformPreview()
-                            (onOfficialPlaybackLivePlay ?: onOfficialPlaybackPlayPause).invoke()
-                        }
-                    )
-                }
-
             }
-        }
-    }
-}
-
-@Composable
-private fun WaveformPreviewControls(
-    enabled: Boolean,
-    isPlaying: Boolean,
-    onReturnToStart: () -> Unit,
-    onPlayPause: () -> Unit,
-    onStop: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val controlButtonSize = 48.dp
-    val controlIconSize = 36.dp
-    val primaryButtonWidth = 126.dp
-    val primaryButtonHeight = 50.dp
-    val primaryIconSize = 27.dp
-    val itemSpacing = 8.dp
-    val buttonShape = RoundedCornerShape(7.dp)
-    val consoleGreen = Color(0xFF18B857)
-    val consoleRed = Color(0xFFD93636)
-    val disabledBackground = Color.White.copy(alpha = 0.08f)
-    val controlBorder = Color.White.copy(alpha = 0.22f)
-    val primaryButtonColor = when {
-        !enabled -> disabledBackground
-        else -> consoleGreen
-    }
-    val stopButtonColor = when {
-        !enabled -> disabledBackground
-        isPlaying -> consoleRed
-        else -> Color.White.copy(alpha = 0.10f)
-    }
-    val iconColor = if (enabled) Color.White else Color.White.copy(alpha = 0.42f)
-
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = 0.dp),
-        horizontalArrangement = Arrangement.spacedBy(itemSpacing, Alignment.Start),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .width(primaryButtonWidth)
-                .height(primaryButtonHeight)
-                .background(primaryButtonColor, buttonShape)
-                .border(1.dp, controlBorder, buttonShape)
-                .clickable(enabled = enabled, onClick = onPlayPause),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = stringResource(R.string.player_cd_play_pause),
-                tint = iconColor,
-                modifier = Modifier.size(primaryIconSize)
-            )
-        }
-
-        IconButton(
-            onClick = onReturnToStart,
-            enabled = enabled,
-            modifier = Modifier.size(controlButtonSize)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.SkipPrevious,
-                contentDescription = stringResource(R.string.player_cd_prev),
-                tint = iconColor,
-                modifier = Modifier.size(controlIconSize)
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .size(controlButtonSize)
-                .background(stopButtonColor, buttonShape)
-                .border(1.dp, controlBorder, buttonShape)
-                .clickable(enabled = enabled, onClick = onStop),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Filled.Stop,
-                contentDescription = stringResource(R.string.waveform_stop),
-                tint = iconColor,
-                modifier = Modifier.size(controlIconSize)
-            )
         }
     }
 }

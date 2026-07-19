@@ -624,8 +624,6 @@
     <string name="timeline_measures_segment_out_action">OUT</string>
     <string name="timeline_measures_segment_pending">--:--.--</string>
     <string name="waveform_title">Forma de onda</string>
-    <string name="waveform_preview_controls">Vista previa de forma de onda</string>
-    <string name="waveform_official_playback_controls">Reproducción principal</string>
     <string name="waveform_no_song_selected">No hay ninguna canción SMP seleccionada</string>
     <string name="waveform_analyzing">Analizando…</string>
     <string name="waveform_generate_error">No se pudo generar la forma de onda</string>

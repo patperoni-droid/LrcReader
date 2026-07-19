@@ -4902,12 +4902,7 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         initialSongId = waveformSongId,
                                         isOfficialPlaybackPlaying = isPlaying,
-                                        onStopCurrentPlayback = {
-                                            isPlaying = false
-                                            exoPlayer.pause()
-                                            exoPlayer.playWhenReady = false
-                                        },
-                                        showOfficialPlaybackControl = true,
+                                        tabletLivePlaybackControl = true,
                                         currentTrackGainDb = currentTrackGainDb,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,

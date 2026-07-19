@@ -706,10 +706,6 @@
     <string name="waveform_in_cursor">IN = CURSOR</string>
     <string name="waveform_out_cursor">OUT = CURSOR</string>
     <!-- Waveform screen labels must remain in English for all locales -->
-    <string name="waveform_play" translatable="false">Play</string>
-    <string name="waveform_stop" translatable="false">Stop</string>
-    <string name="waveform_preview_controls">Aperçu Waveform</string>
-    <string name="waveform_official_playback_controls">Playback principal</string>
     <string name="waveform_save" translatable="false">Save</string>
     <string name="waveform_save_pro_dialog_title">Sauvegarde Pro</string>
     <string name="waveform_save_pro_dialog_message">Découpez vos morceaux et enregistrez vos réglages avec la version Pro.</string>

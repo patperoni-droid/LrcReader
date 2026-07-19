@@ -260,7 +260,14 @@ fun MoreScreen(
             onBack = { navigate("root") },
             initialSongId = currentWaveformSongId,
             isOfficialPlaybackPlaying = isCurrentTrackPlaying(),
-            onStopCurrentPlayback = onStopCurrentPlayback
+            currentTrackGainDb = currentTrackGainDb,
+            liveGainControlsEnabled = liveGainControlsEnabled,
+            onLiveGainDelta = onLiveGainDelta,
+            getOfficialPositionMs = getCurrentPositionMs,
+            getOfficialDurationMs = { getCurrentDurationMs() ?: 0L },
+            seekOfficialToMs = seekCurrentTrackToMs,
+            onOfficialPlaybackPlayPause = onPlaybackControlPlayPause,
+            officialPlaybackSelectionInSync = playbackControlSelectionInSync
         )
 
         MoreSection.Arrangement -> ArrangementEditorSection(
