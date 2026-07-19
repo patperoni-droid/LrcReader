@@ -61,6 +61,7 @@ fun FillerSoundScreen(
     getMainDurationMs: () -> Long = { 0L },
     seekMainToMs: (Long) -> Unit = {},
     onMainPlaybackPlayPause: () -> Unit = {},
+    onMainPlaybackLivePlay: (() -> Unit)? = null,
     mainPlaybackSelectionInSync: Boolean = true
 ) {
     val adaptiveTokens = rememberSmpAdaptiveTokens()
@@ -588,7 +589,8 @@ fun FillerSoundScreen(
                     }
                 },
                 liveConsoleMode = adaptiveTokens.tabletMode,
-                liveSelectionInSync = mainPlaybackSelectionInSync
+                liveSelectionInSync = mainPlaybackSelectionInSync,
+                onLivePlay = onMainPlaybackLivePlay
             )
         }
     }
