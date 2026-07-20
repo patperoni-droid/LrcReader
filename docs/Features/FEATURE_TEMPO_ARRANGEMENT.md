@@ -89,8 +89,15 @@ Fondation tablette réalisée :
 Reste à réaliser :
 
 - remplacer le repli temporaire de la playlist par le récepteur de segments ;
-- fusionner les deux colonnes `Segments` et `Structure` en une liste unique ordonnée ;
 - ajouter les gestes et actions d'occurrence décrits ci-dessous.
+
+Implémenté dans l'éditeur canonique tablette :
+
+- les colonnes `Segments` et `Structure` sont fusionnées visuellement en une seule liste ordonnée ;
+- le bouton `Ajouter` insère directement le nouveau segment en tête de cette liste et dans la Structure de lecture ;
+- supprimer une ligne retire cette occurrence et supprime aussi son segment interne lorsqu'aucune autre occurrence ne le référence ;
+- le téléphone conserve volontairement l'ancien affichage à deux colonnes et son flux d'ajout existant ;
+- le stockage V1 reste temporairement inchangé pour préserver la rétrocompatibilité ; l'identité indépendante des occurrences, le mute et les répétitions seront introduits ensemble dans l'étape dédiée au modèle d'occurrence.
 
 ### Périmètre appareil — tablette uniquement
 

@@ -3897,10 +3897,23 @@ private fun TimelineMeasuresPlaceholder(
                                 nextIndex += 1L
                             }
                         }
-                        val nextSegments = arrangementSegments + createdSegments
+                        val nextSegments = if (constrainToAvailableHeight) {
+                            createdSegments + arrangementSegments
+                        } else {
+                            arrangementSegments + createdSegments
+                        }
+                        val nextStructureSegmentIds = if (constrainToAvailableHeight) {
+                            createdSegments.map { segment -> segment.id } + structureSegmentIds
+                        } else {
+                            structureSegmentIds
+                        }
                         arrangementSegments = nextSegments
+                        structureSegmentIds = nextStructureSegmentIds
                         nextSegmentIndex = nextIndex
-                        persistArrangementState(nextSegments = nextSegments)
+                        persistArrangementState(
+                            nextSegments = nextSegments,
+                            nextStructureSegmentIds = nextStructureSegmentIds
+                        )
                     }
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
@@ -4065,55 +4078,61 @@ private fun TimelineMeasuresPlaceholder(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            ArrangementListCard(
-                modifier = Modifier.weight(1f),
-                title = stringResource(R.string.arrangement_segments_title),
-                emptyLabel = stringResource(R.string.arrangement_segments_empty),
-                items = arrangementSegments.map { segment ->
-                    ArrangementListItem(
-                        id = segment.id,
-                        title = segment.name,
-                        isActive = when {
-                            structurePlaybackActive -> activeStructureSegmentId == segment.id
-                            else -> selectedSegmentLoopId == segment.id
+            if (!constrainToAvailableHeight) {
+                ArrangementListCard(
+                    modifier = Modifier.weight(1f),
+                    title = stringResource(R.string.arrangement_segments_title),
+                    emptyLabel = stringResource(R.string.arrangement_segments_empty),
+                    items = arrangementSegments.map { segment ->
+                        ArrangementListItem(
+                            id = segment.id,
+                            title = segment.name,
+                            isActive = when {
+                                structurePlaybackActive -> activeStructureSegmentId == segment.id
+                                else -> selectedSegmentLoopId == segment.id
+                            }
+                        )
+                    },
+                    onItemClick = { segmentId ->
+                        val segment = arrangementSegments.firstOrNull { it.id == segmentId }
+                            ?: return@ArrangementListCard
+                        val loopStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
+                        val structureIndex = structurePlaybackSegments.indexOfFirst { it.id == segment.id }
+                            .takeIf { it >= 0 }
+                        selectArrangementSegmentForEdit(
+                            segment = segment,
+                            structureIndex = structureIndex,
+                            source = "SEGMENTS_COLUMN"
+                        )
+                        stopStructurePreviewPlayback(reason = "segment_loop_selected")
+                        stopArrangementLoopPreviewPlayback()
+                        preparedLoopStartMs = loopStartMs
+                        loopEnabled = true
+                        revealSyncPointRequest += 1
+                    },
+	                    onItemAdd = { segmentId ->
+	                        if (arrangementSegments.any { it.id == segmentId }) {
+                                pushArrangementUndoSnapshot()
+	                            val nextStructureSegmentIds = structureSegmentIds + segmentId
+	                            structureSegmentIds = nextStructureSegmentIds
+                            persistArrangementState(nextStructureSegmentIds = nextStructureSegmentIds)
                         }
-                    )
-                },
-                onItemClick = { segmentId ->
-                    val segment = arrangementSegments.firstOrNull { it.id == segmentId }
-                        ?: return@ArrangementListCard
-                    val loopStartMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
-                    val structureIndex = structurePlaybackSegments.indexOfFirst { it.id == segment.id }
-                        .takeIf { it >= 0 }
-                    selectArrangementSegmentForEdit(
-                        segment = segment,
-                        structureIndex = structureIndex,
-                        source = "SEGMENTS_COLUMN"
-                    )
-                    stopStructurePreviewPlayback(reason = "segment_loop_selected")
-                    stopArrangementLoopPreviewPlayback()
-                    preparedLoopStartMs = loopStartMs
-                    loopEnabled = true
-                    revealSyncPointRequest += 1
-                },
-	                onItemAdd = { segmentId ->
-	                    if (arrangementSegments.any { it.id == segmentId }) {
-                            pushArrangementUndoSnapshot()
-	                        val nextStructureSegmentIds = structureSegmentIds + segmentId
-	                        structureSegmentIds = nextStructureSegmentIds
-                        persistArrangementState(nextStructureSegmentIds = nextStructureSegmentIds)
+                    },
+                    onItemDelete = { segmentId ->
+                        removeArrangementSegment(segmentId)
+                    },
+                    onItemLongClick = { segmentId ->
+                        segmentOptionsTargetId = segmentId
                     }
-                },
-                onItemDelete = { segmentId ->
-                    removeArrangementSegment(segmentId)
-                },
-                onItemLongClick = { segmentId ->
-                    segmentOptionsTargetId = segmentId
-                }
-            )
+                )
+            }
 
             ArrangementListCard(
-                modifier = Modifier.weight(1f),
+                modifier = if (constrainToAvailableHeight) {
+                    Modifier.fillMaxWidth()
+                } else {
+                    Modifier.weight(1f)
+                },
                 title = stringResource(R.string.arrangement_structure_title),
                 emptyLabel = stringResource(R.string.arrangement_structure_empty),
                 items = structureSegmentIds.mapIndexedNotNull { index, segmentId ->
@@ -4266,8 +4285,29 @@ private fun TimelineMeasuresPlaceholder(
                     val removeIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
 	                    if (removeIndex in structureSegmentIds.indices) {
                             pushArrangementUndoSnapshot()
+	                        val removedSegmentId = structureSegmentIds[removeIndex]
 	                        val nextStructureSegmentIds = structureSegmentIds.toMutableList().apply {
                             removeAt(removeIndex)
+                        }
+                        val nextSegments = if (
+                            constrainToAvailableHeight &&
+                            removedSegmentId !in nextStructureSegmentIds
+                        ) {
+                            arrangementSegments.filterNot { segment -> segment.id == removedSegmentId }
+                        } else {
+                            arrangementSegments
+                        }
+                        if (
+                            constrainToAvailableHeight &&
+                            removedSegmentId !in nextStructureSegmentIds &&
+                            selectedSegmentLoopId == removedSegmentId
+                        ) {
+                            selectedSegmentLoopId = null
+                            selectedSegmentLoopStartMs = null
+                            selectedSegmentLoopEndMs = null
+                            preparedLoopStartMs = null
+                            loopEnabled = false
+                            stopArrangementLoopPreviewPlayback()
                         }
                         if (structurePlaybackActive) {
                             when {
@@ -4279,8 +4319,20 @@ private fun TimelineMeasuresPlaceholder(
                                 }
                             }
                         }
+                        selectedStructureEditIndex = selectedStructureEditIndex?.let { selectedIndex ->
+                            when {
+                                selectedIndex == removeIndex -> null
+                                selectedIndex > removeIndex -> selectedIndex - 1
+                                else -> selectedIndex
+                            }
+                        }
+                        arrangementSegments = nextSegments
                         structureSegmentIds = nextStructureSegmentIds
-                        persistArrangementState(nextStructureSegmentIds = nextStructureSegmentIds)
+                        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(nextSegments)
+                        persistArrangementState(
+                            nextSegments = nextSegments,
+                            nextStructureSegmentIds = nextStructureSegmentIds
+                        )
                     }
                 },
                 onItemLongClick = null
