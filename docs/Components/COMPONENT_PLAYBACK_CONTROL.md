@@ -405,19 +405,23 @@ Cette intégration est implémentée et validée sur tablette.
 
 ---
 
-## Intégration Arrangement — conception validée, implémentation à venir
+## Intégration Arrangement — conception cible, mise en œuvre progressive
 
 En mode Arrangement tablette :
 
 - le `Playback Control` officiel reste fixé en bas de l'écran et toujours visible ;
 - le contenu d'édition ne doit jamais le repousser hors de l'écran ;
-- la playlist de gauche est remplacée uniquement dans ce mode par la liste unique ordonnée des occurrences de segments ;
+- la Structure est présentée comme une piste horizontale de blocs juste au-dessus du composant ;
+- la playlist est repliée par défaut mais peut être ouverte ou fermée dans un panneau latéral gauche interne à Arrangement ;
+- ouvrir ou fermer la playlist redimensionne uniquement la fenêtre visible de la piste et ne change jamais la lecture, le titre actif, le zoom ou l'ordre des blocs ;
+- si A est actif et B est seulement sélectionné dans cette playlist, le composant devient jaune et l'Arrangement A reste affiché ;
+- B et son Arrangement ne deviennent actifs qu'après pression sur le Play jaune, via le pipeline Playback officiel ;
 - le composant continue de contrôler le Playback principal ;
 - la preview de Structure reste un moteur secondaire isolé et ne doit pas être présentée comme une variante du `Playback Control` officiel.
 
 Cette intégration ne concerne pas le téléphone. Le Playback Control et l'écran Arrangement téléphone conservent leur disposition et leur comportement actuels.
 
-La définition complète de l'interface à liste unique, des répétitions, du mute et de la duplication se trouve dans `docs/Features/FEATURE_TEMPO_ARRANGEMENT.md`.
+La définition complète de la piste horizontale, des couleurs, de la playlist escamotable, des répétitions, du mute et de la duplication se trouve dans `docs/Features/FEATURE_TEMPO_ARRANGEMENT.md`.
 
 ---
 

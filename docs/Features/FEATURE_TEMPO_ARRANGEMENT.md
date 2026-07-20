@@ -69,7 +69,7 @@ Segment A → Segment B → Segment C
 
 ---
 
-## 🧭 UX CIBLE — LISTE UNIQUE D'ARRANGEMENT
+## 🧭 UX CIBLE — PISTE HORIZONTALE D'ARRANGEMENT
 
 **Statut : conception tablette validée, mise en œuvre progressive en cours.**
 
@@ -88,8 +88,10 @@ Fondation tablette réalisée :
 
 Reste à réaliser :
 
-- remplacer le repli temporaire de la playlist par le récepteur de segments ;
-- ajouter les gestes et actions d'occurrence décrits ci-dessous.
+- transformer la liste unique actuelle en piste horizontale de blocs, située juste au-dessus du `Playback Control` ;
+- permettre d'ouvrir ou de fermer la playlist dans un panneau latéral gauche sans quitter Arrangement ;
+- ajouter les gestes et actions d'occurrence décrits ci-dessous ;
+- synchroniser une tête de lecture visuelle avec la lecture réelle de la Structure préparée.
 
 Implémenté dans l'éditeur canonique tablette :
 
@@ -99,13 +101,15 @@ Implémenté dans l'éditeur canonique tablette :
 - le téléphone conserve volontairement l'ancien affichage à deux colonnes et son flux d'ajout existant ;
 - le stockage V1 reste temporairement inchangé pour préserver la rétrocompatibilité ; l'identité indépendante des occurrences, le mute et les répétitions seront introduits ensemble dans l'étape dédiée au modèle d'occurrence.
 
+La liste verticale allongée actuellement visible en bas est une étape intermédiaire validée. Sa position au-dessus du `Playback Control` est conservée dans la cible, mais son contenu évolue vers une piste horizontale de conteneurs audio.
+
 ### Périmètre appareil — tablette uniquement
 
 Cette évolution d'interface concerne exclusivement la tablette.
 
 - le téléphone conserve l'écran Arrangement, sa disposition, sa navigation et ses comportements actuels ;
-- la liste unique ne doit jamais être activée sur téléphone ;
-- le remplacement de la playlist par le récepteur de segments est strictement conditionné au mode tablette ;
+- la piste horizontale ne doit jamais être activée sur téléphone ;
+- la playlist latérale escamotable dans Arrangement est strictement conditionnée au mode tablette ;
 - aucun espace, bouton ou geste supplémentaire ne doit être ajouté à l'interface téléphone ;
 - toute évolution du stockage partagé doit rester transparente et rétrocompatible pour le téléphone ;
 - la validation finale doit démontrer explicitement l'absence de régression téléphone.
@@ -115,16 +119,65 @@ La future interface ne doit plus séparer :
 - une colonne contenant les segments disponibles ;
 - une seconde colonne contenant leur disposition dans la Structure.
 
-En mode Arrangement, une seule liste ordonnée devient à la fois le récepteur de segments et la Structure finale.
+En mode Arrangement, une seule piste horizontale ordonnée devient à la fois le récepteur de segments et la Structure finale.
 
 ### Disposition tablette
 
-- uniquement pendant l'édition d'un Arrangement, la playlist habituelle située à gauche est remplacée par le récepteur de segments ;
+- Arrangement reste un outil tablette pleine largeur afin de préserver une waveform et une zone d'édition confortables ;
+- la piste Arrangement est placée horizontalement en bas de la zone d'édition, juste au-dessus du `Playback Control` ;
+- la playlist est repliée par défaut mais peut être ouverte ou fermée dans un panneau latéral gauche depuis l'écran Arrangement ;
+- ouvrir la playlist réduit uniquement la largeur visible de la zone Arrangement ;
+- fermer la playlist restitue toute la largeur à l'éditeur ;
 - en dehors du mode Arrangement, la playlist conserve exactement son fonctionnement actuel ;
-- le récepteur reprend une présentation proche de la playlist pour conserver les repères visuels et les gestes connus ;
-- la partie droite libérée devient la zone principale de réglage du segment sélectionné ;
 - le `Playback Control` officiel reste visible et fixé en bas de l'écran ;
 - aucun contenu d'édition ne doit repousser le `Playback Control` hors de l'écran.
+
+Règles de redimensionnement :
+
+- l'ouverture ou la fermeture de la playlist ne modifie jamais l'ordre, les durées, les couleurs, le zoom ou la sélection des blocs ;
+- l'échelle temporelle de la piste est indépendante de la largeur disponible à l'écran ;
+- lorsque la playlist est ouverte, la piste présente simplement une fenêtre visible plus étroite et reste défilable horizontalement ;
+- l'état de défilement et le niveau de zoom doivent être conservés pendant l'ouverture ou la fermeture du panneau ;
+- aucun changement de panneau ne doit arrêter, relancer ou remplacer une lecture.
+
+### Piste horizontale et conteneurs
+
+La Structure est représentée comme une succession de conteneurs audio, dans l'esprit d'une piste de séquenceur :
+
+```text
+[ Intro ][ Couplet ][ Refrain ][ Pont ][ Refrain final ]
+                              ▲
+                       tête de lecture
+```
+
+Chaque bloc :
+
+- représente une occurrence indépendante de segment ;
+- possède un nom et une couleur modifiables ;
+- affiche au minimum son nom, sa durée, son état muet et son nombre de répétitions ;
+- peut être déplacé horizontalement pour modifier l'ordre final ;
+- conserve une largeur liée à sa durée et au niveau de zoom de la piste ;
+- dispose d'une largeur tactile minimale afin qu'un segment très court reste sélectionnable ;
+- ne contient ni ne duplique le fichier audio source.
+
+La couleur est une information visuelle portable liée à l'occurrence. Elle n'a aucun effet audio et doit survivre à la sauvegarde, à l'export SMP et au transfert entre appareils.
+
+### Deux espaces temporels distincts
+
+L'interface présente deux temps qui ne doivent jamais être confondus :
+
+- la waveform supérieure utilise le temps absolu du morceau source et sert à régler `startMs` / `endMs` ;
+- la piste Arrangement utilise le temps cumulé du montage final préparé.
+
+Exemple : un segment provenant de `02:00 → 02:30` peut commencer à `00:45` dans l'Arrangement si les blocs précédents totalisent 45 secondes.
+
+La tête de lecture de la piste :
+
+- se dessine au-dessus des blocs ;
+- représente la position réelle dans l'Arrangement assemblé ;
+- est pilotée par la lecture réelle de la preview Structure, jamais par une animation autonome ;
+- permet d'identifier l'occurrence et la répétition actuellement jouées ;
+- ne transforme jamais un seek du morceau source en mécanisme d'enchaînement.
 
 ### Création directe dans la Structure
 
@@ -132,14 +185,14 @@ Flux cible :
 
 1. l'utilisateur place le point IN et le point OUT sur le titre ;
 2. il appuie sur `Ajouter` ;
-3. le nouveau segment est inséré en haut du récepteur ;
+3. le nouveau segment est inséré au début de la piste horizontale ;
 4. il déplace ensuite ce segment à la position désirée dans la Structure.
 
 Il n'existe donc plus d'étape intermédiaire consistant à créer un segment dans une bibliothèque locale puis à l'ajouter séparément à la Structure.
 
 ### Édition d'un segment existant
 
-- toucher une ligne sélectionne cette occurrence ;
+- toucher un bloc sélectionne cette occurrence ;
 - ses points IN et OUT sont rechargés dans l'éditeur de droite ;
 - l'utilisateur peut corriger IN ou OUT sans recréer le segment ;
 - les modifications restent non destructives pour l'audio source ;
@@ -147,16 +200,16 @@ Il n'existe donc plus d'étape intermédiaire consistant à créer un segment da
 
 ### Actions sur une occurrence
 
-Chaque ligne de la liste unique doit pouvoir être :
+Chaque bloc de la piste unique doit pouvoir être :
 
-- déplacée par glisser-déposer ;
-- copiée puis collée ;
-- dupliquée ;
-- supprimée explicitement ;
-- mise en mute sans être supprimée ;
-- configurée pour être jouée plusieurs fois consécutivement.
+- déplacé par glisser-déposer ;
+- copié puis collé ;
+- dupliqué ;
+- supprimé explicitement ;
+- mis en mute sans être supprimé ;
+- configuré pour être joué plusieurs fois consécutivement.
 
-La ligne doit pouvoir afficher au minimum :
+Le bloc doit pouvoir afficher au minimum :
 
 - son nom ;
 - ses points IN et OUT ou sa durée ;
@@ -196,6 +249,7 @@ ArrangementEntry
 - endMs
 - repeatCount
 - muted
+- color
 ```
 
 Règles :
@@ -205,6 +259,7 @@ Règles :
 - une duplication crée un nouvel `entryId` ;
 - `repeatCount` est toujours supérieur ou égal à 1 ;
 - une occurrence muette est conservée dans le projet mais exclue de la lecture et de l'export ;
+- la couleur reste une métadonnée visuelle portable sans effet sur l'audio ;
 - copier/coller et duplication ne recopient jamais le fichier audio source.
 
 ### Préparation audio
@@ -216,7 +271,37 @@ Avant toute lecture de Structure :
 3. préparer la liste complète de segments clipés Media3 ;
 4. seulement ensuite démarrer la preview Arrangement.
 
-Cette UX à liste unique ne change pas la règle d'architecture audio : aucun réordonnancement, mute, collage ou changement de répétition ne doit reconstruire la Structure pendant sa lecture.
+Cette UX à piste horizontale ne change pas la règle d'architecture audio : aucun réordonnancement, mute, collage ou changement de répétition ne doit reconstruire la Structure pendant sa lecture.
+
+### Playlist escamotable et titre actif
+
+L'ouverture de la playlist dans Arrangement réutilise le comportement officiel du `Playback Control` :
+
+```text
+A est actif -> Arrangement A reste affiché
+B est sélectionné dans la playlist -> Play devient jaune, Arrangement A reste affiché
+Play jaune est pressé -> B devient actif, Arrangement B est chargé
+```
+
+Règles :
+
+- ouvrir ou fermer la playlist ne change jamais le titre actif ;
+- sélectionner un autre titre ne remplace pas l'Arrangement affiché tant que ce titre n'est pas lancé ;
+- le passage de A vers B utilise uniquement le pipeline Playback officiel ;
+- l'éditeur Arrangement reste ouvert pendant le changement de titre actif ;
+- la preview Structure secondaire est arrêtée proprement si le titre actif doit être remplacé ;
+- ce comportement ne doit ajouter aucun silence ni délai entre les titres.
+
+### Ordre d'implémentation recommandé
+
+1. introduire le modèle d'occurrence indépendant et rétrocompatible, incluant la couleur ;
+2. remplacer la liste verticale intermédiaire par une piste horizontale statique et défilable ;
+3. permettre de sélectionner un bloc et de recharger ses points IN / OUT dans la waveform source ;
+4. ajouter progressivement renommage, couleur, déplacement, duplication, mute et répétition ;
+5. relier la tête de lecture visuelle à la preview Structure réelle ;
+6. ajouter ensuite la playlist latérale escamotable et valider le redimensionnement sans changement d'état.
+
+La playlist escamotable est volontairement placée en dernier : la piste horizontale doit d'abord rester cohérente seule, puis démontrer qu'elle conserve son échelle, son zoom et son défilement lorsque la largeur disponible change.
 
 ---
 
@@ -273,14 +358,14 @@ Règles :
 
 Bouton Ajouter :
 
-- mode + → 1 segment (IN → OUT), inséré en haut de la liste unique
-- mode - → 2 segments (extérieur), insérés en haut de la liste unique
+- mode + → 1 segment (IN → OUT), inséré au début de la piste horizontale
+- mode - → 2 segments (extérieur), insérés au début de la piste horizontale
 
 ---
 
 ### Suppression rapide
 
-- bouton suppression directement dans la liste unique
+- bouton suppression directement sur le bloc concerné
 - suppression explicite de l'occurrence concernée
 - aucune seconde Structure à nettoyer ou synchroniser
 
@@ -302,9 +387,10 @@ Bouton Ajouter :
 
 ### Tête de lecture structure
 
-- une tête de lecture est affichée
-- suit la lecture réelle
-- identifie le segment courant
+- une tête de lecture est affichée au-dessus de la piste horizontale
+- elle suit la position réelle dans le montage préparé
+- elle identifie l'occurrence et la répétition courantes
+- son déplacement visuel ne constitue jamais une seconde horloge audio
 
 ---
 

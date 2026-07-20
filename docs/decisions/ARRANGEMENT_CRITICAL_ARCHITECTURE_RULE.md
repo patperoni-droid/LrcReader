@@ -97,8 +97,12 @@ Structure :
 
 Évolution UX validée :
 - cette évolution d'interface est réservée à la tablette et ne modifie pas l'interface Arrangement du téléphone
-- l'interface tablette cible présente directement cette Structure sous la forme d'une seule liste ordonnée
-- chaque ligne est une occurrence indépendante avec une identité stable, ses propres `startMs` / `endMs`, un `repeatCount` et un état `muted`
+- l'interface tablette cible présente directement cette Structure sous la forme d'une piste horizontale unique de conteneurs audio ordonnés
+- chaque bloc est une occurrence indépendante avec une identité stable, un nom, une couleur, ses propres `startMs` / `endMs`, un `repeatCount` et un état `muted`
+- la waveform supérieure reste exprimée dans le temps du morceau source, tandis que la piste horizontale est exprimée dans le temps cumulé de l'Arrangement préparé
+- la tête de lecture dessinée au-dessus des blocs suit la position réelle de la preview Structure et ne constitue jamais une horloge autonome
+- la playlist peut être ouverte ou fermée dans un panneau latéral gauche interne à l'écran Arrangement ; ce redimensionnement ne modifie ni la Structure, ni le zoom, ni le titre actif
+- sélectionner un titre B dans cette playlist conserve l'Arrangement A tant que le Play jaune n'a pas lancé B via le pipeline Playback officiel
 - `repeatCount` est développé en segments de lecture avant le démarrage
 - les occurrences muettes sont exclues de la liste Media3 préparée sans être supprimées du projet
 - cette évolution supprime les deux colonnes visibles, mais ne change pas l'obligation de préparer toute la playlist Media3 avant lecture

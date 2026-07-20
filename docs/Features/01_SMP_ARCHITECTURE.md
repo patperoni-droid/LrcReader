@@ -246,6 +246,10 @@ Tablet split navigation rule:
 - every compatible right-pane destination must avoid trapping the user and must provide a simple visible path back to `Playlist | Lyrics`
 - some tools may leave the Split Layout and use a Fullscreen mode when they need the full tablet width
 - Arrangement, Timeline, and future wide editing tools may use Fullscreen instead of the Split Layout
+- the tablet Arrangement fullscreen tool may expose the Playlist as an internal collapsible left panel without leaving Arrangement
+- opening or closing this panel changes only the visible Arrangement viewport; it must not change playback, track identity, segment order, zoom, or persisted Arrangement data
+- selecting track B in this panel while track A is active keeps Arrangement A displayed and makes the official Play control yellow
+- Arrangement B becomes authoritative only after the yellow Play action launches B through the standard Playback pipeline
 - fullscreen tools must return explicitly to the live cockpit without changing playback state
 - phone UX remains the default behavior and must not inherit tablet split assumptions
 - on a fresh tablet install, tablet split mode is enabled automatically after tablet detection
