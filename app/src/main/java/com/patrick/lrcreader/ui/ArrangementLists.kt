@@ -92,15 +92,17 @@ fun ArrangementListCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(if (horizontalTrack) 8.dp else 12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (horizontalTrack) 0.dp else 6.dp)
         ) {
-            Text(
-                text = title,
-                color = Color.White,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+            if (!horizontalTrack) {
+                Text(
+                    text = title,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
 
             if (items.isEmpty()) {
                 Box(
@@ -220,7 +222,7 @@ private fun ArrangementHorizontalTrack(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(148.dp)
+            .height(124.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(
                 color = Color(0xFF0B1014),
@@ -230,13 +232,13 @@ private fun ArrangementHorizontalTrack(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(148.dp)
+                .height(124.dp)
                 .horizontalScroll(scrollState)
                 .padding(
                     start = ARRANGEMENT_TRACK_CONTENT_PADDING_DP.dp,
-                    top = 32.dp,
+                    top = 20.dp,
                     end = ARRANGEMENT_TRACK_CONTENT_PADDING_DP.dp,
-                    bottom = 8.dp
+                    bottom = 6.dp
                 ),
             horizontalArrangement = Arrangement.spacedBy(ARRANGEMENT_TRACK_SPACING_DP.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -257,7 +259,7 @@ private fun ArrangementHorizontalTrack(
             Column(
                 modifier = Modifier
                     .width(arrangementTrackBlockWidthDp(item.durationMs).dp)
-                    .height(104.dp)
+                    .height(92.dp)
                     .background(containerColor, RoundedCornerShape(10.dp))
                     .border(1.dp, borderColor, RoundedCornerShape(10.dp))
                     .combinedClickable(
@@ -393,15 +395,15 @@ private fun ArrangementHorizontalTrack(
                 if (viewportX in 0f..size.width) {
                     drawLine(
                         color = Color(0xFF80CBC4),
-                        start = Offset(viewportX, 18.dp.toPx()),
-                        end = Offset(viewportX, size.height - 8.dp.toPx()),
+                        start = Offset(viewportX, 10.dp.toPx()),
+                        end = Offset(viewportX, size.height - 6.dp.toPx()),
                         strokeWidth = 2.dp.toPx(),
                         cap = StrokeCap.Round
                     )
                     drawCircle(
                         color = Color(0xFF80CBC4),
                         radius = 5.dp.toPx(),
-                        center = Offset(viewportX, 18.dp.toPx())
+                        center = Offset(viewportX, 10.dp.toPx())
                     )
                 }
             }

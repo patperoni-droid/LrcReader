@@ -2610,7 +2610,10 @@ fun PlayerScreen(
     )
 
     @Composable
-    fun OfficialPlaybackControl() {
+    fun OfficialPlaybackControl(
+        timelineOverride: TimelinePlaybackControlOverride? = null
+    ) {
+        val effectiveIsPlaying = timelineOverride?.isPlaying ?: isPlaying
         PlaybackControl(
             positionMs = if (isDragging) dragPosMs else positionMs,
             durationMs = durationMs,
@@ -2632,8 +2635,16 @@ fun PlayerScreen(
                 }
             },
             highlightColor = highlightColor,
-            isPlaying = isPlaying,
+            isPlaying = effectiveIsPlaying,
             onPlayPause = playPause@{
+                if (timelineOverride != null) {
+                    if (timelineOverride.isPlaying) {
+                        timelineOverride.onPause()
+                    } else {
+                        timelineOverride.onPlay()
+                    }
+                    return@playPause
+                }
                 if (isPlaying) {
                     if (isTimelinePreparedLoopActive) {
                         timelinePreparedLoopResumeRelativeMs = exoPlayer.currentPosition
@@ -2665,6 +2676,10 @@ fun PlayerScreen(
                 }
             },
             onLivePlay = livePlay@{
+                if (timelineOverride != null) {
+                    timelineOverride.onPlay()
+                    return@livePlay
+                }
                 if (onPlaySelectedPlaylistItem()) return@livePlay
                 if (!isPlaying && durationMs > 0) {
                     PlaybackCoordinator.onPlayerStart()
@@ -2683,6 +2698,7 @@ fun PlayerScreen(
                 }
             },
             onPrev = onPrev@{
+                timelineOverride?.onReturnToMainPlayback()
                 val trackUri = currentTrackUri ?: return@onPrev
                 if (durationMs <= 0) return@onPrev
                 seekToMs(0L)
@@ -3013,7 +3029,9 @@ fun PlayerScreen(
                 isPlaying = isPlaying,
                 positionMs = positionMs,
                 durationMs = durationMs,
-                playbackControlContent = { OfficialPlaybackControl() },
+                playbackControlContent = { timelineOverride ->
+                    OfficialPlaybackControl(timelineOverride)
+                },
                 onCloseEditor = {
                     editingTimelineMidiMarkerIndex = null
                     editingTimelineLightCueTimeMs = null

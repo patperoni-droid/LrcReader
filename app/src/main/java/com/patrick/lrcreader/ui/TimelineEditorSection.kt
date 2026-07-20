@@ -233,6 +233,13 @@ private data class ArrangementUndoSnapshot(
     val selectedStructureIndex: Int?
 )
 
+data class TimelinePlaybackControlOverride(
+    val isPlaying: Boolean,
+    val onPlay: () -> Unit,
+    val onPause: () -> Unit,
+    val onReturnToMainPlayback: () -> Unit
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimelineEditorSection(
@@ -245,7 +252,7 @@ fun TimelineEditorSection(
     isPlaying: Boolean,
     positionMs: Int,
     durationMs: Int,
-    playbackControlContent: @Composable () -> Unit,
+    playbackControlContent: @Composable (TimelinePlaybackControlOverride?) -> Unit,
     onCloseEditor: () -> Unit,
     onIsPlayingChange: (Boolean) -> Unit,
     seekToMs: (Long) -> Unit,
@@ -332,9 +339,12 @@ fun TimelineEditorSection(
     val paletteNavigationIndexByKind = remember(markers) { mutableStateMapOf<TimelineMarkerKind, Int>() }
     var focusRequestTimeMs by remember { mutableLongStateOf(-1L) }
     var focusRequestToken by remember { mutableIntStateOf(0) }
-    var tempoStructurePreviewActive by remember { mutableStateOf(false) }
-    var tempoStructurePreviewStopRequest by remember { mutableIntStateOf(0) }
-    var tempoStructurePreviewUserStopRequest by remember { mutableIntStateOf(0) }
+    var tempoStructurePreviewActive by remember(currentSongId) { mutableStateOf(false) }
+    var tempoStructurePreviewTargeted by remember(currentSongId) { mutableStateOf(false) }
+    var tempoStructurePreviewStopRequest by remember(currentSongId) { mutableIntStateOf(0) }
+    var tempoStructurePreviewPlayRequest by remember(currentSongId) { mutableIntStateOf(0) }
+    var tempoStructurePreviewUserStopRequest by remember(currentSongId) { mutableIntStateOf(0) }
+    var tempoMainPlaybackRequest by remember(currentSongId) { mutableIntStateOf(0) }
 
     val openUpgradeToPro: () -> Unit = remember(context) {
         {
@@ -899,13 +909,41 @@ fun TimelineEditorSection(
                     onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
                     onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
                     structurePreviewStopRequest = tempoStructurePreviewStopRequest,
+                    structurePreviewPlayRequest = tempoStructurePreviewPlayRequest,
                     structurePreviewUserStopRequest = tempoStructurePreviewUserStopRequest,
-                    onStructurePreviewActiveChange = { tempoStructurePreviewActive = it }
+                    mainPlaybackRequest = tempoMainPlaybackRequest,
+                    onStructurePreviewActiveChange = { tempoStructurePreviewActive = it },
+                    onStructurePreviewTargetChange = { tempoStructurePreviewTargeted = it }
                 )
             }
         }
         Spacer(Modifier.height(8.dp))
-        playbackControlContent()
+        val playbackOverride = if (
+            tabletArrangementLayout &&
+            editorMode == TimelineEditorMode.GRID_SETUP &&
+            tempoStructurePreviewTargeted
+        ) {
+            TimelinePlaybackControlOverride(
+                isPlaying = tempoStructurePreviewActive,
+                onPlay = {
+                    if (!tempoStructurePreviewActive) {
+                        tempoStructurePreviewPlayRequest += 1
+                    }
+                },
+                onPause = {
+                    if (tempoStructurePreviewActive) {
+                        tempoStructurePreviewUserStopRequest += 1
+                    }
+                },
+                onReturnToMainPlayback = {
+                    tempoStructurePreviewTargeted = false
+                    tempoMainPlaybackRequest += 1
+                }
+            )
+        } else {
+            null
+        }
+        playbackControlContent(playbackOverride)
     }
 
     val safePositionEditIndex = positionEditIndex
@@ -1637,8 +1675,11 @@ private fun GridSetupHost(
     onStopPreparedClipLoopTest: () -> Unit,
     onSeekPreparedClipLoopToPosition: ((Long) -> Unit)? = null,
     structurePreviewStopRequest: Int,
+    structurePreviewPlayRequest: Int,
     structurePreviewUserStopRequest: Int,
-    onStructurePreviewActiveChange: (Boolean) -> Unit
+    mainPlaybackRequest: Int,
+    onStructurePreviewActiveChange: (Boolean) -> Unit,
+    onStructurePreviewTargetChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -1739,8 +1780,11 @@ private fun GridSetupHost(
         onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
         onSeekPreparedClipLoopToPosition = onSeekPreparedClipLoopToPosition,
         structurePreviewStopRequest = structurePreviewStopRequest,
+        structurePreviewPlayRequest = structurePreviewPlayRequest,
         structurePreviewUserStopRequest = structurePreviewUserStopRequest,
+        mainPlaybackRequest = mainPlaybackRequest,
         onStructurePreviewActiveChange = onStructurePreviewActiveChange,
+        onStructurePreviewTargetChange = onStructurePreviewTargetChange,
         onTempoDraftChange = { input ->
             val nextDraft = input.filter { ch -> ch.isDigit() }.take(3)
             gridTempoDraft = nextDraft
@@ -1783,8 +1827,11 @@ private fun TimelineMeasuresPlaceholder(
     onStopPreparedClipLoopTest: () -> Unit,
     onSeekPreparedClipLoopToPosition: ((Long) -> Unit)?,
     structurePreviewStopRequest: Int,
+    structurePreviewPlayRequest: Int,
     structurePreviewUserStopRequest: Int,
+    mainPlaybackRequest: Int,
     onStructurePreviewActiveChange: (Boolean) -> Unit,
+    onStructurePreviewTargetChange: (Boolean) -> Unit,
     onTempoDraftChange: (String) -> Unit
 ) {
     val structurePreviewFadeDurationMs = 12L
@@ -1848,6 +1895,7 @@ private fun TimelineMeasuresPlaceholder(
     var structureUsingSampler by remember(currentSongId) { mutableStateOf(false) }
     var structureSamplerReady by remember(currentSongId) { mutableStateOf(false) }
     var structureSamplerSegmentStartRealtimeMs by remember(currentSongId) { mutableLongStateOf(0L) }
+    var structurePreparationGeneration by remember(currentSongId) { mutableIntStateOf(0) }
     var isStructureAudioPreparing by remember(currentSongId) { mutableStateOf(false) }
     var previewRenderedFile by remember(currentSongId) { mutableStateOf<File?>(null) }
     var previewRenderedSignature by remember(currentSongId) { mutableStateOf<String?>(null) }
@@ -1910,6 +1958,7 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     fun stopStructurePreviewPlayback(reason: String = "unspecified") {
+        structurePreparationGeneration += 1
         val mediaItemCountBefore = runCatching { structurePreviewPlayer.mediaItemCount }.getOrDefault(0)
         Log.d(
             ARR_STRUCTURE_FLOW_TAG,
@@ -3006,6 +3055,142 @@ private fun TimelineMeasuresPlaceholder(
             !isPreviewGenerating &&
             !isFinalExporting
 
+    fun startStructurePreviewAtLogicalIndex(logicalIndex: Int) {
+        if (isStructureAudioPreparing || structurePlaybackActive) return
+        val startIndex = preparedStructureOccurrences.indexOfFirst { occurrence ->
+            occurrence.entryIndex == logicalIndex
+        }
+        if (startIndex < 0) return
+        val sourceAudioPath = currentSongAudioPath?.takeIf { it.isNotBlank() } ?: return
+        val playbackSegments = structurePlaybackSegments
+
+        stopStructurePreviewPlayback(reason = "structure_manual_start")
+        val preparationGeneration = structurePreparationGeneration
+        stopArrangementLoopPreviewPlayback()
+        if (isPreparedClipLoopTestActive) {
+            onStopPreparedClipLoopTest()
+        }
+        loopEnabled = false
+        preparedLoopStartMs = null
+        if (isPlaying) {
+            onIsPlayingChange(false)
+        }
+        isStructureAudioPreparing = true
+        scope.launch {
+            try {
+                val sourceUri = Uri.fromFile(File(sourceAudioPath))
+                val preparedSourceResult = withContext(Dispatchers.IO) {
+                    runCatching {
+                        Log.d(
+                            ARR_STRUCTURE_SAMPLER_TAG,
+                            "PRELOAD_START songId=${currentSongId?.trim().orEmpty()} segmentCount=${playbackSegments.size}"
+                        )
+                        ArrangementSourceWavCache.ensureSourceWav(
+                            context = context.applicationContext,
+                            songId = currentSongId?.trim().orEmpty(),
+                            sourceUri = sourceUri
+                        )
+                    }
+                }
+                if (preparationGeneration != structurePreparationGeneration) {
+                    return@launch
+                }
+
+                preparedSourceResult
+                    .onSuccess { wavFile ->
+                        structureUsingWavSource = true
+                        val sampleResult = withContext(Dispatchers.IO) {
+                            runCatching {
+                                buildSampleSegmentsFromWav(
+                                    wavFile = wavFile,
+                                    structureSegments = playbackSegments
+                                )
+                            }
+                        }
+                        sampleResult
+                            .onSuccess { sampleSegments ->
+                                runCatching {
+                                    structureSamplerEngine.loadSegments(sampleSegments)
+                                    structureSamplerReady = true
+                                    Log.d(
+                                        ARR_STRUCTURE_SAMPLER_TAG,
+                                        "PRELOAD_DONE segmentCount=${sampleSegments.size} source=${wavFile.absolutePath}"
+                                    )
+                                }.onFailure { error ->
+                                    structureSamplerReady = false
+                                    Log.w(
+                                        ARR_STRUCTURE_SAMPLER_TAG,
+                                        "PRELOAD_FAIL reason=sampler_load_failed error=${error.message}",
+                                        error
+                                    )
+                                }
+                            }
+                            .onFailure { error ->
+                                structureSamplerReady = false
+                                Log.w(
+                                    ARR_STRUCTURE_SAMPLER_TAG,
+                                    "PRELOAD_FAIL reason=sample_build_failed error=${error.message}",
+                                    error
+                                )
+                            }
+                        if (preparationGeneration != structurePreparationGeneration) {
+                            return@launch
+                        }
+                        val samplerStarted = playStructureSegmentWithSampler(
+                            startIndex = startIndex,
+                            sourcePath = wavFile.absolutePath,
+                            segments = playbackSegments
+                        )
+                        if (!samplerStarted) {
+                            Log.d(
+                                ARR_STRUCTURE_SAMPLER_TAG,
+                                "FALLBACK_EXOPLAYER reason=sampler_not_ready"
+                            )
+                            Log.d(ARR_STRUCTURE_SAMPLER_TAG, "USING_SAMPLER false")
+                            playStructureSegmentPreview(
+                                startIndex = startIndex,
+                                audioPath = wavFile.absolutePath,
+                                segments = playbackSegments
+                            )
+                        }
+                    }
+                    .onFailure { error ->
+                        if (preparationGeneration != structurePreparationGeneration) {
+                            return@onFailure
+                        }
+                        Log.w(
+                            ARR_STRUCTURE_WAV_TAG,
+                            "CACHE_BUILD_FAIL error=${error.message}",
+                            error
+                        )
+                        Log.w(
+                            ARR_STRUCTURE_SAMPLER_TAG,
+                            "PRELOAD_FAIL reason=wav_cache_failed error=${error.message}",
+                            error
+                        )
+                        Log.d(
+                            ARR_STRUCTURE_WAV_TAG,
+                            "FALLBACK_MP3 reason=cache_build_fail"
+                        )
+                        Log.d(
+                            ARR_STRUCTURE_SAMPLER_TAG,
+                            "FALLBACK_EXOPLAYER reason=wav_cache_failed"
+                        )
+                        Log.d(ARR_STRUCTURE_SAMPLER_TAG, "USING_SAMPLER false")
+                        structureSamplerReady = false
+                        structureUsingWavSource = false
+                        playStructureSegmentPreview(
+                            startIndex = startIndex,
+                            audioPath = sourceAudioPath,
+                            segments = playbackSegments
+                        )
+                    }
+            } finally {
+                isStructureAudioPreparing = false
+            }
+        }
+    }
+
     fun updateArrangementOccurrence(
         targetId: String,
         transform: (ArrangementEntryData) -> ArrangementEntryData
@@ -3394,6 +3579,27 @@ private fun TimelineMeasuresPlaceholder(
             }
         }
     }
+    LaunchedEffect(
+        constrainToAvailableHeight,
+        selectedStructureEditIndex,
+        preparedStructureOccurrences
+    ) {
+        val selectedLogicalIndex = selectedStructureEditIndex
+        onStructurePreviewTargetChange(
+            constrainToAvailableHeight &&
+                selectedLogicalIndex != null &&
+                preparedStructureOccurrences.any { occurrence ->
+                    occurrence.entryIndex == selectedLogicalIndex
+                }
+        )
+    }
+    LaunchedEffect(structurePreviewPlayRequest) {
+        if (structurePreviewPlayRequest > 0 && constrainToAvailableHeight) {
+            selectedStructureEditIndex?.let { logicalIndex ->
+                startStructurePreviewAtLogicalIndex(logicalIndex)
+            }
+        }
+    }
     LaunchedEffect(structurePreviewUserStopRequest) {
         if (structurePreviewUserStopRequest > 0) {
             stopStructurePreviewPlayback(reason = "user_transport_stop")
@@ -3402,6 +3608,18 @@ private fun TimelineMeasuresPlaceholder(
                 preparedLoopStartMs = null
                 stopArrangementLoopPreviewPlayback()
             }
+        }
+    }
+    LaunchedEffect(mainPlaybackRequest) {
+        if (mainPlaybackRequest > 0) {
+            stopStructurePreviewPlayback(reason = "return_to_main_transport")
+            if (arrangementLoopPreviewActive) {
+                loopEnabled = false
+                preparedLoopStartMs = null
+                stopArrangementLoopPreviewPlayback()
+            }
+            selectedStructureEditIndex = null
+            onStructurePreviewTargetChange(false)
         }
     }
     LaunchedEffect(structurePlaybackActive, wavPreviewActive, structurePreviewPlayer) {
@@ -4439,118 +4657,7 @@ private fun TimelineMeasuresPlaceholder(
                             ?: sourceAudioPath
                         queueStructureSegmentPreview(startIndex, activeSourcePath, structurePlaybackSegments)
                     } else {
-                        stopStructurePreviewPlayback(reason = "structure_manual_start")
-                        stopArrangementLoopPreviewPlayback()
-                        if (isPreparedClipLoopTestActive) {
-                            onStopPreparedClipLoopTest()
-                        }
-                        loopEnabled = false
-                        preparedLoopStartMs = null
-                        if (isPlaying) {
-                            onIsPlayingChange(false)
-                        }
-                        isStructureAudioPreparing = true
-                        scope.launch {
-                            val sourceUri = Uri.fromFile(File(sourceAudioPath))
-                            val preparedSourceResult = withContext(Dispatchers.IO) {
-                                runCatching {
-                                    Log.d(
-                                        ARR_STRUCTURE_SAMPLER_TAG,
-                                        "PRELOAD_START songId=${currentSongId?.trim().orEmpty()} segmentCount=${structurePlaybackSegments.size}"
-                                    )
-                                    ArrangementSourceWavCache.ensureSourceWav(
-                                        context = context.applicationContext,
-                                        songId = currentSongId?.trim().orEmpty(),
-                                        sourceUri = sourceUri
-                                    )
-                                }
-                            }
-
-                            preparedSourceResult
-                                .onSuccess { wavFile ->
-                                    structureUsingWavSource = true
-                                    val sampleResult = withContext(Dispatchers.IO) {
-                                        runCatching {
-                                            buildSampleSegmentsFromWav(
-                                                wavFile = wavFile,
-                                                structureSegments = structurePlaybackSegments
-                                            )
-                                        }
-                                    }
-                                    sampleResult
-                                        .onSuccess { sampleSegments ->
-                                            runCatching {
-                                                structureSamplerEngine.loadSegments(sampleSegments)
-                                                structureSamplerReady = true
-                                                Log.d(
-                                                    ARR_STRUCTURE_SAMPLER_TAG,
-                                                    "PRELOAD_DONE segmentCount=${sampleSegments.size} source=${wavFile.absolutePath}"
-                                                )
-                                            }.onFailure { error ->
-                                                structureSamplerReady = false
-                                                Log.w(
-                                                    ARR_STRUCTURE_SAMPLER_TAG,
-                                                    "PRELOAD_FAIL reason=sampler_load_failed error=${error.message}",
-                                                    error
-                                                )
-                                            }
-                                        }
-                                        .onFailure { error ->
-                                            structureSamplerReady = false
-                                            Log.w(
-                                                ARR_STRUCTURE_SAMPLER_TAG,
-                                                "PRELOAD_FAIL reason=sample_build_failed error=${error.message}",
-                                                error
-                                            )
-                                        }
-                                    val samplerStarted = playStructureSegmentWithSampler(
-                                        startIndex = startIndex,
-                                        sourcePath = wavFile.absolutePath,
-                                        segments = structurePlaybackSegments
-                                    )
-                                    if (!samplerStarted) {
-                                        Log.d(
-                                            ARR_STRUCTURE_SAMPLER_TAG,
-                                            "FALLBACK_EXOPLAYER reason=sampler_not_ready"
-                                        )
-                                        Log.d(ARR_STRUCTURE_SAMPLER_TAG, "USING_SAMPLER false")
-                                        playStructureSegmentPreview(
-                                            startIndex = startIndex,
-                                            audioPath = wavFile.absolutePath,
-                                            segments = structurePlaybackSegments
-                                        )
-                                    }
-                                }
-                                .onFailure { error ->
-                                    Log.w(
-                                        ARR_STRUCTURE_WAV_TAG,
-                                        "CACHE_BUILD_FAIL error=${error.message}",
-                                        error
-                                    )
-                                    Log.w(
-                                        ARR_STRUCTURE_SAMPLER_TAG,
-                                        "PRELOAD_FAIL reason=wav_cache_failed error=${error.message}",
-                                        error
-                                    )
-                                    Log.d(
-                                        ARR_STRUCTURE_WAV_TAG,
-                                        "FALLBACK_MP3 reason=cache_build_fail"
-                                    )
-                                    Log.d(
-                                        ARR_STRUCTURE_SAMPLER_TAG,
-                                        "FALLBACK_EXOPLAYER reason=wav_cache_failed"
-                                    )
-                                    Log.d(ARR_STRUCTURE_SAMPLER_TAG, "USING_SAMPLER false")
-                                    structureSamplerReady = false
-                                    structureUsingWavSource = false
-                                    playStructureSegmentPreview(
-                                        startIndex = startIndex,
-                                        audioPath = sourceAudioPath,
-                                        segments = structurePlaybackSegments
-                                    )
-                                }
-                            isStructureAudioPreparing = false
-                        }
+                        startStructurePreviewAtLogicalIndex(logicalIndex)
                     }
                 },
                 onItemAdd = null,

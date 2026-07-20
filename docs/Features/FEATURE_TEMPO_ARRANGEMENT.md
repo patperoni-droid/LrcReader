@@ -122,7 +122,13 @@ Implémenté dans l'éditeur canonique tablette :
 - sa position utilise le temps cumulé du montage préparé, jamais le temps absolu de la waveform source ;
 - pour un bloc répété, la tête parcourt successivement chaque fraction du bloc et affiche la répétition active sous la forme `1/N`, `2/N`, etc. ;
 - les occurrences en mute restent visibles dans l'éditeur mais sont sautées par la tête de lecture comme elles le sont par la liste audio préparée ;
-- le défilement horizontal conserve l'alignement entre la tête et le bloc actif sans créer d'horloge ou d'animation indépendante du lecteur.
+- le défilement horizontal conserve l'alignement entre la tête et le bloc actif sans créer d'horloge ou d'animation indépendante du lecteur ;
+- la piste tablette compacte n'affiche plus la ligne de titre `Structure` et sa hauteur est réduite afin de limiter le défilement vertical de l'écran ;
+- tant qu'aucun bloc n'est sélectionné, le `Playback Control` pilote le titre complet ;
+- toucher un bloc arrête d'abord le titre complet puis donne temporairement les commandes du `Playback Control` à cette occurrence ;
+- pendant ce ciblage, Pause arrête entièrement la preview secondaire et Play relance le segment sélectionné depuis son début ;
+- le bouton retour début arrête la preview secondaire, libère le ciblage du bloc, replace le titre complet à `00:00` et rend les commandes au lecteur principal ;
+- le lecteur principal et la preview de segment ne doivent jamais jouer simultanément.
 
 ### Périmètre appareil — tablette uniquement
 
