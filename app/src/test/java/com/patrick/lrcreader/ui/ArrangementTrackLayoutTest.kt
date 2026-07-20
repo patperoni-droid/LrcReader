@@ -26,4 +26,46 @@ class ArrangementTrackLayoutTest {
     fun blockWidth_capsPathologicalDurations() {
         assertEquals(600f, arrangementTrackBlockWidthDp(10 * 60_000L), 0f)
     }
+
+    @Test
+    fun playheadOffset_mapsTheActiveRepeatInsideItsLogicalBlock() {
+        val items = listOf(
+            ArrangementListItem(id = "intro", title = "Intro", durationMs = 2_000L),
+            ArrangementListItem(
+                id = "chorus",
+                title = "Refrain",
+                durationMs = 60_000L,
+                repeatCount = 3
+            )
+        )
+
+        val offsetDp = arrangementTrackPlayheadOffsetDp(
+            items = items,
+            playhead = ArrangementTrackPlayhead(
+                itemId = "chorus",
+                repeatIndex = 1,
+                repeatCount = 3,
+                segmentProgressFraction = 0.5f
+            )
+        )
+
+        assertEquals(334f, offsetDp ?: -1f, 0f)
+    }
+
+    @Test
+    fun playheadOffset_startsAtTheTrackContentPadding() {
+        val offsetDp = arrangementTrackPlayheadOffsetDp(
+            items = listOf(
+                ArrangementListItem(id = "intro", title = "Intro", durationMs = 5_000L)
+            ),
+            playhead = ArrangementTrackPlayhead(
+                itemId = "intro",
+                repeatIndex = 0,
+                repeatCount = 1,
+                segmentProgressFraction = 0f
+            )
+        )
+
+        assertEquals(8f, offsetDp ?: -1f, 0f)
+    }
 }

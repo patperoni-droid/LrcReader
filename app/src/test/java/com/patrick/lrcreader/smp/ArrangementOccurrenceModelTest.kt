@@ -145,6 +145,7 @@ class ArrangementOccurrenceModelTest {
         assertEquals(listOf("intro", "intro", "outro"), prepared.map { it.segment.id })
         assertEquals(listOf(0, 0, 2), prepared.map { it.entryIndex })
         assertEquals(listOf(0, 1, 0), prepared.map { it.repeatIndex })
+        assertEquals(listOf(0L, 1_000L, 2_000L), prepared.map { it.arrangementStartMs })
     }
 
     @Test
@@ -169,5 +170,64 @@ class ArrangementOccurrenceModelTest {
 
         assertEquals(listOf("chorus", "chorus"), prepared.map { it.segment.id })
         assertEquals(listOf(0, 1), prepared.map { it.entryIndex })
+    }
+
+    @Test
+    fun playheadFromSource_identifiesTheActiveRepeatAndCumulativeTime() {
+        val prepared = prepareArrangementOccurrences(
+            segments = listOf(
+                ArrangementSegmentData("intro", "Intro", 10_000, 12_000),
+                ArrangementSegmentData("outro", "Outro", 30_000, 31_000)
+            ),
+            structureSegmentIds = listOf("intro", "outro"),
+            entries = listOf(
+                ArrangementEntryData("intro", "Intro", 10_000, 12_000, repeatCount = 2),
+                ArrangementEntryData("outro", "Outro", 30_000, 31_000)
+            ),
+            useOccurrenceModel = true
+        )
+
+        val playhead = resolvePreparedArrangementPlayheadFromSource(
+            occurrences = prepared,
+            playbackIndex = 1,
+            sourcePositionMs = 11_000
+        )
+
+        requireNotNull(playhead)
+        assertEquals(0, playhead.entryIndex)
+        assertEquals(1, playhead.repeatIndex)
+        assertEquals(2, playhead.repeatCount)
+        assertEquals(0.5f, playhead.segmentProgressFraction, 0f)
+        assertEquals(3_000L, playhead.arrangementPositionMs)
+        assertEquals(5_000L, playhead.arrangementDurationMs)
+    }
+
+    @Test
+    fun playheadFromTimeline_mapsRenderedPreviewAcrossRepeats() {
+        val prepared = prepareArrangementOccurrences(
+            segments = listOf(
+                ArrangementSegmentData("verse", "Couplet", 4_000, 6_000),
+                ArrangementSegmentData("chorus", "Refrain", 8_000, 9_000)
+            ),
+            structureSegmentIds = listOf("verse", "chorus"),
+            entries = listOf(
+                ArrangementEntryData("verse", "Couplet", 4_000, 6_000, repeatCount = 2),
+                ArrangementEntryData("chorus", "Refrain", 8_000, 9_000)
+            ),
+            useOccurrenceModel = true
+        )
+
+        val playhead = resolvePreparedArrangementPlayheadFromTimeline(
+            occurrences = prepared,
+            arrangementPositionMs = 2_500
+        )
+
+        requireNotNull(playhead)
+        assertEquals(0, playhead.entryIndex)
+        assertEquals(1, playhead.repeatIndex)
+        assertEquals(2, playhead.repeatCount)
+        assertEquals(0.25f, playhead.segmentProgressFraction, 0f)
+        assertEquals(2_500L, playhead.arrangementPositionMs)
+        assertEquals(5_000L, playhead.arrangementDurationMs)
     }
 }

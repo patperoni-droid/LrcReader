@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,8 +36,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,6 +61,13 @@ data class ArrangementListItem(
     val isQueued: Boolean = false
 )
 
+data class ArrangementTrackPlayhead(
+    val itemId: String,
+    val repeatIndex: Int,
+    val repeatCount: Int,
+    val segmentProgressFraction: Float
+)
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ArrangementListCard(
@@ -68,7 +81,8 @@ fun ArrangementListCard(
     onItemLongClick: ((String) -> Unit)?,
     horizontalTrack: Boolean = false,
     onItemMove: ((String, Int) -> Unit)? = null,
-    itemActionsEnabled: Boolean = true
+    itemActionsEnabled: Boolean = true,
+    playhead: ArrangementTrackPlayhead? = null
 ) {
     Card(
         modifier = modifier,
@@ -109,7 +123,8 @@ fun ArrangementListCard(
                     onItemDelete = onItemDelete,
                     onItemLongClick = onItemLongClick,
                     onItemMove = onItemMove,
-                    itemActionsEnabled = itemActionsEnabled
+                    itemActionsEnabled = itemActionsEnabled,
+                    playhead = playhead
                 )
             } else {
                 Column(
@@ -195,23 +210,38 @@ private fun ArrangementHorizontalTrack(
     onItemDelete: ((String) -> Unit)?,
     onItemLongClick: ((String) -> Unit)?,
     onItemMove: ((String, Int) -> Unit)?,
-    itemActionsEnabled: Boolean
+    itemActionsEnabled: Boolean,
+    playhead: ArrangementTrackPlayhead?
 ) {
     val scrollState = rememberScrollState()
-    Row(
+    val density = LocalDensity.current
+    val playheadOffsetDp = arrangementTrackPlayheadOffsetDp(items, playhead)
+    val scrollOffsetDp = with(density) { scrollState.value.toDp().value }
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(126.dp)
+            .height(148.dp)
+            .clip(RoundedCornerShape(10.dp))
             .background(
                 color = Color(0xFF0B1014),
                 shape = RoundedCornerShape(10.dp)
             )
-            .horizontalScroll(scrollState)
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        items.forEach { item ->
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(148.dp)
+                .horizontalScroll(scrollState)
+                .padding(
+                    start = ARRANGEMENT_TRACK_CONTENT_PADDING_DP.dp,
+                    top = 32.dp,
+                    end = ARRANGEMENT_TRACK_CONTENT_PADDING_DP.dp,
+                    bottom = 8.dp
+                ),
+            horizontalArrangement = Arrangement.spacedBy(ARRANGEMENT_TRACK_SPACING_DP.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            items.forEach { item ->
             val borderColor = when {
                 item.isActive -> Color(0xFF66BB6A)
                 item.isQueued -> Color(0xFFFFD54F)
@@ -355,6 +385,45 @@ private fun ArrangementHorizontalTrack(
                     }
                 }
             }
+            }
+        }
+        if (playheadOffsetDp != null) {
+            Canvas(modifier = Modifier.matchParentSize()) {
+                val viewportX = playheadOffsetDp.dp.toPx() - scrollState.value
+                if (viewportX in 0f..size.width) {
+                    drawLine(
+                        color = Color(0xFF80CBC4),
+                        start = Offset(viewportX, 18.dp.toPx()),
+                        end = Offset(viewportX, size.height - 8.dp.toPx()),
+                        strokeWidth = 2.dp.toPx(),
+                        cap = StrokeCap.Round
+                    )
+                    drawCircle(
+                        color = Color(0xFF80CBC4),
+                        radius = 5.dp.toPx(),
+                        center = Offset(viewportX, 18.dp.toPx())
+                    )
+                }
+            }
+            if (playhead != null && playhead.repeatCount > 1) {
+                Text(
+                    text = stringResource(
+                        R.string.arrangement_playhead_repeat_short,
+                        playhead.repeatIndex + 1,
+                        playhead.repeatCount
+                    ),
+                    color = Color(0xFF0B1014),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .offset(
+                            x = (playheadOffsetDp - scrollOffsetDp - 17f).dp,
+                            y = 1.dp
+                        )
+                        .background(Color(0xFF80CBC4), RoundedCornerShape(5.dp))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                )
+            }
         }
     }
 }
@@ -376,6 +445,28 @@ internal fun arrangementTrackBlockWidthDp(durationMs: Long?): Float {
         .coerceIn(ARRANGEMENT_TRACK_MIN_BLOCK_WIDTH_DP, ARRANGEMENT_TRACK_MAX_BLOCK_WIDTH_DP)
 }
 
+internal fun arrangementTrackPlayheadOffsetDp(
+    items: List<ArrangementListItem>,
+    playhead: ArrangementTrackPlayhead?
+): Float? {
+    val target = playhead ?: return null
+    val itemIndex = items.indexOfFirst { item -> item.id == target.itemId }
+    if (itemIndex < 0) return null
+    val targetWidthDp = arrangementTrackBlockWidthDp(items[itemIndex].durationMs)
+    var previousWidthDp = 0f
+    for (index in 0 until itemIndex) {
+        previousWidthDp += arrangementTrackBlockWidthDp(items[index].durationMs)
+    }
+    val repeatCount = target.repeatCount.coerceAtLeast(1)
+    val repeatIndex = target.repeatIndex.coerceIn(0, repeatCount - 1)
+    val segmentProgress = target.segmentProgressFraction.coerceIn(0f, 1f)
+    val blockProgress = (repeatIndex + segmentProgress) / repeatCount.toFloat()
+    return ARRANGEMENT_TRACK_CONTENT_PADDING_DP +
+        previousWidthDp +
+        (itemIndex * ARRANGEMENT_TRACK_SPACING_DP) +
+        (targetWidthDp * blockProgress)
+}
+
 private fun formatArrangementTrackDuration(durationMs: Long): String {
     val totalSeconds = durationMs.coerceAtLeast(0L) / 1_000L
     val minutes = totalSeconds / 60L
@@ -386,3 +477,5 @@ private fun formatArrangementTrackDuration(durationMs: Long): String {
 private const val ARRANGEMENT_TRACK_DP_PER_SECOND = 5f
 private const val ARRANGEMENT_TRACK_MIN_BLOCK_WIDTH_DP = 168f
 private const val ARRANGEMENT_TRACK_MAX_BLOCK_WIDTH_DP = 600f
+private const val ARRANGEMENT_TRACK_CONTENT_PADDING_DP = 8f
+private const val ARRANGEMENT_TRACK_SPACING_DP = 8f

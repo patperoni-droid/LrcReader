@@ -10,7 +10,19 @@ internal data class ArrangementOccurrenceProjection(
 internal data class PreparedArrangementOccurrence(
     val entryIndex: Int,
     val repeatIndex: Int,
+    val repeatCount: Int,
+    val arrangementStartMs: Long,
+    val durationMs: Long,
     val segment: ArrangementSegmentData
+)
+
+internal data class PreparedArrangementPlayhead(
+    val entryIndex: Int,
+    val repeatIndex: Int,
+    val repeatCount: Int,
+    val segmentProgressFraction: Float,
+    val arrangementPositionMs: Long,
+    val arrangementDurationMs: Long
 )
 
 internal fun ArrangementData.toOccurrenceProjection(): ArrangementOccurrenceProjection {
@@ -101,10 +113,16 @@ internal fun prepareArrangementOccurrences(
     val segmentsById = segments.associateBy { segment -> segment.id }
     val entriesById = entries.associateBy { entry -> entry.entryId }
     return buildList {
+        var arrangementStartMs = 0L
         structureSegmentIds.forEachIndexed { entryIndex, segmentId ->
             val segment = segmentsById[segmentId] ?: return@forEachIndexed
             val entry = entriesById[segmentId]
             if (useOccurrenceModel && entry?.muted == true) return@forEachIndexed
+            val segmentStartMs = minOf(segment.startMs, segment.endMs)
+                .coerceIn(0L, Long.MAX_VALUE - 1L)
+            val segmentEndMs = maxOf(segment.startMs, segment.endMs)
+                .coerceAtLeast(segmentStartMs + 1L)
+            val segmentDurationMs = segmentEndMs - segmentStartMs
             val repeatCount = if (useOccurrenceModel) {
                 entry?.repeatCount?.coerceAtLeast(1) ?: 1
             } else {
@@ -115,10 +133,79 @@ internal fun prepareArrangementOccurrences(
                     PreparedArrangementOccurrence(
                         entryIndex = entryIndex,
                         repeatIndex = repeatIndex,
+                        repeatCount = repeatCount,
+                        arrangementStartMs = arrangementStartMs,
+                        durationMs = segmentDurationMs,
                         segment = segment
                     )
+                )
+                arrangementStartMs = saturatedArrangementTimeAdd(
+                    arrangementStartMs,
+                    segmentDurationMs
                 )
             }
         }
     }
 }
+
+internal fun resolvePreparedArrangementPlayheadFromSource(
+    occurrences: List<PreparedArrangementOccurrence>,
+    playbackIndex: Int,
+    sourcePositionMs: Long
+): PreparedArrangementPlayhead? {
+    val occurrence = occurrences.getOrNull(playbackIndex) ?: return null
+    val segmentStartMs = minOf(
+        occurrence.segment.startMs,
+        occurrence.segment.endMs
+    ).coerceAtLeast(0L)
+    val progressMs = (sourcePositionMs - segmentStartMs)
+        .coerceIn(0L, occurrence.durationMs)
+    return occurrence.toPlayhead(progressMs, occurrences.arrangementDurationMs())
+}
+
+internal fun resolvePreparedArrangementPlayheadFromTimeline(
+    occurrences: List<PreparedArrangementOccurrence>,
+    arrangementPositionMs: Long
+): PreparedArrangementPlayhead? {
+    val arrangementDurationMs = occurrences.arrangementDurationMs()
+    if (occurrences.isEmpty() || arrangementDurationMs <= 0L) return null
+    val safePositionMs = arrangementPositionMs.coerceIn(0L, arrangementDurationMs)
+    val occurrence = if (safePositionMs >= arrangementDurationMs) {
+        occurrences.last()
+    } else {
+        occurrences.firstOrNull { candidate ->
+            safePositionMs < saturatedArrangementTimeAdd(
+                candidate.arrangementStartMs,
+                candidate.durationMs
+            )
+        } ?: occurrences.last()
+    }
+    val progressMs = (safePositionMs - occurrence.arrangementStartMs)
+        .coerceIn(0L, occurrence.durationMs)
+    return occurrence.toPlayhead(progressMs, arrangementDurationMs)
+}
+
+private fun PreparedArrangementOccurrence.toPlayhead(
+    progressMs: Long,
+    arrangementDurationMs: Long
+): PreparedArrangementPlayhead = PreparedArrangementPlayhead(
+    entryIndex = entryIndex,
+    repeatIndex = repeatIndex,
+    repeatCount = repeatCount,
+    segmentProgressFraction = (progressMs.toDouble() / durationMs.toDouble())
+        .coerceIn(0.0, 1.0)
+        .toFloat(),
+    arrangementPositionMs = saturatedArrangementTimeAdd(arrangementStartMs, progressMs),
+    arrangementDurationMs = arrangementDurationMs
+)
+
+private fun List<PreparedArrangementOccurrence>.arrangementDurationMs(): Long {
+    val lastOccurrence = lastOrNull() ?: return 0L
+    return saturatedArrangementTimeAdd(
+        lastOccurrence.arrangementStartMs,
+        lastOccurrence.durationMs
+    )
+}
+
+private fun saturatedArrangementTimeAdd(left: Long, right: Long): Long =
+    if (right > Long.MAX_VALUE - left) Long.MAX_VALUE else left + right

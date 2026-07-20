@@ -108,6 +108,7 @@
     <string name="arrangement_occurrence_repeat_decrease">Reducir repeticiones</string>
     <string name="arrangement_occurrence_repeat_increase">Aumentar repeticiones</string>
     <string name="arrangement_occurrence_drag">Mover ocurrencia</string>
+    <string name="arrangement_playhead_repeat_short">%1$d/%2$d</string>
     <string name="common_ellipsis">…</string>
     <string name="common_percent_value">%1$d %%</string>
 

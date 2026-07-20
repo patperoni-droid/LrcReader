@@ -110,6 +110,7 @@
     <string name="arrangement_occurrence_repeat_decrease">Diminuer les répétitions</string>
     <string name="arrangement_occurrence_repeat_increase">Augmenter les répétitions</string>
     <string name="arrangement_occurrence_drag">Déplacer l’occurrence</string>
+    <string name="arrangement_playhead_repeat_short">%1$d/%2$d</string>
     <string name="common_ellipsis">…</string>
     <string name="common_percent_value">%1$d %%</string>
     <!-- Mixer / Console -->

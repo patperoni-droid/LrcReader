@@ -88,8 +88,7 @@ Fondation tablette réalisée :
 
 Reste à réaliser :
 
-- permettre d'ouvrir ou de fermer la playlist dans un panneau latéral gauche sans quitter Arrangement ;
-- synchroniser une tête de lecture visuelle avec la lecture réelle de la Structure préparée.
+- permettre d'ouvrir ou de fermer la playlist dans un panneau latéral gauche sans quitter Arrangement.
 
 Implémenté dans l'éditeur canonique tablette :
 
@@ -118,7 +117,12 @@ Implémenté dans l'éditeur canonique tablette :
 - une duplication ou un collage crée un nouvel `entryId` indépendant et ne duplique jamais le fichier audio ;
 - la couleur, le mute et `repeatCount` sont sauvegardés dans l'entrée V2 ;
 - avant la preview ou l'export, les occurrences en mute sont exclues et les répétitions sont développées dans la liste audio préparée ;
-- pendant une preview Structure active ou sa préparation, l'ajout, le déplacement et les actions de structure sont verrouillés afin de ne jamais reconstruire le montage en pleine lecture.
+- pendant une preview Structure ou WAV, une préparation ou un export, l'ajout, le déplacement et les actions de structure sont verrouillés afin de ne jamais reconstruire le montage en pleine lecture ;
+- une tête de lecture turquoise est dessinée sur la piste tablette uniquement pendant la preview Structure réelle ou la pré-écoute WAV ;
+- sa position utilise le temps cumulé du montage préparé, jamais le temps absolu de la waveform source ;
+- pour un bloc répété, la tête parcourt successivement chaque fraction du bloc et affiche la répétition active sous la forme `1/N`, `2/N`, etc. ;
+- les occurrences en mute restent visibles dans l'éditeur mais sont sautées par la tête de lecture comme elles le sont par la liste audio préparée ;
+- le défilement horizontal conserve l'alignement entre la tête et le bloc actif sans créer d'horloge ou d'animation indépendante du lecteur.
 
 ### Périmètre appareil — tablette uniquement
 
@@ -315,7 +319,7 @@ Règles :
 2. ✅ remplacer la liste verticale intermédiaire par une piste horizontale statique et défilable ;
 3. ✅ permettre de sélectionner un bloc et de recharger ses points IN / OUT dans la waveform source ;
 4. ✅ ajouter renommage, couleur, déplacement, duplication, copie/collage, mute et répétition ;
-5. relier la tête de lecture visuelle à la preview Structure réelle ;
+5. ✅ relier la tête de lecture visuelle à la preview Structure réelle ;
 6. ajouter ensuite la playlist latérale escamotable et valider le redimensionnement sans changement d'état.
 
 La playlist escamotable est volontairement placée en dernier : la piste horizontale doit d'abord rester cohérente seule, puis démontrer qu'elle conserve son échelle, son zoom et son défilement lorsque la largeur disponible change.

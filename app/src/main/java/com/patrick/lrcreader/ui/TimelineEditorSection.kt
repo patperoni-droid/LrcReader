@@ -132,6 +132,8 @@ import com.patrick.lrcreader.smp.TimelineMarkerKind
 import com.patrick.lrcreader.smp.buildArrangementDataForPersistence
 import com.patrick.lrcreader.smp.prepareArrangementOccurrences
 import com.patrick.lrcreader.smp.reconcileArrangementEntries
+import com.patrick.lrcreader.smp.resolvePreparedArrangementPlayheadFromSource
+import com.patrick.lrcreader.smp.resolvePreparedArrangementPlayheadFromTimeline
 import com.patrick.lrcreader.smp.toOccurrenceProjection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -2662,6 +2664,30 @@ private fun TimelineMeasuresPlaceholder(
 	    ?.entryIndex
 	val queuedStructureEntryIndex = queuedStructureSegmentIndex
 	    ?.let { index -> preparedStructureOccurrences.getOrNull(index)?.entryIndex }
+	val preparedArrangementPlayhead = if (!constrainToAvailableHeight) {
+	    null
+	} else if (structurePlaybackActive) {
+	    resolvePreparedArrangementPlayheadFromSource(
+	        occurrences = preparedStructureOccurrences,
+	        playbackIndex = structurePlaybackIndex,
+	        sourcePositionMs = structurePlaybackAbsolutePositionMs
+	    )
+	} else if (wavPreviewActive) {
+	    resolvePreparedArrangementPlayheadFromTimeline(
+	        occurrences = preparedStructureOccurrences,
+	        arrangementPositionMs = wavPreviewPositionMs
+	    )
+	} else {
+	    null
+	}
+	val arrangementTrackPlayhead = preparedArrangementPlayhead?.let { playhead ->
+	    ArrangementTrackPlayhead(
+	        itemId = playhead.entryIndex.toString(),
+	        repeatIndex = playhead.repeatIndex,
+	        repeatCount = playhead.repeatCount,
+	        segmentProgressFraction = playhead.segmentProgressFraction
+	    )
+	}
 	    val selectedStructureEditSegment = selectedStructureEditIndex
 	        ?.let { index -> structureSegmentIds.getOrNull(index) }
 	        ?.let { segmentId -> arrangementSegments.firstOrNull { it.id == segmentId } }
@@ -2974,7 +3000,11 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     val arrangementStructuralActionsEnabled =
-        !structurePlaybackActive && !isStructureAudioPreparing
+        !structurePlaybackActive &&
+            !isStructureAudioPreparing &&
+            !wavPreviewActive &&
+            !isPreviewGenerating &&
+            !isFinalExporting
 
     fun updateArrangementOccurrence(
         targetId: String,
@@ -3427,15 +3457,28 @@ private fun TimelineMeasuresPlaceholder(
                     itemPositionMs.coerceAtLeast(0L)
                 }
                 val visualPlayheadMs = if (structurePlaybackActive) {
-                    structurePlaybackAbsolutePositionMs
+                    resolvePreparedArrangementPlayheadFromSource(
+                        occurrences = preparedStructureOccurrences,
+                        playbackIndex = structurePlaybackIndex,
+                        sourcePositionMs = structurePlaybackAbsolutePositionMs
+                    )?.arrangementPositionMs ?: structurePlaybackAbsolutePositionMs
                 } else {
                     wavPreviewPositionMs
+                }
+                val playerArrangementPositionMs = if (structurePlaybackActive) {
+                    resolvePreparedArrangementPlayheadFromSource(
+                        occurrences = preparedStructureOccurrences,
+                        playbackIndex = structurePlaybackIndex,
+                        sourcePositionMs = playerAbsolutePositionMs
+                    )?.arrangementPositionMs ?: playerAbsolutePositionMs
+                } else {
+                    playerAbsolutePositionMs
                 }
                 Log.d(
                     ARR_TIMING_DIAG_TAG,
                     "PLAYHEAD visualPlayheadMs=$visualPlayheadMs " +
-                        "playerCurrentPositionMs=$playerAbsolutePositionMs " +
-                        "rawPlayerPositionMs=$itemPositionMs diffMs=${visualPlayheadMs - playerAbsolutePositionMs} " +
+                        "playerCurrentPositionMs=$playerArrangementPositionMs " +
+                        "rawPlayerPositionMs=$itemPositionMs diffMs=${visualPlayheadMs - playerArrangementPositionMs} " +
                         "source=$source isLoopActive=$arrangementLoopPreviewActive " +
                         "isStructureActive=$structurePlaybackActive"
                 )
@@ -4600,7 +4643,8 @@ private fun TimelineMeasuresPlaceholder(
                 } else {
                     null
                 },
-                itemActionsEnabled = !constrainToAvailableHeight || arrangementStructuralActionsEnabled
+                itemActionsEnabled = !constrainToAvailableHeight || arrangementStructuralActionsEnabled,
+                playhead = arrangementTrackPlayhead
             )
         }
         if (measuresStatus != null) {
