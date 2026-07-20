@@ -1,16 +1,21 @@
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +41,7 @@ import com.patrick.lrcreader.exo.R
 data class ArrangementListItem(
     val id: String,
     val title: String,
+    val durationMs: Long? = null,
     val isActive: Boolean = false,
     val isQueued: Boolean = false
 )
@@ -50,7 +56,8 @@ fun ArrangementListCard(
     onItemClick: (String) -> Unit,
     onItemAdd: ((String) -> Unit)?,
     onItemDelete: ((String) -> Unit)?,
-    onItemLongClick: ((String) -> Unit)?
+    onItemLongClick: ((String) -> Unit)?,
+    horizontalTrack: Boolean = false
 ) {
     Card(
         modifier = modifier,
@@ -83,6 +90,14 @@ fun ArrangementListCard(
                         fontSize = 13.sp
                     )
                 }
+            } else if (horizontalTrack) {
+                ArrangementHorizontalTrack(
+                    items = items,
+                    onItemClick = onItemClick,
+                    onItemAdd = onItemAdd,
+                    onItemDelete = onItemDelete,
+                    onItemLongClick = onItemLongClick
+                )
             } else {
                 Column(
                     modifier = Modifier
@@ -157,3 +172,129 @@ fun ArrangementListCard(
         }
     }
 }
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ArrangementHorizontalTrack(
+    items: List<ArrangementListItem>,
+    onItemClick: (String) -> Unit,
+    onItemAdd: ((String) -> Unit)?,
+    onItemDelete: ((String) -> Unit)?,
+    onItemLongClick: ((String) -> Unit)?
+) {
+    val scrollState = rememberScrollState()
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(126.dp)
+            .background(
+                color = Color(0xFF0B1014),
+                shape = RoundedCornerShape(10.dp)
+            )
+            .horizontalScroll(scrollState)
+            .padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        items.forEach { item ->
+            val borderColor = when {
+                item.isActive -> Color(0xFF66BB6A)
+                item.isQueued -> Color(0xFFFFD54F)
+                else -> Color(0xFF455A64)
+            }
+            val containerColor = when {
+                item.isActive -> Color(0xFF1B5E20).copy(alpha = 0.58f)
+                item.isQueued -> Color(0xFF5D4B00).copy(alpha = 0.64f)
+                else -> Color(0xFF1C2933)
+            }
+            Column(
+                modifier = Modifier
+                    .width(arrangementTrackBlockWidthDp(item.durationMs).dp)
+                    .height(104.dp)
+                    .background(containerColor, RoundedCornerShape(10.dp))
+                    .border(1.dp, borderColor, RoundedCornerShape(10.dp))
+                    .combinedClickable(
+                        onClick = { onItemClick(item.id) },
+                        onLongClick = if (onItemLongClick != null) {
+                            { onItemLongClick(item.id) }
+                        } else {
+                            null
+                        }
+                    )
+                    .padding(start = 10.dp, top = 9.dp, end = 6.dp, bottom = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = item.title,
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = if (item.isActive || item.isQueued) {
+                        FontWeight.SemiBold
+                    } else {
+                        FontWeight.Medium
+                    },
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    item.durationMs?.let { durationMs ->
+                        Text(
+                            text = formatArrangementTrackDuration(durationMs),
+                            color = Color(0xFFB0BEC5),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                    } ?: Spacer(modifier = Modifier.weight(1f))
+                    if (onItemAdd != null) {
+                        IconButton(
+                            onClick = { onItemAdd(item.id) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Add,
+                                contentDescription = stringResource(R.string.timeline_palette_add_action),
+                                tint = Color(0xFFCFD8DC),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                    if (onItemDelete != null) {
+                        IconButton(
+                            onClick = { onItemDelete(item.id) },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Delete,
+                                contentDescription = stringResource(R.string.library_delete_action),
+                                tint = Color(0xFFFF8A80),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+internal fun arrangementTrackBlockWidthDp(durationMs: Long?): Float {
+    val durationSeconds = durationMs?.coerceAtLeast(0L)?.div(1_000f) ?: 0f
+    return (durationSeconds * ARRANGEMENT_TRACK_DP_PER_SECOND)
+        .coerceIn(ARRANGEMENT_TRACK_MIN_BLOCK_WIDTH_DP, ARRANGEMENT_TRACK_MAX_BLOCK_WIDTH_DP)
+}
+
+private fun formatArrangementTrackDuration(durationMs: Long): String {
+    val totalSeconds = durationMs.coerceAtLeast(0L) / 1_000L
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    return "$minutes:${seconds.toString().padStart(2, '0')}"
+}
+
+private const val ARRANGEMENT_TRACK_DP_PER_SECOND = 5f
+private const val ARRANGEMENT_TRACK_MIN_BLOCK_WIDTH_DP = 112f
+private const val ARRANGEMENT_TRACK_MAX_BLOCK_WIDTH_DP = 600f

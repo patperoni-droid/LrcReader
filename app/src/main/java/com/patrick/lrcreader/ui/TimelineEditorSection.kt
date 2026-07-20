@@ -4140,6 +4140,7 @@ private fun TimelineMeasuresPlaceholder(
                     ArrangementListItem(
                         id = index.toString(),
                         title = "${index + 1}. ${segment.name}",
+                        durationMs = (segment.endMs - segment.startMs).coerceAtLeast(0L),
                         isActive = index == selectedStructureEditIndex ||
                             (structurePlaybackActive && index == structurePlaybackIndex),
                         isQueued = structurePlaybackActive && index == queuedStructureSegmentIndex
@@ -4335,7 +4336,8 @@ private fun TimelineMeasuresPlaceholder(
                         )
                     }
                 },
-                onItemLongClick = null
+                onItemLongClick = null,
+                horizontalTrack = constrainToAvailableHeight
             )
         }
         if (measuresStatus != null) {

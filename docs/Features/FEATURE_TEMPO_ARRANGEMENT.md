@@ -88,7 +88,6 @@ Fondation tablette réalisée :
 
 Reste à réaliser :
 
-- transformer la liste unique actuelle en piste horizontale de blocs, située juste au-dessus du `Playback Control` ;
 - permettre d'ouvrir ou de fermer la playlist dans un panneau latéral gauche sans quitter Arrangement ;
 - ajouter les gestes et actions d'occurrence décrits ci-dessous ;
 - synchroniser une tête de lecture visuelle avec la lecture réelle de la Structure préparée.
@@ -104,8 +103,13 @@ Implémenté dans l'éditeur canonique tablette :
 - un fichier V2 conserve une projection `segments` / `structureSegmentIds` compatible avec l'ancien écran téléphone ; une sauvegarde issue de cet ancien écran préserve les métadonnées V2 déjà présentes ;
 - tant que la piste horizontale n'utilise pas encore ce nouveau modèle, les écrans actuels continuent volontairement d'enregistrer le format V1 et leur comportement reste inchangé ;
 - les champs d'occurrence V2 participent au hash de synchronisation afin que répétition, mute et couleur soient transférés comme données de l'Arrangement.
+- sur tablette, la Structure est maintenant rendue comme une piste horizontale statique et défilable juste au-dessus du `Playback Control` ;
+- chaque bloc affiche son ordre, son nom et sa durée, avec une largeur liée à la durée et une largeur tactile minimale ;
+- la sélection active reste verte, la prochaine occurrence préparée reste jaune et la suppression conserve le comportement existant ;
+- le défilement horizontal est un état d'interface local : il ne modifie ni l'ordre, ni le stockage, ni la lecture audio ;
+- le téléphone continue d'utiliser la carte verticale historique sans changement visuel ou fonctionnel.
 
-La liste verticale allongée actuellement visible en bas est une étape intermédiaire validée. Sa position au-dessus du `Playback Control` est conservée dans la cible, mais son contenu évolue vers une piste horizontale de conteneurs audio.
+La piste reste volontairement statique à cette étape : le glisser-déposer, les couleurs personnalisées, le mute et les répétitions seront branchés progressivement sur le modèle d'occurrence V2 lors des étapes suivantes.
 
 ### Périmètre appareil — tablette uniquement
 
@@ -299,7 +303,7 @@ Règles :
 ### Ordre d'implémentation recommandé
 
 1. ✅ introduire le modèle d'occurrence indépendant et rétrocompatible, incluant la couleur ;
-2. remplacer la liste verticale intermédiaire par une piste horizontale statique et défilable ;
+2. ✅ remplacer la liste verticale intermédiaire par une piste horizontale statique et défilable ;
 3. permettre de sélectionner un bloc et de recharger ses points IN / OUT dans la waveform source ;
 4. ajouter progressivement renommage, couleur, déplacement, duplication, mute et répétition ;
 5. relier la tête de lecture visuelle à la preview Structure réelle ;
