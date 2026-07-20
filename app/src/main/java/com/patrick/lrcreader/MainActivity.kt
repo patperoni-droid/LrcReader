@@ -4028,6 +4028,16 @@ class MainActivity : AppCompatActivity() {
                                     tabletRightPanel = TabletSplitRightPanel.SETTINGS
                                 }
 
+                                fun openTabletCanonicalArrangement() {
+                                    openTabletSplitLyrics()
+                                    playerNavigationTarget = "grid_setup"
+                                    playerNavigationToken += 1
+                                    setTabAndPersist(
+                                        BottomTab.Player,
+                                        reason = "tabletOpenCanonicalArrangement"
+                                    )
+                                }
+
                                 fun openTabletSplitTuner() {
                                     prepareTabletSplitMenuNavigation()
                                     isTabletCockpitDestinationOpen = false
@@ -4753,6 +4763,15 @@ class MainActivity : AppCompatActivity() {
                                                     "library_visible_after_import count=${refreshedSongsById.size} importedVisible=${importedSongIds.count { songId -> songId in refreshedSongsById }}"
                                                 )
                                             }
+                                        },
+                                        onOpenCanonicalArrangement = if (
+                                            adaptiveTokens.tabletMode &&
+                                            tabletExperimentalModeEnabled &&
+                                            !currentPlayingSongId.isNullOrBlank()
+                                        ) {
+                                            ::openTabletCanonicalArrangement
+                                        } else {
+                                            null
                                         },
                                         onOpenTempoFromArrangement = {
                                             playerNavigationTarget = "grid_setup"
@@ -6057,6 +6076,15 @@ class MainActivity : AppCompatActivity() {
                                                     "library_visible_after_import count=${refreshedSongsById.size} importedVisible=${importedSongIds.count { songId -> songId in refreshedSongsById }}"
                                                 )
                                             }
+                                        },
+                                        onOpenCanonicalArrangement = if (
+                                            adaptiveTokens.tabletMode &&
+                                            tabletExperimentalModeEnabled &&
+                                            !currentPlayingSongId.isNullOrBlank()
+                                        ) {
+                                            ::openTabletCanonicalArrangement
+                                        } else {
+                                            null
                                         },
                                         onOpenTempoFromArrangement = {
                                             playerNavigationTarget = "grid_setup"

@@ -147,6 +147,7 @@ fun MoreScreen(
     onAfterSmpRestore: (importedCount: Int, lastImportedSongId: String?) -> Unit = { _, _ -> },
     onAfterSyncImport: (importedSongIds: List<String>) -> Unit = {},
     onOpenTuner: () -> Unit = {},     // callback pour l'accordeur
+    onOpenCanonicalArrangement: (() -> Unit)? = null,
     onOpenTempoFromArrangement: () -> Unit = {},
     onStopCurrentPlayback: () -> Unit = {}
 ) {
@@ -165,13 +166,17 @@ fun MoreScreen(
         current = resolveSection(route)
     }
 
+    fun openArrangement() {
+        onOpenCanonicalArrangement?.invoke() ?: navigate("arrangement")
+    }
+
     when (current) {
         MoreSection.Root -> MoreRootScreen(
             modifier = modifier,
             onOpenBackup = { navigate("backup") },
             onOpenFiller = { navigate("filler") },
             onOpenHistory = { navigate("history") },
-            onOpenArrangement = { navigate("arrangement") },
+            onOpenArrangement = ::openArrangement,
             onOpenSecondScreen = { navigate("second_screen") },
             onOpenSmpSyncDebug = { navigate("smp_sync_debug") },
             onOpenWaveformPreview = { navigate("waveform_preview") },
@@ -195,7 +200,7 @@ fun MoreScreen(
                     Toast.LENGTH_SHORT
                 ).show()
             },
-            onOpenCutting = { navigate("arrangement") },
+            onOpenCutting = ::openArrangement,
             onBack = { navigate("root") }
         )
 

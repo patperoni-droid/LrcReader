@@ -81,6 +81,9 @@ Fondation tablette réalisée :
 - pendant cette édition, la playlist est repliée et l'éditeur conserve la même instance tout en prenant toute la largeur disponible ;
 - les raccourcis supérieurs du panneau droit sont masqués afin de libérer la hauteur utile ;
 - le contenu d'Arrangement est contraint et défilable au-dessus du `Playback Control`, qui reste visible en bas ;
+- sur tablette, l'entrée `Arrangement` de l'écran `Paramètres / Plus` ouvre désormais l'éditeur canonique intégré à `Timeline / Grille` lorsqu'un morceau SMP est actif ;
+- l'ancien éditeur à deux colonnes n'est plus la route principale tablette ; il reste disponible sur téléphone et comme repli lorsqu'aucun morceau SMP actif ne peut alimenter l'éditeur canonique ;
+- dans l'éditeur canonique tablette, le bouton `Fermer` et le bouton Retour Android restaurent le cockpit `Playlist | Paroles` sans arrêter ni remplacer le morceau actif ;
 - ce comportement est strictement conditionné au layout tablette et ne modifie pas le téléphone.
 
 Reste à réaliser :

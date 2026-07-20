@@ -493,6 +493,23 @@ fun TimelineEditorSection(
         }
     }
 
+    fun closeOrReturnFromEditor() {
+        if (isPreparedClipLoopTestActive) {
+            onStopPreparedClipLoopTest()
+        }
+        if (startInGridSetup) {
+            onCloseEditor()
+        } else if (editorMode == TimelineEditorMode.GRID_SETUP) {
+            editorMode = TimelineEditorMode.TIMELINE
+        } else {
+            onCloseEditor()
+        }
+    }
+
+    BackHandler(enabled = tabletArrangementLayout) {
+        closeOrReturnFromEditor()
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -511,20 +528,12 @@ fun TimelineEditorSection(
                 )
             }
             Spacer(modifier = Modifier.weight(1f))
-            if (!(startInGridSetup || editorMode == TimelineEditorMode.GRID_SETUP)) {
+            if (
+                tabletArrangementLayout ||
+                !(startInGridSetup || editorMode == TimelineEditorMode.GRID_SETUP)
+            ) {
                 TextButton(
-                    onClick = {
-                        if (isPreparedClipLoopTestActive) {
-                            onStopPreparedClipLoopTest()
-                        }
-                        if (startInGridSetup) {
-                            onCloseEditor()
-                        } else if (editorMode == TimelineEditorMode.GRID_SETUP) {
-                            editorMode = TimelineEditorMode.TIMELINE
-                        } else {
-                            onCloseEditor()
-                        }
-                    }
+                    onClick = ::closeOrReturnFromEditor
                 ) {
                     Text(
                         text = stringResource(R.string.common_close),
