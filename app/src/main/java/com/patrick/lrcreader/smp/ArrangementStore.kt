@@ -15,13 +15,24 @@ data class ArrangementSegmentData(
     val endMs: Long
 )
 
+data class ArrangementEntryData(
+    val entryId: String,
+    val name: String,
+    val startMs: Long,
+    val endMs: Long,
+    val repeatCount: Int = 1,
+    val muted: Boolean = false,
+    val color: String? = null
+)
+
 data class ArrangementData(
     val version: Int = 1,
     val name: String = "Arrangement 1",
     val sourceSongId: String,
     val updatedAt: Long = System.currentTimeMillis(),
     val segments: List<ArrangementSegmentData>,
-    val structureSegmentIds: List<String>
+    val structureSegmentIds: List<String>,
+    val entries: List<ArrangementEntryData> = emptyList()
 )
 
 object ArrangementStore {
@@ -38,7 +49,7 @@ object ArrangementStore {
         }
 
         runCatching {
-            fromJson(JSONObject(arrangementFile.readText(Charsets.UTF_8)))
+            ArrangementJsonCodec.decode(JSONObject(arrangementFile.readText(Charsets.UTF_8)))
         }.getOrElse { error ->
             Log.w(TAG, "load failed songId=${songId.trim()} path=${arrangementFile.absolutePath}", error)
             null
@@ -55,7 +66,18 @@ object ArrangementStore {
         val targetFile = File(songDir, FILE_NAME)
         val tmpFile = File(songDir, "$FILE_NAME.tmp")
         val backupFile = File(songDir, "$FILE_NAME.bak")
-        val rawJson = toJson(data.copy(updatedAt = System.currentTimeMillis())).toString(2)
+        val existingData = targetFile
+            .takeIf(File::isFile)
+            ?.let { file ->
+                runCatching {
+                    ArrangementJsonCodec.decode(JSONObject(file.readText(Charsets.UTF_8)))
+                }.getOrNull()
+            }
+        val dataToWrite = ArrangementJsonCodec.preserveVersion2Metadata(
+            existingData = existingData,
+            incomingData = data
+        ).copy(updatedAt = System.currentTimeMillis())
+        val rawJson = ArrangementJsonCodec.encode(dataToWrite).toString(2)
 
         runCatching {
             tmpFile.writeText(rawJson, Charsets.UTF_8)
@@ -95,27 +117,93 @@ object ArrangementStore {
         val cleanSongId = songId.trim().takeIf { it.isNotEmpty() } ?: return null
         return File(File(context.filesDir, TRACKS_DIR_NAME), cleanSongId)
     }
+}
 
-    private fun fromJson(json: JSONObject): ArrangementData {
+internal object ArrangementJsonCodec {
+
+    private const val VERSION_WITH_ENTRIES = 2
+
+    fun decode(json: JSONObject): ArrangementData {
         val sourceSongId = json.optString("sourceSongId").trim().ifBlank {
             throw IllegalArgumentException("Missing sourceSongId")
         }
-        val segments = json.optJSONArray("segments")
+        val storedSegments = json.optJSONArray("segments")
             ?.let(::segmentsFromJson)
             .orEmpty()
-        val validSegmentIds = segments.map { it.id }.toSet()
-        val structureSegmentIds = json.optJSONArray("structureSegmentIds")
+        val validSegmentIds = storedSegments.map { it.id }.toSet()
+        val storedStructureSegmentIds = json.optJSONArray("structureSegmentIds")
             ?.let(::structureFromJson)
             .orEmpty()
             .filter { it in validSegmentIds }
+        val version = json.optInt("version", 1).coerceAtLeast(1)
+        val hasEntryModel = version >= VERSION_WITH_ENTRIES && json.has("entries")
+        val entries = if (hasEntryModel) {
+            json.optJSONArray("entries")?.let(::entriesFromJson).orEmpty()
+        } else {
+            entriesFromLegacy(storedSegments, storedStructureSegmentIds)
+        }
+        val entrySegments = entries.map { entry -> entry.toLegacySegment() }
+        val entryIds = entrySegments.mapTo(linkedSetOf()) { segment -> segment.id }
+        val segments = if (hasEntryModel) {
+            entrySegments + storedSegments.filterNot { segment -> segment.id in entryIds }
+        } else {
+            storedSegments
+        }
+        val structureSegmentIds = if (hasEntryModel) {
+            entries.map(ArrangementEntryData::entryId)
+        } else {
+            storedStructureSegmentIds
+        }
 
         return ArrangementData(
-            version = json.optInt("version", 1).coerceAtLeast(1),
+            version = version,
             name = json.optString("name").trim().ifBlank { "Arrangement 1" },
             sourceSongId = sourceSongId,
             updatedAt = json.optLong("updatedAt", System.currentTimeMillis()),
             segments = segments,
-            structureSegmentIds = structureSegmentIds
+            structureSegmentIds = structureSegmentIds,
+            entries = entries
+        )
+    }
+
+    fun preserveVersion2Metadata(
+        existingData: ArrangementData?,
+        incomingData: ArrangementData
+    ): ArrangementData {
+        if (
+            incomingData.version >= VERSION_WITH_ENTRIES ||
+            existingData == null ||
+            existingData.version < VERSION_WITH_ENTRIES
+        ) {
+            return incomingData
+        }
+
+        val existingEntriesById = existingData.entries.associateBy { entry -> entry.entryId }
+        val incomingSegmentsById = incomingData.segments.associateBy { segment -> segment.id }
+        val usedEntryIds = linkedSetOf<String>()
+        val occurrenceCounts = mutableMapOf<String, Int>()
+        val reconciledEntries = incomingData.structureSegmentIds.mapNotNull { segmentId ->
+            val segment = incomingSegmentsById[segmentId] ?: return@mapNotNull null
+            val entryId = nextEntryId(
+                baseId = segment.id,
+                usedEntryIds = usedEntryIds,
+                occurrenceCounts = occurrenceCounts
+            )
+            val existingEntry = existingEntriesById[entryId]
+            ArrangementEntryData(
+                entryId = entryId,
+                name = segment.name,
+                startMs = segment.startMs,
+                endMs = segment.endMs,
+                repeatCount = existingEntry?.repeatCount ?: 1,
+                muted = existingEntry?.muted ?: false,
+                color = existingEntry?.color
+            )
+        }
+
+        return incomingData.copy(
+            version = VERSION_WITH_ENTRIES,
+            entries = reconciledEntries
         )
     }
 
@@ -149,7 +237,91 @@ object ArrangementStore {
         return out
     }
 
-    private fun toJson(data: ArrangementData): JSONObject {
+    private fun entriesFromJson(array: JSONArray): List<ArrangementEntryData> {
+        val rawEntries = ArrayList<ArrangementEntryData>(array.length())
+        for (index in 0 until array.length()) {
+            val item = array.optJSONObject(index) ?: continue
+            val entryId = item.optString("entryId").trim()
+            val name = item.optString("name").trim()
+            val startMs = item.optLong("startMs", -1L)
+            val endMs = item.optLong("endMs", -1L)
+            if (entryId.isBlank() || name.isBlank() || startMs < 0L || endMs <= startMs) continue
+            rawEntries += ArrangementEntryData(
+                entryId = entryId,
+                name = name,
+                startMs = startMs,
+                endMs = endMs,
+                repeatCount = item.optInt("repeatCount", 1).coerceAtLeast(1),
+                muted = item.optBoolean("muted", false),
+                color = item.optNullableTrimmedString("color")
+            )
+        }
+        return ensureUniqueEntryIds(rawEntries)
+    }
+
+    private fun entriesFromLegacy(
+        segments: List<ArrangementSegmentData>,
+        structureSegmentIds: List<String>
+    ): List<ArrangementEntryData> {
+        val segmentsById = segments.associateBy { segment -> segment.id }
+        val usedEntryIds = linkedSetOf<String>()
+        val occurrenceCounts = mutableMapOf<String, Int>()
+        return structureSegmentIds.mapNotNull { segmentId ->
+            val segment = segmentsById[segmentId] ?: return@mapNotNull null
+            ArrangementEntryData(
+                entryId = nextEntryId(segment.id, usedEntryIds, occurrenceCounts),
+                name = segment.name,
+                startMs = segment.startMs,
+                endMs = segment.endMs
+            )
+        }
+    }
+
+    private fun ensureUniqueEntryIds(entries: List<ArrangementEntryData>): List<ArrangementEntryData> {
+        val usedEntryIds = linkedSetOf<String>()
+        val occurrenceCounts = mutableMapOf<String, Int>()
+        return entries.map { entry ->
+            val uniqueId = nextEntryId(entry.entryId, usedEntryIds, occurrenceCounts)
+            if (uniqueId == entry.entryId) entry else entry.copy(entryId = uniqueId)
+        }
+    }
+
+    private fun nextEntryId(
+        baseId: String,
+        usedEntryIds: MutableSet<String>,
+        occurrenceCounts: MutableMap<String, Int>
+    ): String {
+        var occurrence = (occurrenceCounts[baseId] ?: 0) + 1
+        var candidate = if (occurrence == 1) baseId else "${baseId}__occurrence_$occurrence"
+        while (!usedEntryIds.add(candidate)) {
+            occurrence += 1
+            candidate = "${baseId}__occurrence_$occurrence"
+        }
+        occurrenceCounts[baseId] = occurrence
+        return candidate
+    }
+
+    fun encode(data: ArrangementData): JSONObject {
+        val usesEntryModel = data.version >= VERSION_WITH_ENTRIES
+        val entries = if (usesEntryModel) {
+            ensureUniqueEntryIds(data.entries.filter { entry -> entry.isValid() })
+        } else {
+            emptyList()
+        }
+        val entrySegments = entries.map { entry -> entry.toLegacySegment() }
+        val entryIds = entrySegments.mapTo(linkedSetOf()) { segment -> segment.id }
+        val compatibleSegments = if (usesEntryModel) {
+            entrySegments + data.segments.filter { segment -> segment.isValid() && segment.id !in entryIds }
+        } else {
+            data.segments.filter { segment -> segment.isValid() }
+        }
+        val compatibleStructureIds = if (usesEntryModel) {
+            entries.map(ArrangementEntryData::entryId)
+        } else {
+            val validSegmentIds = compatibleSegments.mapTo(hashSetOf()) { segment -> segment.id }
+            data.structureSegmentIds.filter { segmentId -> segmentId in validSegmentIds }
+        }
+
         return JSONObject().apply {
             put("version", data.version.coerceAtLeast(1))
             put("name", data.name.ifBlank { "Arrangement 1" })
@@ -158,7 +330,7 @@ object ArrangementStore {
             put(
                 "segments",
                 JSONArray().apply {
-                    data.segments.forEach { segment ->
+                    compatibleSegments.forEach { segment ->
                         put(
                             JSONObject().apply {
                                 put("id", segment.id)
@@ -173,11 +345,52 @@ object ArrangementStore {
             put(
                 "structureSegmentIds",
                 JSONArray().apply {
-                    data.structureSegmentIds.forEach { segmentId ->
+                    compatibleStructureIds.forEach { segmentId ->
                         put(segmentId)
                     }
                 }
             )
+            if (usesEntryModel) {
+                put(
+                    "entries",
+                    JSONArray().apply {
+                        entries.forEach { entry ->
+                            put(
+                                JSONObject().apply {
+                                    put("entryId", entry.entryId)
+                                    put("name", entry.name)
+                                    put("startMs", entry.startMs.coerceAtLeast(0L))
+                                    put("endMs", entry.endMs.coerceAtLeast(entry.startMs + 1L))
+                                    put("repeatCount", entry.repeatCount.coerceAtLeast(1))
+                                    put("muted", entry.muted)
+                                    entry.color?.trim()?.takeIf(String::isNotEmpty)?.let { color ->
+                                        put("color", color)
+                                    }
+                                }
+                            )
+                        }
+                    }
+                )
+            }
         }
+    }
+
+    private fun ArrangementEntryData.isValid(): Boolean =
+        entryId.isNotBlank() && name.isNotBlank() && startMs >= 0L && endMs > startMs
+
+    private fun ArrangementSegmentData.isValid(): Boolean =
+        id.isNotBlank() && name.isNotBlank() && startMs >= 0L && endMs > startMs
+
+    private fun ArrangementEntryData.toLegacySegment(): ArrangementSegmentData =
+        ArrangementSegmentData(
+            id = entryId,
+            name = name,
+            startMs = startMs,
+            endMs = endMs
+        )
+
+    private fun JSONObject.optNullableTrimmedString(key: String): String? {
+        if (!has(key) || isNull(key)) return null
+        return optString(key).trim().takeIf(String::isNotEmpty)
     }
 }

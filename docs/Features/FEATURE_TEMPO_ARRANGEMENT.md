@@ -99,7 +99,11 @@ Implémenté dans l'éditeur canonique tablette :
 - le bouton `Ajouter` insère directement le nouveau segment en tête de cette liste et dans la Structure de lecture ;
 - supprimer une ligne retire cette occurrence et supprime aussi son segment interne lorsqu'aucune autre occurrence ne le référence ;
 - le téléphone conserve volontairement l'ancien affichage à deux colonnes et son flux d'ajout existant ;
-- le stockage V1 reste temporairement inchangé pour préserver la rétrocompatibilité ; l'identité indépendante des occurrences, le mute et les répétitions seront introduits ensemble dans l'étape dédiée au modèle d'occurrence.
+- le modèle persistant V2 d'une occurrence est disponible avec `entryId`, nom, `startMs`, `endMs`, `repeatCount`, `muted` et `color` ;
+- la lecture d'un ancien fichier V1 crée en mémoire des occurrences indépendantes et déterministes, sans réécrire automatiquement le fichier ;
+- un fichier V2 conserve une projection `segments` / `structureSegmentIds` compatible avec l'ancien écran téléphone ; une sauvegarde issue de cet ancien écran préserve les métadonnées V2 déjà présentes ;
+- tant que la piste horizontale n'utilise pas encore ce nouveau modèle, les écrans actuels continuent volontairement d'enregistrer le format V1 et leur comportement reste inchangé ;
+- les champs d'occurrence V2 participent au hash de synchronisation afin que répétition, mute et couleur soient transférés comme données de l'Arrangement.
 
 La liste verticale allongée actuellement visible en bas est une étape intermédiaire validée. Sa position au-dessus du `Playback Control` est conservée dans la cible, mais son contenu évolue vers une piste horizontale de conteneurs audio.
 
@@ -294,7 +298,7 @@ Règles :
 
 ### Ordre d'implémentation recommandé
 
-1. introduire le modèle d'occurrence indépendant et rétrocompatible, incluant la couleur ;
+1. ✅ introduire le modèle d'occurrence indépendant et rétrocompatible, incluant la couleur ;
 2. remplacer la liste verticale intermédiaire par une piste horizontale statique et défilable ;
 3. permettre de sélectionner un bloc et de recharger ses points IN / OUT dans la waveform source ;
 4. ajouter progressivement renommage, couleur, déplacement, duplication, mute et répétition ;

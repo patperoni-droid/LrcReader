@@ -141,6 +141,9 @@ class SmpSyncHashing {
         root.optJSONArray("structureSegmentIds")?.let { structureIds ->
             out.put("structureSegmentIds", syncArrangementStructureIds(structureIds))
         }
+        root.optJSONArray("entries")?.let { entries ->
+            out.put("entries", syncArrangementEntries(entries))
+        }
         return out.takeIf { it.length() > 0 }
     }
 
@@ -168,6 +171,35 @@ class SmpSyncHashing {
         return JSONArray().apply {
             for (index in 0 until structureIds.length()) {
                 structureIds.optString(index).trim().takeIf { it.isNotEmpty() }?.let(::put)
+            }
+        }
+    }
+
+    private fun syncArrangementEntries(entries: JSONArray): JSONArray {
+        return JSONArray().apply {
+            for (index in 0 until entries.length()) {
+                val entry = entries.optJSONObject(index) ?: continue
+                val entryId = entry.optString("entryId").trim().takeIf { it.isNotEmpty() } ?: continue
+                val name = entry.optString("name").trim().takeIf { it.isNotEmpty() } ?: continue
+                val startMs = entry.optLong("startMs", -1L)
+                val endMs = entry.optLong("endMs", -1L)
+                if (startMs < 0L || endMs <= startMs) continue
+                put(
+                    JSONObject()
+                        .put("entryId", entryId)
+                        .put("name", name)
+                        .put("startMs", startMs)
+                        .put("endMs", endMs)
+                        .put("repeatCount", entry.optInt("repeatCount", 1).coerceAtLeast(1))
+                        .put("muted", entry.optBoolean("muted", false))
+                        .apply {
+                            if (entry.has("color") && !entry.isNull("color")) {
+                                entry.optString("color").trim().takeIf { it.isNotEmpty() }?.let { color ->
+                                    put("color", color)
+                                }
+                            }
+                        }
+                )
             }
         }
     }

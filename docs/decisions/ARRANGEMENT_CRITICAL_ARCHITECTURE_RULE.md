@@ -107,6 +107,9 @@ Structure :
 - les occurrences muettes sont exclues de la liste Media3 préparée sans être supprimées du projet
 - cette évolution supprime les deux colonnes visibles, mais ne change pas l'obligation de préparer toute la playlist Media3 avant lecture
 - toute évolution du modèle partagé doit rester rétrocompatible et ne provoquer aucun changement fonctionnel sur téléphone
+- le stockage V2 porte les occurrences indépendantes dans `entries` et maintient une projection `segments` / `structureSegmentIds` pour les lecteurs V1
+- la lecture d'un stockage V1 dérive des `entryId` déterministes en mémoire sans migration destructive ni réécriture automatique
+- si l'ancien écran téléphone sauvegarde un Arrangement déjà en V2, les métadonnées `repeatCount`, `muted` et `color` existantes sont préservées par identité d'occurrence
 
 ⸻
 

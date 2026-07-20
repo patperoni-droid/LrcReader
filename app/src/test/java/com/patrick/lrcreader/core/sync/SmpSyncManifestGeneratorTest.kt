@@ -594,6 +594,34 @@ class SmpSyncManifestGeneratorTest {
     }
 
     @Test
+    fun arrangementOccurrenceFields_updateArrangementHash() {
+        val base =
+            """{"version":2,"name":"Arrangement 1","sourceSongId":"song_001","segments":[{"id":"entry_a","name":"Intro","startMs":0,"endMs":1000}],"structureSegmentIds":["entry_a"],"entries":[{"entryId":"entry_a","name":"Intro","startMs":0,"endMs":1000,"repeatCount":1,"muted":false,"color":"amber"}]}"""
+        val repeated = base.replace("\"repeatCount\":1", "\"repeatCount\":2")
+        val muted = base.replace("\"muted\":false", "\"muted\":true")
+        val recolored = base.replace("\"color\":\"amber\"", "\"color\":\"blue\"")
+
+        val baseHash = hashing.hashSyncArrangementJsonText(base)
+
+        assertNotEquals(baseHash, hashing.hashSyncArrangementJsonText(repeated))
+        assertNotEquals(baseHash, hashing.hashSyncArrangementJsonText(muted))
+        assertNotEquals(baseHash, hashing.hashSyncArrangementJsonText(recolored))
+    }
+
+    @Test
+    fun arrangementOccurrenceLocalFields_doNotChangeArrangementHash() {
+        val first =
+            """{"version":2,"name":"Arrangement 1","sourceSongId":"song_001","segments":[{"id":"entry_a","name":"Intro","startMs":0,"endMs":1000}],"structureSegmentIds":["entry_a"],"entries":[{"entryId":"entry_a","name":"Intro","startMs":0,"endMs":1000,"repeatCount":1,"muted":false,"color":"amber","selected":true,"dragOffset":12}]}"""
+        val second =
+            """{"version":9,"name":"Arrangement 1","sourceSongId":"another_local_id","segments":[{"id":"entry_a","name":"Intro","startMs":0,"endMs":1000}],"structureSegmentIds":["entry_a"],"entries":[{"entryId":"entry_a","name":"Intro","startMs":0,"endMs":1000,"repeatCount":1,"muted":false,"color":"amber","selected":false,"dragOffset":99}]}"""
+
+        assertEquals(
+            hashing.hashSyncArrangementJsonText(first),
+            hashing.hashSyncArrangementJsonText(second)
+        )
+    }
+
+    @Test
     fun absentComponent_doesNotFailManifestGeneration() {
         val dir = Files.createTempDirectory("sync_manifest_absent_").toFile()
         try {
