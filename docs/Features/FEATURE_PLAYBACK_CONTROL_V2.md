@@ -166,7 +166,7 @@ Déploiement tablette réalisé et validé dans :
 
 La Timeline utilise désormais le Playback Control officiel comme unique contrôle principal de lecture.
 
-Pour le futur écran Arrangement, la règle validée est de conserver le Playback Control officiel fixé en bas et toujours visible. Cette conception est documentée dans `FEATURE_TEMPO_ARRANGEMENT.md` mais n'est pas encore implémentée.
+Pour le futur écran Arrangement tablette, la règle validée est de conserver le Playback Control officiel fixé en bas et toujours visible. Cette conception est documentée dans `FEATURE_TEMPO_ARRANGEMENT.md` mais n'est pas encore implémentée. Elle ne doit produire aucun changement d'interface ou de comportement sur téléphone.
 
 ---
 

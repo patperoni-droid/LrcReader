@@ -415,6 +415,8 @@ En mode Arrangement tablette :
 - le composant continue de contrôler le Playback principal ;
 - la preview de Structure reste un moteur secondaire isolé et ne doit pas être présentée comme une variante du `Playback Control` officiel.
 
+Cette intégration ne concerne pas le téléphone. Le Playback Control et l'écran Arrangement téléphone conservent leur disposition et leur comportement actuels.
+
 La définition complète de l'interface à liste unique, des répétitions, du mute et de la duplication se trouve dans `docs/Features/FEATURE_TEMPO_ARRANGEMENT.md`.
 
 ---

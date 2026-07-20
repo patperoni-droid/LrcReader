@@ -71,7 +71,18 @@ Segment A → Segment B → Segment C
 
 ## 🧭 UX CIBLE — LISTE UNIQUE D'ARRANGEMENT
 
-**Statut : conception validée, non encore implémentée.**
+**Statut : conception tablette validée, non encore implémentée.**
+
+### Périmètre appareil — tablette uniquement
+
+Cette évolution d'interface concerne exclusivement la tablette.
+
+- le téléphone conserve l'écran Arrangement, sa disposition, sa navigation et ses comportements actuels ;
+- la liste unique ne doit jamais être activée sur téléphone ;
+- le remplacement de la playlist par le récepteur de segments est strictement conditionné au mode tablette ;
+- aucun espace, bouton ou geste supplémentaire ne doit être ajouté à l'interface téléphone ;
+- toute évolution du stockage partagé doit rester transparente et rétrocompatible pour le téléphone ;
+- la validation finale doit démontrer explicitement l'absence de régression téléphone.
 
 La future interface ne doit plus séparer :
 
