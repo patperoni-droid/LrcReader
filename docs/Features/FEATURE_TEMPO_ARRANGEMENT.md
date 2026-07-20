@@ -108,6 +108,12 @@ Implémenté dans l'éditeur canonique tablette :
 - la sélection active reste verte, la prochaine occurrence préparée reste jaune et la suppression conserve le comportement existant ;
 - le défilement horizontal est un état d'interface local : il ne modifie ni l'ordre, ni le stockage, ni la lecture audio ;
 - le téléphone continue d'utiliser la carte verticale historique sans changement visuel ou fonctionnel.
+- lors du chargement tablette, chaque occurrence de la Structure reçoit son `entryId` V2 indépendant, y compris lorsque plusieurs occurrences provenaient du même segment V1 ;
+- toucher un bloc recharge ses propres `startMs` / `endMs` dans les poignées IN / OUT de la waveform source ;
+- une correction IN / OUT, une suppression ou un undo conserve cette identité d'occurrence et sauvegarde la Structure tablette en V2 ;
+- les segments V1 non placés dans la Structure restent conservés dans le fichier pour éviter toute perte pendant la migration ;
+- ouvrir l'Arrangement ou sélectionner un bloc ne réécrit pas le fichier : la migration V2 est enregistrée seulement lors d'une modification explicite ;
+- le téléphone continue d'enregistrer sa forme V1 lorsqu'il travaille sur un Arrangement V1.
 
 La piste reste volontairement statique à cette étape : le glisser-déposer, les couleurs personnalisées, le mute et les répétitions seront branchés progressivement sur le modèle d'occurrence V2 lors des étapes suivantes.
 
@@ -304,7 +310,7 @@ Règles :
 
 1. ✅ introduire le modèle d'occurrence indépendant et rétrocompatible, incluant la couleur ;
 2. ✅ remplacer la liste verticale intermédiaire par une piste horizontale statique et défilable ;
-3. permettre de sélectionner un bloc et de recharger ses points IN / OUT dans la waveform source ;
+3. ✅ permettre de sélectionner un bloc et de recharger ses points IN / OUT dans la waveform source ;
 4. ajouter progressivement renommage, couleur, déplacement, duplication, mute et répétition ;
 5. relier la tête de lecture visuelle à la preview Structure réelle ;
 6. ajouter ensuite la playlist latérale escamotable et valider le redimensionnement sans changement d'état.

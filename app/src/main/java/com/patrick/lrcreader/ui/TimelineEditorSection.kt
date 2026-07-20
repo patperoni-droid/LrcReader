@@ -117,7 +117,7 @@ import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.core.light.LightSceneState
 import com.patrick.lrcreader.exo.R
-import com.patrick.lrcreader.smp.ArrangementData
+import com.patrick.lrcreader.smp.ArrangementEntryData
 import com.patrick.lrcreader.smp.ArrangementSegmentData
 import com.patrick.lrcreader.smp.ArrangementStore
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
@@ -129,6 +129,9 @@ import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SongUnit
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
+import com.patrick.lrcreader.smp.buildArrangementDataForPersistence
+import com.patrick.lrcreader.smp.reconcileArrangementEntries
+import com.patrick.lrcreader.smp.toOccurrenceProjection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -222,6 +225,7 @@ private fun List<ArrangementSegmentData>.persistDebugSnapshot(): String =
 private data class ArrangementUndoSnapshot(
     val segments: List<ArrangementSegmentData>,
     val structureSegmentIds: List<String>,
+    val entries: List<ArrangementEntryData>,
     val selectedSegmentId: String?,
     val selectedStructureIndex: Int?
 )
@@ -1865,6 +1869,10 @@ private fun TimelineMeasuresPlaceholder(
     var arrangementName by remember(currentSongId) { mutableStateOf("Arrangement 1") }
     var arrangementSegments by remember(currentSongId) { mutableStateOf<List<ArrangementSegmentData>>(emptyList()) }
     var structureSegmentIds by remember(currentSongId) { mutableStateOf<List<String>>(emptyList()) }
+    var arrangementEntries by remember(currentSongId) { mutableStateOf<List<ArrangementEntryData>>(emptyList()) }
+    var preservedLegacyArrangementSegments by remember(currentSongId) {
+        mutableStateOf<List<ArrangementSegmentData>>(emptyList())
+    }
     val arrangementSaveMutex = remember(currentSongId) { Mutex() }
     val segmentSelectionCounts = remember(currentSongId) { mutableStateMapOf<String, Int>() }
     var arrangementUndoStack by remember(currentSongId) { mutableStateOf<List<ArrangementUndoSnapshot>>(emptyList()) }
@@ -2263,6 +2271,7 @@ private fun TimelineMeasuresPlaceholder(
     fun persistArrangementState(
         nextSegments: List<ArrangementSegmentData> = arrangementSegments,
         nextStructureSegmentIds: List<String> = structureSegmentIds,
+        nextEntries: List<ArrangementEntryData> = arrangementEntries,
         debugSegmentId: String? = null
     ) {
         val songId = currentSongId?.trim().orEmpty()
@@ -2270,6 +2279,17 @@ private fun TimelineMeasuresPlaceholder(
         val snapshotName = arrangementName.ifBlank { "Arrangement 1" }
         val snapshotSegments = nextSegments.toList()
         val snapshotStructureSegmentIds = nextStructureSegmentIds.toList()
+        val snapshotEntries = nextEntries.toList()
+        val snapshotLegacySegments = preservedLegacyArrangementSegments.toList()
+        val dataToPersist = buildArrangementDataForPersistence(
+            useOccurrenceModel = constrainToAvailableHeight,
+            name = snapshotName,
+            sourceSongId = songId,
+            segments = snapshotSegments,
+            structureSegmentIds = snapshotStructureSegmentIds,
+            existingEntries = snapshotEntries,
+            preservedLegacySegments = snapshotLegacySegments
+        )
         debugSegmentId?.let { segmentId ->
             Log.d(
                 ARR_SEGMENT_PERSIST_TAG,
@@ -2289,12 +2309,7 @@ private fun TimelineMeasuresPlaceholder(
                 val saved = ArrangementStore.save(
                     context = context.applicationContext,
                     songId = songId,
-                    data = ArrangementData(
-                        name = snapshotName,
-                        sourceSongId = songId,
-                        segments = snapshotSegments,
-                        structureSegmentIds = snapshotStructureSegmentIds
-                    )
+                    data = dataToPersist
                 )
                 debugSegmentId?.let { segmentId ->
                     val storedData = ArrangementStore.load(context.applicationContext, songId)
@@ -2315,6 +2330,7 @@ private fun TimelineMeasuresPlaceholder(
         ArrangementUndoSnapshot(
             segments = arrangementSegments.toList(),
             structureSegmentIds = structureSegmentIds.toList(),
+            entries = arrangementEntries.toList(),
             selectedSegmentId = selectedSegmentLoopId,
             selectedStructureIndex = selectedStructureEditIndex
         )
@@ -2326,7 +2342,10 @@ private fun TimelineMeasuresPlaceholder(
     fun restoreArrangementUndoSnapshot(snapshot: ArrangementUndoSnapshot) {
         arrangementSegments = snapshot.segments
         structureSegmentIds = snapshot.structureSegmentIds
-        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(snapshot.segments)
+        arrangementEntries = snapshot.entries
+        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(
+            snapshot.segments + preservedLegacyArrangementSegments
+        )
         val selectedSegment = snapshot.selectedSegmentId
             ?.let { segmentId -> snapshot.segments.firstOrNull { it.id == segmentId } }
         selectedSegmentLoopId = selectedSegment?.id
@@ -2357,7 +2376,8 @@ private fun TimelineMeasuresPlaceholder(
         pendingSegmentEditUndoSnapshot = null
         persistArrangementState(
             nextSegments = snapshot.segments,
-            nextStructureSegmentIds = snapshot.structureSegmentIds
+            nextStructureSegmentIds = snapshot.structureSegmentIds,
+            nextEntries = snapshot.entries
         )
     }
 
@@ -2375,8 +2395,18 @@ private fun TimelineMeasuresPlaceholder(
         pushArrangementUndoSnapshot()
         val nextStructureSegmentIds = structureSegmentIds.filterNot { it == targetId }
         val structureChanged = nextStructureSegmentIds.size != structureSegmentIds.size
+        val nextEntries = if (constrainToAvailableHeight) {
+            reconcileArrangementEntries(
+                segments = nextSegments,
+                structureSegmentIds = nextStructureSegmentIds,
+                existingEntries = arrangementEntries
+            )
+        } else {
+            arrangementEntries
+        }
         arrangementSegments = nextSegments
         structureSegmentIds = nextStructureSegmentIds
+        arrangementEntries = nextEntries
 	        if (selectedSegmentLoopId == targetId) {
             Log.d(
                 ARR_SEGMENT_STATE_TAG,
@@ -2399,10 +2429,13 @@ private fun TimelineMeasuresPlaceholder(
         }
         selectedStructureEditIndex = selectedStructureEditIndex
             ?.takeIf { index -> index in nextStructureSegmentIds.indices }
-        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(nextSegments)
+        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(
+            nextSegments + preservedLegacyArrangementSegments
+        )
         persistArrangementState(
             nextSegments = nextSegments,
-            nextStructureSegmentIds = nextStructureSegmentIds
+            nextStructureSegmentIds = nextStructureSegmentIds,
+            nextEntries = nextEntries
         )
     }
 
@@ -2444,6 +2477,8 @@ private fun TimelineMeasuresPlaceholder(
                 arrangementName = "Arrangement 1"
                 arrangementSegments = emptyList()
                 structureSegmentIds = emptyList()
+                arrangementEntries = emptyList()
+                preservedLegacyArrangementSegments = emptyList()
                 currentSongTrackGainDb = 0
                 nextSegmentIndex = 1L
 	            renameSegmentId = null
@@ -2531,8 +2566,18 @@ private fun TimelineMeasuresPlaceholder(
 
         val arrangementData = ArrangementStore.load(context.applicationContext, songId)
         arrangementName = arrangementData?.name?.ifBlank { "Arrangement 1" } ?: "Arrangement 1"
-        arrangementSegments = arrangementData?.segments.orEmpty()
-        structureSegmentIds = arrangementData?.structureSegmentIds.orEmpty()
+        if (constrainToAvailableHeight && arrangementData != null) {
+            val occurrenceProjection = arrangementData.toOccurrenceProjection()
+            arrangementSegments = occurrenceProjection.segments
+            structureSegmentIds = occurrenceProjection.structureSegmentIds
+            arrangementEntries = occurrenceProjection.entries
+            preservedLegacyArrangementSegments = occurrenceProjection.preservedLegacySegments
+        } else {
+            arrangementSegments = arrangementData?.segments.orEmpty()
+            structureSegmentIds = arrangementData?.structureSegmentIds.orEmpty()
+            arrangementEntries = arrangementData?.entries.orEmpty()
+            preservedLegacyArrangementSegments = emptyList()
+        }
         Log.d(
             ARR_SEGMENT_PERSIST_TAG,
             "LOAD_FROM_STORE songId=$songId segments=${arrangementSegments.persistDebugSnapshot()} " +
@@ -2540,7 +2585,9 @@ private fun TimelineMeasuresPlaceholder(
         )
         selectedStructureEditIndex = null
         structureEditFocusRequest = 0
-	        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(arrangementSegments)
+        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(
+            arrangementSegments + preservedLegacyArrangementSegments
+        )
 	        renameSegmentId = null
 	        segmentOptionsTargetId = null
         Log.d(
@@ -2620,6 +2667,7 @@ private fun TimelineMeasuresPlaceholder(
     }
     val latestArrangementSegments by rememberUpdatedState(arrangementSegments)
     val latestStructureSegmentIds by rememberUpdatedState(structureSegmentIds)
+    val latestArrangementEntries by rememberUpdatedState(arrangementEntries)
     val latestStructurePlaybackSegments by rememberUpdatedState(structurePlaybackSegments)
     val latestCurrentSongAudioPath by rememberUpdatedState(currentSongAudioPath)
     val latestCurrentStructureSourcePath by rememberUpdatedState(currentStructureSourcePath)
@@ -2813,9 +2861,19 @@ private fun TimelineMeasuresPlaceholder(
                 segment
             }
         }
-	        arrangementSegments = nextSegments
-	        segmentInMs = boundedStartMs
-	        segmentOutMs = boundedEndMs
+        val nextEntries = if (constrainToAvailableHeight) {
+            reconcileArrangementEntries(
+                segments = nextSegments,
+                structureSegmentIds = latestStructureSegmentIds,
+                existingEntries = latestArrangementEntries
+            )
+        } else {
+            latestArrangementEntries
+        }
+        arrangementSegments = nextSegments
+        arrangementEntries = nextEntries
+        segmentInMs = boundedStartMs
+        segmentOutMs = boundedEndMs
         Log.d(
             ARR_SEGMENT_STATE_TAG,
             "STATE_CHANGE reason=edit_segment_bounds callSite=updateSelectedArrangementSegmentBounds " +
@@ -2853,6 +2911,7 @@ private fun TimelineMeasuresPlaceholder(
             persistArrangementState(
                 nextSegments = nextSegments,
                 nextStructureSegmentIds = latestStructureSegmentIds,
+                nextEntries = nextEntries,
                 debugSegmentId = targetSegment.id
             )
             if (loopEnabled && !structurePlaybackActive && arrangementLoopPreviewActive) {
@@ -3907,12 +3966,23 @@ private fun TimelineMeasuresPlaceholder(
                         } else {
                             structureSegmentIds
                         }
+                        val nextEntries = if (constrainToAvailableHeight) {
+                            reconcileArrangementEntries(
+                                segments = nextSegments,
+                                structureSegmentIds = nextStructureSegmentIds,
+                                existingEntries = arrangementEntries
+                            )
+                        } else {
+                            arrangementEntries
+                        }
                         arrangementSegments = nextSegments
                         structureSegmentIds = nextStructureSegmentIds
+                        arrangementEntries = nextEntries
                         nextSegmentIndex = nextIndex
                         persistArrangementState(
                             nextSegments = nextSegments,
-                            nextStructureSegmentIds = nextStructureSegmentIds
+                            nextStructureSegmentIds = nextStructureSegmentIds,
+                            nextEntries = nextEntries
                         )
                     }
                     .padding(horizontal = 10.dp, vertical = 8.dp)
@@ -4298,6 +4368,15 @@ private fun TimelineMeasuresPlaceholder(
                         } else {
                             arrangementSegments
                         }
+                        val nextEntries = if (constrainToAvailableHeight) {
+                            reconcileArrangementEntries(
+                                segments = nextSegments,
+                                structureSegmentIds = nextStructureSegmentIds,
+                                existingEntries = arrangementEntries
+                            )
+                        } else {
+                            arrangementEntries
+                        }
                         if (
                             constrainToAvailableHeight &&
                             removedSegmentId !in nextStructureSegmentIds &&
@@ -4329,10 +4408,14 @@ private fun TimelineMeasuresPlaceholder(
                         }
                         arrangementSegments = nextSegments
                         structureSegmentIds = nextStructureSegmentIds
-                        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(nextSegments)
+                        arrangementEntries = nextEntries
+                        nextSegmentIndex = resolveNextTimelineArrangementSegmentIndex(
+                            nextSegments + preservedLegacyArrangementSegments
+                        )
                         persistArrangementState(
                             nextSegments = nextSegments,
-                            nextStructureSegmentIds = nextStructureSegmentIds
+                            nextStructureSegmentIds = nextStructureSegmentIds,
+                            nextEntries = nextEntries
                         )
                     }
                 },
@@ -4501,11 +4584,14 @@ private fun TimelineMeasuresPlaceholder(
                                         ArrangementStore.save(
                                             context = context.applicationContext,
                                             songId = songId,
-                                            data = ArrangementData(
+                                            data = buildArrangementDataForPersistence(
+                                                useOccurrenceModel = constrainToAvailableHeight,
                                                 name = chosenName,
                                                 sourceSongId = songId,
                                                 segments = arrangementSegments,
-                                                structureSegmentIds = structureSegmentIds
+                                                structureSegmentIds = structureSegmentIds,
+                                                existingEntries = arrangementEntries,
+                                                preservedLegacySegments = preservedLegacyArrangementSegments
                                             )
                                         )
                                     }
