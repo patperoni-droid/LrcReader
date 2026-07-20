@@ -51,6 +51,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Folder
@@ -1454,6 +1455,7 @@ class MainActivity : AppCompatActivity() {
                 var tabletLibrarySearchCloseSignal by remember { mutableIntStateOf(0) }
                 var tabletLibraryOpenStorageSignal by remember { mutableIntStateOf(0) }
                 var tabletLyricsEditorFocusMode by remember { mutableStateOf(false) }
+                var tabletArrangementFocusMode by remember { mutableStateOf(false) }
 
                 // ✅ MODE de recherche (PLAYER ou DJ)
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
@@ -4445,6 +4447,7 @@ class MainActivity : AppCompatActivity() {
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
                                         onTabletFocusEditingChange = { tabletLyricsEditorFocusMode = it },
+                                        onTabletArrangementFocusChange = { tabletArrangementFocusMode = it },
                                         stableTabletLyricsEditorSession = true,
                                         readerHeaderEndContent = {}
                                     )
@@ -5105,6 +5108,7 @@ class MainActivity : AppCompatActivity() {
                                 LaunchedEffect(useTabletSplitLiveLayout, tabletRightPanel) {
                                     if (!useTabletSplitLiveLayout || tabletRightPanel != TabletSplitRightPanel.LYRICS) {
                                         tabletLyricsEditorFocusMode = false
+                                        tabletArrangementFocusMode = false
                                     }
                                 }
 
@@ -5137,22 +5141,33 @@ class MainActivity : AppCompatActivity() {
                                         ) {
                                             // Experimental tablet live layout; each pane reuses the existing screen contract.
                                             Box(
-                                                Modifier
-                                                    .weight(0.38f)
-                                                    .fillMaxHeight()
+                                                modifier = if (tabletArrangementFocusMode) {
+                                                    Modifier
+                                                        .width(0.dp)
+                                                        .fillMaxHeight()
+                                                } else {
+                                                    Modifier
+                                                        .weight(0.38f)
+                                                        .fillMaxHeight()
+                                                }
                                             ) {
-                                                quickPlaylistsPane(Modifier.fillMaxSize())
+                                                if (!tabletArrangementFocusMode) {
+                                                    quickPlaylistsPane(Modifier.fillMaxSize())
+                                                }
                                             }
                                             Box(
                                                 Modifier
-                                                    .weight(0.62f)
+                                                    .weight(if (tabletArrangementFocusMode) 1f else 0.62f)
                                                     .fillMaxHeight()
                                             ) {
                                                 when (tabletRightPanel) {
                                                     TabletSplitRightPanel.LYRICS -> {
                                                         Column(Modifier.fillMaxSize()) {
                                                             Box(
-                                                                modifier = if (tabletLyricsEditorFocusMode) {
+                                                                modifier = if (
+                                                                    tabletLyricsEditorFocusMode ||
+                                                                    tabletArrangementFocusMode
+                                                                ) {
                                                                     Modifier
                                                                         .fillMaxWidth()
                                                                         .height(0.dp)
@@ -5160,7 +5175,10 @@ class MainActivity : AppCompatActivity() {
                                                                     Modifier.fillMaxWidth()
                                                                 }
                                                             ) {
-                                                                if (!tabletLyricsEditorFocusMode) {
+                                                                if (
+                                                                    !tabletLyricsEditorFocusMode &&
+                                                                    !tabletArrangementFocusMode
+                                                                ) {
                                                                     TabletSplitTopNavigationShortcuts()
                                                                 }
                                                             }

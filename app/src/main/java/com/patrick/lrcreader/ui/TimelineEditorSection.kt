@@ -231,6 +231,8 @@ private data class ArrangementUndoSnapshot(
 fun TimelineEditorSection(
     currentSongId: String?,
     startInGridSetup: Boolean = false,
+    tabletArrangementLayout: Boolean = false,
+    onArrangementModeChange: (Boolean) -> Unit = {},
     markers: List<TimelineMarker>,
     palette: List<String>,
     isPlaying: Boolean,
@@ -293,6 +295,17 @@ fun TimelineEditorSection(
                 TimelineEditorMode.TIMELINE
             }
         )
+    }
+    val currentOnArrangementModeChange by rememberUpdatedState(onArrangementModeChange)
+    LaunchedEffect(editorMode, tabletArrangementLayout) {
+        currentOnArrangementModeChange(
+            tabletArrangementLayout && editorMode == TimelineEditorMode.GRID_SETUP
+        )
+    }
+    DisposableEffect(Unit) {
+        onDispose {
+            currentOnArrangementModeChange(false)
+        }
     }
     var displayMode by remember { mutableStateOf(TimelineDisplayMode.MEASURES) }
     var measuresViewMode by remember { mutableStateOf(TimelineMeasuresViewMode.LIST) }
@@ -845,6 +858,14 @@ fun TimelineEditorSection(
             }
             TimelineEditorMode.GRID_SETUP -> {
                 GridSetupHost(
+                    modifier = if (tabletArrangementLayout) {
+                        Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                    } else {
+                        Modifier
+                    },
+                    constrainToAvailableHeight = tabletArrangementLayout,
                     currentSongId = currentSongId,
                     fallbackTempoBpm = measuresTempoBpm,
                     measureAnchorMs = measureAnchorMs,
@@ -1580,6 +1601,8 @@ private fun timelineMarkerKindLabel(kind: TimelineMarkerKind): String {
 
 @Composable
 private fun GridSetupHost(
+    modifier: Modifier = Modifier,
+    constrainToAvailableHeight: Boolean = false,
     currentSongId: String?,
     fallbackTempoBpm: Int?,
     measureAnchorMs: Long?,
@@ -1658,6 +1681,8 @@ private fun GridSetupHost(
     }
 
     TimelineMeasuresPlaceholder(
+        modifier = modifier,
+        constrainToAvailableHeight = constrainToAvailableHeight,
         currentSongId = currentSongId,
         tempoDraft = gridTempoDraft,
         isTempoInvalid = isTempoInvalid,
@@ -1714,6 +1739,8 @@ private fun GridSetupHost(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TimelineMeasuresPlaceholder(
+    modifier: Modifier = Modifier,
+    constrainToAvailableHeight: Boolean = false,
     currentSongId: String?,
     tempoDraft: String,
     isTempoInvalid: Boolean,
@@ -3345,13 +3372,24 @@ private fun TimelineMeasuresPlaceholder(
         ArrangementSamplerTestScreen(
             songId = currentSongId,
             onClose = { showSamplerTestScreen = false },
-            modifier = Modifier.fillMaxSize()
+            modifier = if (constrainToAvailableHeight) {
+                modifier.fillMaxSize()
+            } else {
+                Modifier.fillMaxSize()
+            }
         )
     } else {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp),
+        modifier = if (constrainToAvailableHeight) {
+            modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(top = 8.dp)
+        } else {
+            modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+        },
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Box(modifier = Modifier.fillMaxWidth()) {

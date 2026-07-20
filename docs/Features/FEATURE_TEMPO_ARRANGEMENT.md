@@ -71,7 +71,23 @@ Segment A → Segment B → Segment C
 
 ## 🧭 UX CIBLE — LISTE UNIQUE D'ARRANGEMENT
 
-**Statut : conception tablette validée, non encore implémentée.**
+**Statut : conception tablette validée, mise en œuvre progressive en cours.**
+
+### État d'implémentation
+
+Fondation tablette réalisée :
+
+- l'entrée dans l'éditeur Arrangement est désormais signalée explicitement au layout tablette ;
+- pendant cette édition, la playlist est repliée et l'éditeur conserve la même instance tout en prenant toute la largeur disponible ;
+- les raccourcis supérieurs du panneau droit sont masqués afin de libérer la hauteur utile ;
+- le contenu d'Arrangement est contraint et défilable au-dessus du `Playback Control`, qui reste visible en bas ;
+- ce comportement est strictement conditionné au layout tablette et ne modifie pas le téléphone.
+
+Reste à réaliser :
+
+- remplacer le repli temporaire de la playlist par le récepteur de segments ;
+- fusionner les deux colonnes `Segments` et `Structure` en une liste unique ordonnée ;
+- ajouter les gestes et actions d'occurrence décrits ci-dessous.
 
 ### Périmètre appareil — tablette uniquement
 

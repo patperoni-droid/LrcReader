@@ -182,6 +182,7 @@ fun PlayerScreen(
     onLiveGainDelta: (Int) -> Unit = {},
     showPhoneLiveGainDrawer: Boolean = false,
     onTabletFocusEditingChange: (Boolean) -> Unit = {},
+    onTabletArrangementFocusChange: (Boolean) -> Unit = {},
     stableTabletLyricsEditorSession: Boolean = false,
     readerHeaderEndContent: @Composable RowScope.() -> Unit = {}
 ) {
@@ -3000,6 +3001,8 @@ fun PlayerScreen(
             TimelineEditorSection(
                 currentSongId = currentSongId,
                 startInGridSetup = startTimelineInGridSetup,
+                tabletArrangementLayout = compactTabletLayout,
+                onArrangementModeChange = onTabletArrangementFocusChange,
                 markers = timelineEditorMarkers,
                 palette = timelinePalette,
                 isPlaying = isPlaying,
