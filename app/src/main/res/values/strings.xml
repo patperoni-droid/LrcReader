@@ -100,6 +100,16 @@
     <string name="arrangement_structure_audio_preparing">Préparation audio…</string>
     <string name="arrangement_segment_range">%1$s → %2$s</string>
     <string name="arrangement_segment_default_name">Segment</string>
+    <string name="arrangement_occurrence_duplicate">Dupliquer</string>
+    <string name="arrangement_occurrence_paste_after">Coller après</string>
+    <string name="arrangement_occurrence_mute">Mettre en mute</string>
+    <string name="arrangement_occurrence_unmute">Réactiver le son</string>
+    <string name="arrangement_occurrence_muted">Occurrence en mute</string>
+    <string name="arrangement_occurrence_repeat">Répétitions</string>
+    <string name="arrangement_occurrence_repeat_value">×%1$d</string>
+    <string name="arrangement_occurrence_repeat_decrease">Diminuer les répétitions</string>
+    <string name="arrangement_occurrence_repeat_increase">Augmenter les répétitions</string>
+    <string name="arrangement_occurrence_drag">Déplacer l’occurrence</string>
     <string name="common_ellipsis">…</string>
     <string name="common_percent_value">%1$d %%</string>
     <!-- Mixer / Console -->

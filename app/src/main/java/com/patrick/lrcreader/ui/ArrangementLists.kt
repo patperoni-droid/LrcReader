@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -20,8 +21,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -31,17 +35,22 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.exo.R
+import kotlin.math.abs
 
 data class ArrangementListItem(
     val id: String,
     val title: String,
     val durationMs: Long? = null,
+    val repeatCount: Int = 1,
+    val isMuted: Boolean = false,
+    val color: String? = null,
     val isActive: Boolean = false,
     val isQueued: Boolean = false
 )
@@ -57,7 +66,9 @@ fun ArrangementListCard(
     onItemAdd: ((String) -> Unit)?,
     onItemDelete: ((String) -> Unit)?,
     onItemLongClick: ((String) -> Unit)?,
-    horizontalTrack: Boolean = false
+    horizontalTrack: Boolean = false,
+    onItemMove: ((String, Int) -> Unit)? = null,
+    itemActionsEnabled: Boolean = true
 ) {
     Card(
         modifier = modifier,
@@ -96,7 +107,9 @@ fun ArrangementListCard(
                     onItemClick = onItemClick,
                     onItemAdd = onItemAdd,
                     onItemDelete = onItemDelete,
-                    onItemLongClick = onItemLongClick
+                    onItemLongClick = onItemLongClick,
+                    onItemMove = onItemMove,
+                    itemActionsEnabled = itemActionsEnabled
                 )
             } else {
                 Column(
@@ -180,7 +193,9 @@ private fun ArrangementHorizontalTrack(
     onItemClick: (String) -> Unit,
     onItemAdd: ((String) -> Unit)?,
     onItemDelete: ((String) -> Unit)?,
-    onItemLongClick: ((String) -> Unit)?
+    onItemLongClick: ((String) -> Unit)?,
+    onItemMove: ((String, Int) -> Unit)?,
+    itemActionsEnabled: Boolean
 ) {
     val scrollState = rememberScrollState()
     Row(
@@ -202,10 +217,12 @@ private fun ArrangementHorizontalTrack(
                 item.isQueued -> Color(0xFFFFD54F)
                 else -> Color(0xFF455A64)
             }
+            val occurrenceColor = arrangementTrackOccurrenceColor(item.color)
             val containerColor = when {
-                item.isActive -> Color(0xFF1B5E20).copy(alpha = 0.58f)
-                item.isQueued -> Color(0xFF5D4B00).copy(alpha = 0.64f)
-                else -> Color(0xFF1C2933)
+                item.isMuted -> occurrenceColor.copy(alpha = 0.24f)
+                item.isActive -> occurrenceColor.copy(alpha = 0.82f)
+                item.isQueued -> occurrenceColor.copy(alpha = 0.68f)
+                else -> occurrenceColor.copy(alpha = 0.58f)
             }
             Column(
                 modifier = Modifier
@@ -215,7 +232,7 @@ private fun ArrangementHorizontalTrack(
                     .border(1.dp, borderColor, RoundedCornerShape(10.dp))
                     .combinedClickable(
                         onClick = { onItemClick(item.id) },
-                        onLongClick = if (onItemLongClick != null) {
+                        onLongClick = if (onItemLongClick != null && itemActionsEnabled) {
                             { onItemLongClick(item.id) }
                         } else {
                             null
@@ -226,7 +243,7 @@ private fun ArrangementHorizontalTrack(
             ) {
                 Text(
                     text = item.title,
-                    color = Color.White,
+                    color = if (item.isMuted) Color(0xFF90A4AE) else Color.White,
                     fontSize = 14.sp,
                     fontWeight = if (item.isActive || item.isQueued) {
                         FontWeight.SemiBold
@@ -250,6 +267,25 @@ private fun ArrangementHorizontalTrack(
                             modifier = Modifier.weight(1f)
                         )
                     } ?: Spacer(modifier = Modifier.weight(1f))
+                    if (item.repeatCount > 1) {
+                        Text(
+                            text = stringResource(
+                                R.string.arrangement_occurrence_repeat_value,
+                                item.repeatCount
+                            ),
+                            color = Color(0xFFCFD8DC),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                    if (item.isMuted) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.VolumeOff,
+                            contentDescription = stringResource(R.string.arrangement_occurrence_muted),
+                            tint = Color(0xFFFFB74D),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     if (onItemAdd != null) {
                         IconButton(
                             onClick = { onItemAdd(item.id) },
@@ -263,9 +299,50 @@ private fun ArrangementHorizontalTrack(
                             )
                         }
                     }
-                    if (onItemDelete != null) {
+                    if (onItemMove != null) {
+                        var dragAmount = 0f
+                        Icon(
+                            imageVector = Icons.Filled.DragHandle,
+                            contentDescription = stringResource(R.string.arrangement_occurrence_drag),
+                            tint = if (itemActionsEnabled) Color(0xFFB0BEC5) else Color(0xFF455A64),
+                            modifier = Modifier
+                                .size(28.dp)
+                                .pointerInput(item.id, itemActionsEnabled) {
+                                    if (!itemActionsEnabled) return@pointerInput
+                                    detectDragGestures(
+                                        onDragStart = { dragAmount = 0f },
+                                        onDragEnd = {
+                                            if (abs(dragAmount) >= 24.dp.toPx()) {
+                                                onItemMove(item.id, if (dragAmount > 0f) 1 else -1)
+                                            }
+                                        },
+                                        onDragCancel = { dragAmount = 0f },
+                                        onDrag = { change, drag ->
+                                            change.consume()
+                                            dragAmount += drag.x
+                                        }
+                                    )
+                                }
+                                .padding(4.dp)
+                        )
+                    }
+                    if (onItemLongClick != null) {
+                        IconButton(
+                            onClick = { onItemLongClick(item.id) },
+                            enabled = itemActionsEnabled,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.MoreVert,
+                                contentDescription = stringResource(R.string.common_cd_options),
+                                tint = if (itemActionsEnabled) Color(0xFFCFD8DC) else Color(0xFF455A64),
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    } else if (onItemDelete != null) {
                         IconButton(
                             onClick = { onItemDelete(item.id) },
+                            enabled = itemActionsEnabled,
                             modifier = Modifier.size(28.dp)
                         ) {
                             Icon(
@@ -282,6 +359,17 @@ private fun ArrangementHorizontalTrack(
     }
 }
 
+private fun arrangementTrackOccurrenceColor(color: String?): Color = when (color) {
+    "red" -> Color(0xFF6D2A2A)
+    "blue" -> Color(0xFF244A73)
+    "green" -> Color(0xFF285E3A)
+    "violet" -> Color(0xFF56336F)
+    "orange", "amber" -> Color(0xFF74471F)
+    "yellow" -> Color(0xFF665B1F)
+    "gray" -> Color(0xFF455A64)
+    else -> Color(0xFF1C2933)
+}
+
 internal fun arrangementTrackBlockWidthDp(durationMs: Long?): Float {
     val durationSeconds = durationMs?.coerceAtLeast(0L)?.div(1_000f) ?: 0f
     return (durationSeconds * ARRANGEMENT_TRACK_DP_PER_SECOND)
@@ -296,5 +384,5 @@ private fun formatArrangementTrackDuration(durationMs: Long): String {
 }
 
 private const val ARRANGEMENT_TRACK_DP_PER_SECOND = 5f
-private const val ARRANGEMENT_TRACK_MIN_BLOCK_WIDTH_DP = 112f
+private const val ARRANGEMENT_TRACK_MIN_BLOCK_WIDTH_DP = 168f
 private const val ARRANGEMENT_TRACK_MAX_BLOCK_WIDTH_DP = 600f

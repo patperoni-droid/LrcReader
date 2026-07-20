@@ -8,8 +8,8 @@ class ArrangementTrackLayoutTest {
 
     @Test
     fun blockWidth_keepsShortSegmentsTouchable() {
-        assertEquals(112f, arrangementTrackBlockWidthDp(null), 0f)
-        assertEquals(112f, arrangementTrackBlockWidthDp(2_000L), 0f)
+        assertEquals(168f, arrangementTrackBlockWidthDp(null), 0f)
+        assertEquals(168f, arrangementTrackBlockWidthDp(2_000L), 0f)
     }
 
     @Test
@@ -17,7 +17,7 @@ class ArrangementTrackLayoutTest {
         val thirtySeconds = arrangementTrackBlockWidthDp(30_000L)
         val sixtySeconds = arrangementTrackBlockWidthDp(60_000L)
 
-        assertEquals(150f, thirtySeconds, 0f)
+        assertEquals(168f, thirtySeconds, 0f)
         assertEquals(300f, sixtySeconds, 0f)
         assertTrue(sixtySeconds > thirtySeconds)
     }

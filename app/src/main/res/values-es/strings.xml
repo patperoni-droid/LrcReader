@@ -98,6 +98,16 @@
     <string name="arrangement_structure_audio_preparing">Preparando audio…</string>
     <string name="arrangement_segment_range">%1$s → %2$s</string>
     <string name="arrangement_segment_default_name">Segmento</string>
+    <string name="arrangement_occurrence_duplicate">Duplicar</string>
+    <string name="arrangement_occurrence_paste_after">Pegar después</string>
+    <string name="arrangement_occurrence_mute">Silenciar</string>
+    <string name="arrangement_occurrence_unmute">Reactivar sonido</string>
+    <string name="arrangement_occurrence_muted">Ocurrencia silenciada</string>
+    <string name="arrangement_occurrence_repeat">Repeticiones</string>
+    <string name="arrangement_occurrence_repeat_value">×%1$d</string>
+    <string name="arrangement_occurrence_repeat_decrease">Reducir repeticiones</string>
+    <string name="arrangement_occurrence_repeat_increase">Aumentar repeticiones</string>
+    <string name="arrangement_occurrence_drag">Mover ocurrencia</string>
     <string name="common_ellipsis">…</string>
     <string name="common_percent_value">%1$d %%</string>
 

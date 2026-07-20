@@ -121,4 +121,53 @@ class ArrangementOccurrenceModelTest {
         assertEquals(listOf("chorus", "chorus"), data.structureSegmentIds)
         assertTrue(data.entries.isEmpty())
     }
+
+    @Test
+    fun preparation_expandsRepeatsAndSkipsMutedOccurrences() {
+        val segments = listOf(
+            ArrangementSegmentData("intro", "Intro", 0, 1_000),
+            ArrangementSegmentData("chorus", "Refrain", 1_000, 3_000),
+            ArrangementSegmentData("outro", "Outro", 3_000, 4_000)
+        )
+        val entries = listOf(
+            ArrangementEntryData("intro", "Intro", 0, 1_000, repeatCount = 2),
+            ArrangementEntryData("chorus", "Refrain", 1_000, 3_000, muted = true),
+            ArrangementEntryData("outro", "Outro", 3_000, 4_000)
+        )
+
+        val prepared = prepareArrangementOccurrences(
+            segments = segments,
+            structureSegmentIds = listOf("intro", "chorus", "outro"),
+            entries = entries,
+            useOccurrenceModel = true
+        )
+
+        assertEquals(listOf("intro", "intro", "outro"), prepared.map { it.segment.id })
+        assertEquals(listOf(0, 0, 2), prepared.map { it.entryIndex })
+        assertEquals(listOf(0, 1, 0), prepared.map { it.repeatIndex })
+    }
+
+    @Test
+    fun phonePreparation_ignoresOccurrenceMetadata() {
+        val segment = ArrangementSegmentData("chorus", "Refrain", 1_000, 3_000)
+
+        val prepared = prepareArrangementOccurrences(
+            segments = listOf(segment),
+            structureSegmentIds = listOf("chorus", "chorus"),
+            entries = listOf(
+                ArrangementEntryData(
+                    entryId = "chorus",
+                    name = "Refrain",
+                    startMs = 1_000,
+                    endMs = 3_000,
+                    repeatCount = 4,
+                    muted = true
+                )
+            ),
+            useOccurrenceModel = false
+        )
+
+        assertEquals(listOf("chorus", "chorus"), prepared.map { it.segment.id })
+        assertEquals(listOf(0, 1), prepared.map { it.entryIndex })
+    }
 }

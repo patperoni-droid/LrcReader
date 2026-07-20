@@ -89,7 +89,6 @@ Fondation tablette réalisée :
 Reste à réaliser :
 
 - permettre d'ouvrir ou de fermer la playlist dans un panneau latéral gauche sans quitter Arrangement ;
-- ajouter les gestes et actions d'occurrence décrits ci-dessous ;
 - synchroniser une tête de lecture visuelle avec la lecture réelle de la Structure préparée.
 
 Implémenté dans l'éditeur canonique tablette :
@@ -114,8 +113,12 @@ Implémenté dans l'éditeur canonique tablette :
 - les segments V1 non placés dans la Structure restent conservés dans le fichier pour éviter toute perte pendant la migration ;
 - ouvrir l'Arrangement ou sélectionner un bloc ne réécrit pas le fichier : la migration V2 est enregistrée seulement lors d'une modification explicite ;
 - le téléphone continue d'enregistrer sa forme V1 lorsqu'il travaille sur un Arrangement V1.
-
-La piste reste volontairement statique à cette étape : le glisser-déposer, les couleurs personnalisées, le mute et les répétitions seront branchés progressivement sur le modèle d'occurrence V2 lors des étapes suivantes.
+- chaque bloc tablette propose maintenant renommage, couleur, duplication, copie/collage, mute, répétition et suppression explicite ;
+- la poignée de déplacement déplace une occurrence d'un voisin vers la gauche ou la droite sans changer son `entryId` ;
+- une duplication ou un collage crée un nouvel `entryId` indépendant et ne duplique jamais le fichier audio ;
+- la couleur, le mute et `repeatCount` sont sauvegardés dans l'entrée V2 ;
+- avant la preview ou l'export, les occurrences en mute sont exclues et les répétitions sont développées dans la liste audio préparée ;
+- pendant une preview Structure active ou sa préparation, l'ajout, le déplacement et les actions de structure sont verrouillés afin de ne jamais reconstruire le montage en pleine lecture.
 
 ### Périmètre appareil — tablette uniquement
 
@@ -311,7 +314,7 @@ Règles :
 1. ✅ introduire le modèle d'occurrence indépendant et rétrocompatible, incluant la couleur ;
 2. ✅ remplacer la liste verticale intermédiaire par une piste horizontale statique et défilable ;
 3. ✅ permettre de sélectionner un bloc et de recharger ses points IN / OUT dans la waveform source ;
-4. ajouter progressivement renommage, couleur, déplacement, duplication, mute et répétition ;
+4. ✅ ajouter renommage, couleur, déplacement, duplication, copie/collage, mute et répétition ;
 5. relier la tête de lecture visuelle à la preview Structure réelle ;
 6. ajouter ensuite la playlist latérale escamotable et valider le redimensionnement sans changement d'état.
 

@@ -130,6 +130,7 @@ import com.patrick.lrcreader.smp.SongUnit
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
 import com.patrick.lrcreader.smp.buildArrangementDataForPersistence
+import com.patrick.lrcreader.smp.prepareArrangementOccurrences
 import com.patrick.lrcreader.smp.reconcileArrangementEntries
 import com.patrick.lrcreader.smp.toOccurrenceProjection
 import kotlinx.coroutines.Dispatchers
@@ -1885,6 +1886,8 @@ private fun TimelineMeasuresPlaceholder(
     var nextSegmentIndex by remember(currentSongId) { mutableLongStateOf(1L) }
     var renameSegmentId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var segmentOptionsTargetId by remember(currentSongId) { mutableStateOf<String?>(null) }
+    var copiedArrangementEntry by remember(currentSongId) { mutableStateOf<ArrangementEntryData?>(null) }
+    var colorArrangementEntryId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var showArrangementExportProDialog by remember(currentSongId) { mutableStateOf(false) }
     var showExportNameDialog by remember(currentSongId) { mutableStateOf(false) }
     var showSamplerTestScreen by remember(currentSongId) { mutableStateOf(false) }
@@ -2621,10 +2624,21 @@ private fun TimelineMeasuresPlaceholder(
         selectedSegmentLoopStartMs != null &&
             selectedSegmentLoopEndMs != null &&
             selectedSegmentLoopStartMs != selectedSegmentLoopEndMs
-    val structurePlaybackSegments = remember(arrangementSegments, structureSegmentIds) {
-        structureSegmentIds.mapNotNull { segmentId ->
-            arrangementSegments.firstOrNull { it.id == segmentId }
-        }
+    val preparedStructureOccurrences = remember(
+        arrangementSegments,
+        structureSegmentIds,
+        arrangementEntries,
+        constrainToAvailableHeight
+    ) {
+        prepareArrangementOccurrences(
+            segments = arrangementSegments,
+            structureSegmentIds = structureSegmentIds,
+            entries = arrangementEntries,
+            useOccurrenceModel = constrainToAvailableHeight
+        )
+    }
+    val structurePlaybackSegments = remember(preparedStructureOccurrences) {
+        preparedStructureOccurrences.map { occurrence -> occurrence.segment }
     }
     val previewRenderSignature = remember(currentSongAudioPath, structurePlaybackSegments) {
         buildString {
@@ -2643,8 +2657,14 @@ private fun TimelineMeasuresPlaceholder(
     val activeStructureSegmentId = structurePlaybackSegments
         .getOrNull(structurePlaybackIndex)
         ?.id
+	val activeStructureEntryIndex = preparedStructureOccurrences
+	    .getOrNull(structurePlaybackIndex)
+	    ?.entryIndex
+	val queuedStructureEntryIndex = queuedStructureSegmentIndex
+	    ?.let { index -> preparedStructureOccurrences.getOrNull(index)?.entryIndex }
 	    val selectedStructureEditSegment = selectedStructureEditIndex
-	        ?.let { index -> structurePlaybackSegments.getOrNull(index) }
+	        ?.let { index -> structureSegmentIds.getOrNull(index) }
+	        ?.let { segmentId -> arrangementSegments.firstOrNull { it.id == segmentId } }
 	    val selectedArrangementEditSegment = selectedSegmentLoopId
 	        ?.let { segmentId -> arrangementSegments.firstOrNull { it.id == segmentId } }
     val isSegmentEditMode = selectedArrangementEditSegment != null
@@ -2800,7 +2820,7 @@ private fun TimelineMeasuresPlaceholder(
                 "selectedSegmentName=${segment.name} selectedStartMs=$selectedStartMs " +
                 "selectedEndMs=$selectedEndMs structureIndex=$structureIndex " +
                 "fromArrangement=${arrangementSegments.firstOrNull { it.id == segment.id }?.persistDebugLabel()} " +
-                "fromStructure=${structurePlaybackSegments.getOrNull(structureIndex ?: -1)?.persistDebugLabel()} " +
+                "fromStructure=${structureIndex?.let { index -> structureSegmentIds.getOrNull(index) }?.let { id -> arrangementSegments.firstOrNull { it.id == id } }?.persistDebugLabel()} " +
                 "allSegments=${arrangementSegments.persistDebugSnapshot()} structureIds=$structureSegmentIds"
         )
         if (previousSelectionCount > 0) {
@@ -2950,6 +2970,128 @@ private fun TimelineMeasuresPlaceholder(
         Log.d(
             ARR_UNDO_HANDLE_TAG,
             "UNDO_PUSH_DONE undoStackSizeAfter=${arrangementUndoStack.size}"
+        )
+    }
+
+    val arrangementStructuralActionsEnabled =
+        !structurePlaybackActive && !isStructureAudioPreparing
+
+    fun updateArrangementOccurrence(
+        targetId: String,
+        transform: (ArrangementEntryData) -> ArrangementEntryData
+    ) {
+        val segment = arrangementSegments.firstOrNull { it.id == targetId } ?: return
+        val currentEntry = arrangementEntries.firstOrNull { it.entryId == targetId }
+            ?: ArrangementEntryData(
+                entryId = segment.id,
+                name = segment.name,
+                startMs = segment.startMs,
+                endMs = segment.endMs
+            )
+        val nextEntry = transform(currentEntry).copy(entryId = targetId)
+        if (nextEntry == currentEntry) return
+        pushArrangementUndoSnapshot()
+        val nextSegments = arrangementSegments.map { currentSegment ->
+            if (currentSegment.id == targetId) {
+                currentSegment.copy(
+                    name = nextEntry.name,
+                    startMs = nextEntry.startMs,
+                    endMs = nextEntry.endMs
+                )
+            } else {
+                currentSegment
+            }
+        }
+        val metadataEntries = arrangementEntries
+            .filterNot { entry -> entry.entryId == targetId } + nextEntry
+        val nextEntries = reconcileArrangementEntries(
+            segments = nextSegments,
+            structureSegmentIds = structureSegmentIds,
+            existingEntries = metadataEntries
+        )
+        arrangementSegments = nextSegments
+        arrangementEntries = nextEntries
+        persistArrangementState(nextSegments = nextSegments, nextEntries = nextEntries)
+    }
+
+    fun insertArrangementOccurrenceAfter(
+        targetIndex: Int,
+        template: ArrangementEntryData
+    ) {
+        if (!constrainToAvailableHeight || !arrangementStructuralActionsEnabled) return
+        val insertIndex = (targetIndex + 1).coerceIn(0, structureSegmentIds.size)
+        var candidateIndex = nextSegmentIndex
+        val usedIds = (arrangementSegments.map { segment -> segment.id } +
+            preservedLegacyArrangementSegments.map { segment -> segment.id }).toSet()
+        var newEntryId = "segment_$candidateIndex"
+        while (newEntryId in usedIds) {
+            candidateIndex += 1L
+            newEntryId = "segment_$candidateIndex"
+        }
+        val nextEntry = template.copy(
+            entryId = newEntryId,
+            repeatCount = template.repeatCount.coerceAtLeast(1)
+        )
+        val nextSegment = ArrangementSegmentData(
+            id = nextEntry.entryId,
+            name = nextEntry.name,
+            startMs = nextEntry.startMs,
+            endMs = nextEntry.endMs
+        )
+        pushArrangementUndoSnapshot()
+        val nextStructureSegmentIds = structureSegmentIds.toMutableList().apply {
+            add(insertIndex, newEntryId)
+        }
+        val nextSegmentsById = (arrangementSegments + nextSegment).associateBy { segment -> segment.id }
+        val nextSegments = nextStructureSegmentIds.mapNotNull(nextSegmentsById::get)
+        val nextEntriesById = (arrangementEntries + nextEntry).associateBy { entry -> entry.entryId }
+        val nextEntries = nextStructureSegmentIds.mapNotNull(nextEntriesById::get)
+        arrangementSegments = nextSegments
+        structureSegmentIds = nextStructureSegmentIds
+        arrangementEntries = nextEntries
+        nextSegmentIndex = candidateIndex + 1L
+        selectedStructureEditIndex = insertIndex
+        selectArrangementSegmentForEdit(
+            segment = nextSegment,
+            structureIndex = insertIndex,
+            source = "OCCURRENCE_INSERT"
+        )
+        persistArrangementState(
+            nextSegments = nextSegments,
+            nextStructureSegmentIds = nextStructureSegmentIds,
+            nextEntries = nextEntries
+        )
+    }
+
+    fun moveArrangementOccurrence(sourceIndex: Int, direction: Int) {
+        if (!constrainToAvailableHeight || !arrangementStructuralActionsEnabled) return
+        if (sourceIndex !in structureSegmentIds.indices) return
+        val targetIndex = (sourceIndex + direction).coerceIn(0, structureSegmentIds.lastIndex)
+        if (targetIndex == sourceIndex) return
+        val selectedEntryId = selectedStructureEditIndex
+            ?.let { index -> structureSegmentIds.getOrNull(index) }
+        pushArrangementUndoSnapshot()
+        val nextStructureSegmentIds = structureSegmentIds.toMutableList().apply {
+            val movedId = removeAt(sourceIndex)
+            add(targetIndex, movedId)
+        }
+        val segmentsById = arrangementSegments.associateBy { segment -> segment.id }
+        val nextSegments = nextStructureSegmentIds.mapNotNull(segmentsById::get)
+        val nextEntries = reconcileArrangementEntries(
+            segments = nextSegments,
+            structureSegmentIds = nextStructureSegmentIds,
+            existingEntries = arrangementEntries
+        )
+        arrangementSegments = nextSegments
+        structureSegmentIds = nextStructureSegmentIds
+        arrangementEntries = nextEntries
+        selectedStructureEditIndex = selectedEntryId
+            ?.let(nextStructureSegmentIds::indexOf)
+            ?.takeIf { index -> index >= 0 }
+        persistArrangementState(
+            nextSegments = nextSegments,
+            nextStructureSegmentIds = nextStructureSegmentIds,
+            nextEntries = nextEntries
         )
     }
 
@@ -3917,10 +4059,16 @@ private fun TimelineMeasuresPlaceholder(
         ) {
             Text(
                 text = stringResource(R.string.timeline_tempo_action_add),
-                color = Color.White,
+                color = if (!constrainToAvailableHeight || arrangementStructuralActionsEnabled) {
+                    Color.White
+                } else {
+                    Color(0xFF546E7A)
+                },
                 fontSize = 14.sp,
                 modifier = Modifier
-                    .clickable {
+                    .clickable(
+                        enabled = !constrainToAvailableHeight || arrangementStructuralActionsEnabled
+                    ) {
                         val rawStartMs = segmentInMs ?: return@clickable
                         val rawEndMs = segmentOutMs ?: return@clickable
                         if (rawStartMs == rawEndMs) return@clickable
@@ -4207,24 +4355,35 @@ private fun TimelineMeasuresPlaceholder(
                 emptyLabel = stringResource(R.string.arrangement_structure_empty),
                 items = structureSegmentIds.mapIndexedNotNull { index, segmentId ->
                     val segment = arrangementSegments.firstOrNull { it.id == segmentId } ?: return@mapIndexedNotNull null
+                    val entry = arrangementEntries.firstOrNull { it.entryId == segmentId }
                     ArrangementListItem(
                         id = index.toString(),
                         title = "${index + 1}. ${segment.name}",
                         durationMs = (segment.endMs - segment.startMs).coerceAtLeast(0L),
+                        repeatCount = entry?.repeatCount ?: 1,
+                        isMuted = entry?.muted ?: false,
+                        color = entry?.color,
                         isActive = index == selectedStructureEditIndex ||
-                            (structurePlaybackActive && index == structurePlaybackIndex),
-                        isQueued = structurePlaybackActive && index == queuedStructureSegmentIndex
+                            (structurePlaybackActive && index == activeStructureEntryIndex),
+                        isQueued = structurePlaybackActive && index == queuedStructureEntryIndex
                     )
                 },
                 onItemClick = { structureIndexId ->
-                    val startIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
-                    if (startIndex !in structurePlaybackSegments.indices) return@ArrangementListCard
-                    val selectedSegment = structurePlaybackSegments[startIndex]
+                    val logicalIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
+                    val selectedSegmentId = structureSegmentIds.getOrNull(logicalIndex)
+                        ?: return@ArrangementListCard
+                    val selectedSegment = arrangementSegments.firstOrNull { segment ->
+                        segment.id == selectedSegmentId
+                    } ?: return@ArrangementListCard
                     selectArrangementSegmentForEdit(
                         segment = selectedSegment,
-                        structureIndex = startIndex,
+                        structureIndex = logicalIndex,
                         source = "STRUCTURE_COLUMN"
                     )
+                    val startIndex = preparedStructureOccurrences.indexOfFirst { occurrence ->
+                        occurrence.entryIndex == logicalIndex
+                    }
+                    if (startIndex < 0) return@ArrangementListCard
                     val sourceAudioPath = currentSongAudioPath ?: return@ArrangementListCard
                     val isStructureSegmentPlaying = structurePlaybackActive &&
                         (structureUsingSampler || runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false))
@@ -4354,6 +4513,9 @@ private fun TimelineMeasuresPlaceholder(
                 onItemAdd = null,
                 onItemDelete = { structureIndexId ->
                     val removeIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
+	                    if (constrainToAvailableHeight && !arrangementStructuralActionsEnabled) {
+	                        return@ArrangementListCard
+	                    }
 	                    if (removeIndex in structureSegmentIds.indices) {
                             pushArrangementUndoSnapshot()
 	                        val removedSegmentId = structureSegmentIds[removeIndex]
@@ -4419,8 +4581,26 @@ private fun TimelineMeasuresPlaceholder(
                         )
                     }
                 },
-                onItemLongClick = null,
-                horizontalTrack = constrainToAvailableHeight
+                onItemLongClick = if (constrainToAvailableHeight) {
+                    { structureIndexId ->
+                        val targetIndex = structureIndexId.toIntOrNull()
+                            ?: return@ArrangementListCard
+                        segmentOptionsTargetId = structureSegmentIds.getOrNull(targetIndex)
+                    }
+                } else {
+                    null
+                },
+                horizontalTrack = constrainToAvailableHeight,
+                onItemMove = if (constrainToAvailableHeight) {
+                    { structureIndexId, direction ->
+                        structureIndexId.toIntOrNull()?.let { sourceIndex ->
+                            moveArrangementOccurrence(sourceIndex, direction)
+                        }
+                    }
+                } else {
+                    null
+                },
+                itemActionsEnabled = !constrainToAvailableHeight || arrangementStructuralActionsEnabled
             )
         }
         if (measuresStatus != null) {
@@ -4468,16 +4648,22 @@ private fun TimelineMeasuresPlaceholder(
 	                        val nextName = targetSegment?.let { segment ->
 	                            localRenameDraft.text.trim().ifBlank { segment.name }
 	                        } ?: return@Button
-                            pushArrangementUndoSnapshot()
-	                        val nextSegments = arrangementSegments.map { segment ->
-                            if (segment.id == targetId) {
-                                segment.copy(name = nextName)
-                            } else {
-                                segment
+                        if (constrainToAvailableHeight) {
+                            updateArrangementOccurrence(targetId) { entry ->
+                                entry.copy(name = nextName)
                             }
+                        } else {
+                            pushArrangementUndoSnapshot()
+	                            val nextSegments = arrangementSegments.map { segment ->
+                                if (segment.id == targetId) {
+                                    segment.copy(name = nextName)
+                                } else {
+                                    segment
+                                }
+                            }
+                            arrangementSegments = nextSegments
+                            persistArrangementState(nextSegments = nextSegments)
                         }
-                        arrangementSegments = nextSegments
-                        persistArrangementState(nextSegments = nextSegments)
                         renameSegmentId = null
                     }
                 ) {
@@ -4695,16 +4881,30 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     if (segmentOptionsTargetId != null) {
+        val targetId = segmentOptionsTargetId
+        val targetSegment = arrangementSegments.firstOrNull { it.id == targetId }
+        val targetEntry = arrangementEntries.firstOrNull { it.entryId == targetId }
+            ?: targetSegment?.let { segment ->
+                ArrangementEntryData(
+                    entryId = segment.id,
+                    name = segment.name,
+                    startMs = segment.startMs,
+                    endMs = segment.endMs
+                )
+            }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { segmentOptionsTargetId = null },
             title = {
                 Text(
-                    text = arrangementSegments.firstOrNull { it.id == segmentOptionsTargetId }?.name.orEmpty(),
+                    text = targetSegment?.name.orEmpty(),
                     color = Color.White
                 )
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
                     Text(
                         text = stringResource(R.string.common_rename),
                         color = Color.White,
@@ -4715,6 +4915,105 @@ private fun TimelineMeasuresPlaceholder(
                             segmentOptionsTargetId = null
                         }
                     )
+                    if (constrainToAvailableHeight && targetEntry != null) {
+                        Text(
+                            text = stringResource(R.string.arrangement_occurrence_duplicate),
+                            color = Color.White,
+                            modifier = Modifier.clickable {
+                                val targetIndex = structureSegmentIds.indexOf(targetEntry.entryId)
+                                if (targetIndex >= 0) {
+                                    insertArrangementOccurrenceAfter(targetIndex, targetEntry)
+                                }
+                                segmentOptionsTargetId = null
+                            }
+                        )
+                        Text(
+                            text = stringResource(R.string.library_bottom_copy),
+                            color = Color.White,
+                            modifier = Modifier.clickable {
+                                copiedArrangementEntry = targetEntry
+                                segmentOptionsTargetId = null
+                            }
+                        )
+                        Text(
+                            text = stringResource(R.string.arrangement_occurrence_paste_after),
+                            color = if (copiedArrangementEntry != null) Color.White else Color(0xFF546E7A),
+                            modifier = Modifier.clickable(enabled = copiedArrangementEntry != null) {
+                                val targetIndex = structureSegmentIds.indexOf(targetEntry.entryId)
+                                val copiedEntry = copiedArrangementEntry
+                                if (targetIndex >= 0 && copiedEntry != null) {
+                                    insertArrangementOccurrenceAfter(targetIndex, copiedEntry)
+                                }
+                                segmentOptionsTargetId = null
+                            }
+                        )
+                        Text(
+                            text = stringResource(
+                                if (targetEntry.muted) {
+                                    R.string.arrangement_occurrence_unmute
+                                } else {
+                                    R.string.arrangement_occurrence_mute
+                                }
+                            ),
+                            color = Color.White,
+                            modifier = Modifier.clickable {
+                                updateArrangementOccurrence(targetEntry.entryId) { entry ->
+                                    entry.copy(muted = !entry.muted)
+                                }
+                                segmentOptionsTargetId = null
+                            }
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.arrangement_occurrence_repeat),
+                                color = Color.White,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(
+                                enabled = targetEntry.repeatCount > 1,
+                                onClick = {
+                                    updateArrangementOccurrence(targetEntry.entryId) { entry ->
+                                        entry.copy(repeatCount = (entry.repeatCount - 1).coerceAtLeast(1))
+                                    }
+                                }
+                            ) {
+                                Text(
+                                    text = "−",
+                                    color = if (targetEntry.repeatCount > 1) Color.White else Color(0xFF546E7A)
+                                )
+                            }
+                            Text(
+                                text = stringResource(
+                                    R.string.arrangement_occurrence_repeat_value,
+                                    targetEntry.repeatCount
+                                ),
+                                color = Color(0xFF80CBC4),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            TextButton(
+                                enabled = targetEntry.repeatCount < Int.MAX_VALUE,
+                                onClick = {
+                                    updateArrangementOccurrence(targetEntry.entryId) { entry ->
+                                        entry.copy(repeatCount = entry.repeatCount + 1)
+                                    }
+                                }
+                            ) {
+                                Text(text = "+", color = Color.White)
+                            }
+                        }
+                        Text(
+                            text = stringResource(R.string.quickplaylists_menu_change_group_color),
+                            color = Color.White,
+                            modifier = Modifier.clickable {
+                                colorArrangementEntryId = targetEntry.entryId
+                                segmentOptionsTargetId = null
+                            }
+                        )
+                    }
                     Text(
                         text = stringResource(R.string.library_delete_action),
                         color = Color(0xFFFF8A80),
@@ -4734,6 +5033,76 @@ private fun TimelineMeasuresPlaceholder(
             containerColor = Color(0xFF121212)
         )
     }
+
+    if (colorArrangementEntryId != null) {
+        val targetId = colorArrangementEntryId
+        val colorOptions = listOf(
+            null to R.string.quickplaylists_group_color_default,
+            "red" to R.string.quickplaylists_group_color_red,
+            "blue" to R.string.quickplaylists_group_color_blue,
+            "green" to R.string.quickplaylists_group_color_green,
+            "violet" to R.string.quickplaylists_group_color_purple,
+            "orange" to R.string.quickplaylists_group_color_orange,
+            "yellow" to R.string.quickplaylists_group_color_yellow,
+            "gray" to R.string.quickplaylists_group_color_gray
+        )
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { colorArrangementEntryId = null },
+            title = {
+                Text(
+                    text = stringResource(R.string.quickplaylists_group_color_title),
+                    color = Color.White
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    colorOptions.forEach { (colorKey, labelRes) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val entryId = targetId ?: return@clickable
+                                    updateArrangementOccurrence(entryId) { entry ->
+                                        entry.copy(color = colorKey)
+                                    }
+                                    colorArrangementEntryId = null
+                                }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .background(
+                                        arrangementOccurrenceColorPreview(colorKey),
+                                        RoundedCornerShape(5.dp)
+                                    )
+                            )
+                            Text(text = stringResource(labelRes), color = Color.White)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                OutlinedButton(onClick = { colorArrangementEntryId = null }) {
+                    Text(text = stringResource(R.string.common_close))
+                }
+            },
+            containerColor = Color(0xFF121212)
+        )
+    }
+}
+
+private fun arrangementOccurrenceColorPreview(color: String?): Color = when (color) {
+    "red" -> Color(0xFFB94A48)
+    "blue" -> Color(0xFF3D78B4)
+    "green" -> Color(0xFF3F8A58)
+    "violet" -> Color(0xFF8651A8)
+    "orange", "amber" -> Color(0xFFC67732)
+    "yellow" -> Color(0xFFB6A333)
+    "gray" -> Color(0xFF607D8B)
+    else -> Color(0xFF1C2933)
 }
 
 private data class Quadruple<A, B, C, D>(

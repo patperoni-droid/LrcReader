@@ -7,6 +7,12 @@ internal data class ArrangementOccurrenceProjection(
     val preservedLegacySegments: List<ArrangementSegmentData>
 )
 
+internal data class PreparedArrangementOccurrence(
+    val entryIndex: Int,
+    val repeatIndex: Int,
+    val segment: ArrangementSegmentData
+)
+
 internal fun ArrangementData.toOccurrenceProjection(): ArrangementOccurrenceProjection {
     val occurrenceSegments = entries.map { entry -> entry.toSegmentData() }
     val occurrenceIds = occurrenceSegments.mapTo(linkedSetOf()) { segment -> segment.id }
@@ -85,3 +91,34 @@ internal fun ArrangementEntryData.toSegmentData(): ArrangementSegmentData =
         startMs = startMs,
         endMs = endMs
     )
+
+internal fun prepareArrangementOccurrences(
+    segments: List<ArrangementSegmentData>,
+    structureSegmentIds: List<String>,
+    entries: List<ArrangementEntryData>,
+    useOccurrenceModel: Boolean
+): List<PreparedArrangementOccurrence> {
+    val segmentsById = segments.associateBy { segment -> segment.id }
+    val entriesById = entries.associateBy { entry -> entry.entryId }
+    return buildList {
+        structureSegmentIds.forEachIndexed { entryIndex, segmentId ->
+            val segment = segmentsById[segmentId] ?: return@forEachIndexed
+            val entry = entriesById[segmentId]
+            if (useOccurrenceModel && entry?.muted == true) return@forEachIndexed
+            val repeatCount = if (useOccurrenceModel) {
+                entry?.repeatCount?.coerceAtLeast(1) ?: 1
+            } else {
+                1
+            }
+            repeat(repeatCount) { repeatIndex ->
+                add(
+                    PreparedArrangementOccurrence(
+                        entryIndex = entryIndex,
+                        repeatIndex = repeatIndex,
+                        segment = segment
+                    )
+                )
+            }
+        }
+    }
+}
