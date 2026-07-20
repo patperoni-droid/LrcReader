@@ -131,6 +131,12 @@ private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
 private const val LYRICS_AUTOSAVE_CRASH_DIAG_TAG = "LYRICS_AUTOSAVE_CRASH_DIAG"
 private const val LYRICS_STUCK_DIAG_TAG = "LYRICS_STUCK_DIAG"
 
+enum class TabletPlayerFocusMode {
+    NONE,
+    LYRICS,
+    ARRANGEMENT
+}
+
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is android.content.ContextWrapper -> baseContext.findActivity()
@@ -181,8 +187,7 @@ fun PlayerScreen(
     liveGainControlsEnabled: Boolean = true,
     onLiveGainDelta: (Int) -> Unit = {},
     showPhoneLiveGainDrawer: Boolean = false,
-    onTabletFocusEditingChange: (Boolean) -> Unit = {},
-    onTabletArrangementFocusChange: (Boolean) -> Unit = {},
+    onTabletFocusModeChange: (TabletPlayerFocusMode) -> Unit = {},
     stableTabletLyricsEditorSession: Boolean = false,
     readerHeaderEndContent: @Composable RowScope.() -> Unit = {}
 ) {
@@ -2844,7 +2849,7 @@ fun PlayerScreen(
                     null
                 },
                 tabletFocusEditingMode = compactTabletLayout,
-                onTabletFocusEditingChange = onTabletFocusEditingChange,
+                onTabletFocusModeChange = onTabletFocusModeChange,
                 playbackControlContent = {
                     PlaybackControl(
                         positionMs = if (isDragging) dragPosMs else positionMs,
@@ -3002,7 +3007,7 @@ fun PlayerScreen(
                 currentSongId = currentSongId,
                 startInGridSetup = startTimelineInGridSetup,
                 tabletArrangementLayout = compactTabletLayout,
-                onArrangementModeChange = onTabletArrangementFocusChange,
+                onTabletFocusModeChange = onTabletFocusModeChange,
                 markers = timelineEditorMarkers,
                 palette = timelinePalette,
                 isPlaying = isPlaying,

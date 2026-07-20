@@ -1454,8 +1454,9 @@ class MainActivity : AppCompatActivity() {
                 var tabletLibrarySearchToggleSignal by remember { mutableIntStateOf(0) }
                 var tabletLibrarySearchCloseSignal by remember { mutableIntStateOf(0) }
                 var tabletLibraryOpenStorageSignal by remember { mutableIntStateOf(0) }
-                var tabletLyricsEditorFocusMode by remember { mutableStateOf(false) }
-                var tabletArrangementFocusMode by remember { mutableStateOf(false) }
+                var tabletPlayerFocusMode by remember {
+                    mutableStateOf(TabletPlayerFocusMode.NONE)
+                }
 
                 // ✅ MODE de recherche (PLAYER ou DJ)
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
@@ -4446,8 +4447,7 @@ class MainActivity : AppCompatActivity() {
                                         showLiveGainControls = true,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
-                                        onTabletFocusEditingChange = { tabletLyricsEditorFocusMode = it },
-                                        onTabletArrangementFocusChange = { tabletArrangementFocusMode = it },
+                                        onTabletFocusModeChange = { tabletPlayerFocusMode = it },
                                         stableTabletLyricsEditorSession = true,
                                         readerHeaderEndContent = {}
                                     )
@@ -5107,8 +5107,7 @@ class MainActivity : AppCompatActivity() {
 
                                 LaunchedEffect(useTabletSplitLiveLayout, tabletRightPanel) {
                                     if (!useTabletSplitLiveLayout || tabletRightPanel != TabletSplitRightPanel.LYRICS) {
-                                        tabletLyricsEditorFocusMode = false
-                                        tabletArrangementFocusMode = false
+                                        tabletPlayerFocusMode = TabletPlayerFocusMode.NONE
                                     }
                                 }
 
@@ -5141,7 +5140,9 @@ class MainActivity : AppCompatActivity() {
                                         ) {
                                             // Experimental tablet live layout; each pane reuses the existing screen contract.
                                             Box(
-                                                modifier = if (tabletArrangementFocusMode) {
+                                                modifier = if (
+                                                    tabletPlayerFocusMode == TabletPlayerFocusMode.ARRANGEMENT
+                                                ) {
                                                     Modifier
                                                         .width(0.dp)
                                                         .fillMaxHeight()
@@ -5151,13 +5152,24 @@ class MainActivity : AppCompatActivity() {
                                                         .fillMaxHeight()
                                                 }
                                             ) {
-                                                if (!tabletArrangementFocusMode) {
+                                                if (
+                                                    tabletPlayerFocusMode != TabletPlayerFocusMode.ARRANGEMENT
+                                                ) {
                                                     quickPlaylistsPane(Modifier.fillMaxSize())
                                                 }
                                             }
                                             Box(
                                                 Modifier
-                                                    .weight(if (tabletArrangementFocusMode) 1f else 0.62f)
+                                                    .weight(
+                                                        if (
+                                                            tabletPlayerFocusMode ==
+                                                            TabletPlayerFocusMode.ARRANGEMENT
+                                                        ) {
+                                                            1f
+                                                        } else {
+                                                            0.62f
+                                                        }
+                                                    )
                                                     .fillMaxHeight()
                                             ) {
                                                 when (tabletRightPanel) {
@@ -5165,8 +5177,7 @@ class MainActivity : AppCompatActivity() {
                                                         Column(Modifier.fillMaxSize()) {
                                                             Box(
                                                                 modifier = if (
-                                                                    tabletLyricsEditorFocusMode ||
-                                                                    tabletArrangementFocusMode
+                                                                    tabletPlayerFocusMode != TabletPlayerFocusMode.NONE
                                                                 ) {
                                                                     Modifier
                                                                         .fillMaxWidth()
@@ -5176,8 +5187,7 @@ class MainActivity : AppCompatActivity() {
                                                                 }
                                                             ) {
                                                                 if (
-                                                                    !tabletLyricsEditorFocusMode &&
-                                                                    !tabletArrangementFocusMode
+                                                                    tabletPlayerFocusMode == TabletPlayerFocusMode.NONE
                                                                 ) {
                                                                     TabletSplitTopNavigationShortcuts()
                                                                 }

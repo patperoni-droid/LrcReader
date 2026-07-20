@@ -232,7 +232,7 @@ fun TimelineEditorSection(
     currentSongId: String?,
     startInGridSetup: Boolean = false,
     tabletArrangementLayout: Boolean = false,
-    onArrangementModeChange: (Boolean) -> Unit = {},
+    onTabletFocusModeChange: (TabletPlayerFocusMode) -> Unit = {},
     markers: List<TimelineMarker>,
     palette: List<String>,
     isPlaying: Boolean,
@@ -296,15 +296,19 @@ fun TimelineEditorSection(
             }
         )
     }
-    val currentOnArrangementModeChange by rememberUpdatedState(onArrangementModeChange)
+    val currentOnTabletFocusModeChange by rememberUpdatedState(onTabletFocusModeChange)
     LaunchedEffect(editorMode, tabletArrangementLayout) {
-        currentOnArrangementModeChange(
-            tabletArrangementLayout && editorMode == TimelineEditorMode.GRID_SETUP
+        currentOnTabletFocusModeChange(
+            if (tabletArrangementLayout && editorMode == TimelineEditorMode.GRID_SETUP) {
+                TabletPlayerFocusMode.ARRANGEMENT
+            } else {
+                TabletPlayerFocusMode.NONE
+            }
         )
     }
     DisposableEffect(Unit) {
         onDispose {
-            currentOnArrangementModeChange(false)
+            currentOnTabletFocusModeChange(TabletPlayerFocusMode.NONE)
         }
     }
     var displayMode by remember { mutableStateOf(TimelineDisplayMode.MEASURES) }

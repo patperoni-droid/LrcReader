@@ -154,7 +154,7 @@ fun LyricsEditorSection(
     saveAndCloseRequestToken: Int = 0,
     chordPaletteStorageKey: String? = null,
     tabletFocusEditingMode: Boolean = false,
-    onTabletFocusEditingChange: (Boolean) -> Unit = {},
+    onTabletFocusModeChange: (TabletPlayerFocusMode) -> Unit = {},
     playbackControlContent: @Composable () -> Unit = {},
     headerEndContent: @Composable RowScope.() -> Unit = {}
 ) {
@@ -200,10 +200,16 @@ fun LyricsEditorSection(
     var lastAutoSavedLyricsSignature by remember(currentTrackUri, showChordPalette) { mutableStateOf<String?>(null) }
     val displayedPalette = paletteChords
     LaunchedEffect(tabletLineEditFocusActive) {
-        onTabletFocusEditingChange(tabletLineEditFocusActive)
+        onTabletFocusModeChange(
+            if (tabletLineEditFocusActive) {
+                TabletPlayerFocusMode.LYRICS
+            } else {
+                TabletPlayerFocusMode.NONE
+            }
+        )
     }
     DisposableEffect(Unit) {
-        onDispose { onTabletFocusEditingChange(false) }
+        onDispose { onTabletFocusModeChange(TabletPlayerFocusMode.NONE) }
     }
     val editorHintTitleRes = if (showChordPalette) {
         R.string.chords_editor_hint_title
