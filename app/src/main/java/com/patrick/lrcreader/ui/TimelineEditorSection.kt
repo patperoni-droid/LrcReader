@@ -240,6 +240,17 @@ data class TimelinePlaybackControlOverride(
     val onReturnToMainPlayback: () -> Unit
 )
 
+internal fun isTimelineSecondaryPlaybackActive(
+    structurePlaybackActive: Boolean,
+    wavPreviewActive: Boolean,
+    arrangementLoopPreviewActive: Boolean
+): Boolean = structurePlaybackActive || wavPreviewActive || arrangementLoopPreviewActive
+
+internal fun shouldUseTimelinePlaybackOverride(
+    segmentTargeted: Boolean,
+    secondaryPlaybackActive: Boolean
+): Boolean = segmentTargeted || secondaryPlaybackActive
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimelineEditorSection(
@@ -921,7 +932,10 @@ fun TimelineEditorSection(
         val playbackOverride = if (
             tabletArrangementLayout &&
             editorMode == TimelineEditorMode.GRID_SETUP &&
-            tempoStructurePreviewTargeted
+            shouldUseTimelinePlaybackOverride(
+                segmentTargeted = tempoStructurePreviewTargeted,
+                secondaryPlaybackActive = tempoStructurePreviewActive
+            )
         ) {
             TimelinePlaybackControlOverride(
                 isPlaying = tempoStructurePreviewActive,
@@ -1957,6 +1971,16 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
 
+    fun publishSecondaryPlaybackState() {
+        onStructurePreviewActiveChange(
+            isTimelineSecondaryPlaybackActive(
+                structurePlaybackActive = structurePlaybackActive,
+                wavPreviewActive = wavPreviewActive,
+                arrangementLoopPreviewActive = arrangementLoopPreviewActive
+            )
+        )
+    }
+
     fun stopStructurePreviewPlayback(reason: String = "unspecified") {
         structurePreparationGeneration += 1
         val mediaItemCountBefore = runCatching { structurePreviewPlayer.mediaItemCount }.getOrDefault(0)
@@ -1994,14 +2018,14 @@ private fun TimelineMeasuresPlaceholder(
         wavPreviewPositionMs = 0L
         wavPreviewDurationMs = 0L
         isPreviewGenerating = false
-        onStructurePreviewActiveChange(false)
+        publishSecondaryPlaybackState()
     }
 
     fun stopArrangementLoopPreviewPlayback() {
         runCatching { arrangementPreviewPlayer.stop() }
         arrangementLoopPreviewActive = false
         arrangementLoopPositionMs = 0L
-        onStructurePreviewActiveChange(false)
+        publishSecondaryPlaybackState()
     }
 
     fun replacePreviewRenderedFile(nextFile: File?) {
@@ -2032,13 +2056,11 @@ private fun TimelineMeasuresPlaceholder(
         }
         loopEnabled = false
         preparedLoopStartMs = null
-        if (isPlaying) {
-            onIsPlayingChange(false)
-        }
+        onIsPlayingChange(false)
         wavPreviewActive = true
         wavPreviewPositionMs = 0L
         wavPreviewDurationMs = 0L
-        onStructurePreviewActiveChange(true)
+        publishSecondaryPlaybackState()
         structurePreviewPlayer.pause()
         Log.d(
             ARR_STRUCTURE_FLOW_TAG,
@@ -2118,7 +2140,7 @@ private fun TimelineMeasuresPlaceholder(
             ARR_STRUCTURE_FLOW_TAG,
             "START_SEGMENT index=$startIndex name=${requestedSegment.name} startMs=${requestedSegment.startMs} endMs=${requestedSegment.endMs} sourceUri=$sourceUri mediaItemCountBefore=$mediaItemCountBefore mediaItemCountAfter=-1 currentMediaItemIndex=${structurePreviewPlayer.currentMediaItemIndex}"
         )
-        onStructurePreviewActiveChange(true)
+        publishSecondaryPlaybackState()
         structurePreviewPlayer.pause()
         Log.d(
             ARR_STRUCTURE_FLOW_TAG,
@@ -2201,7 +2223,7 @@ private fun TimelineMeasuresPlaceholder(
                 requestedSegment.startMs,
                 requestedSegment.endMs
             ).coerceAtLeast(0L)
-            onStructurePreviewActiveChange(true)
+            publishSecondaryPlaybackState()
             structureSamplerEngine.play(startIndex)
         }.onFailure { error ->
             Log.w(
@@ -2209,7 +2231,7 @@ private fun TimelineMeasuresPlaceholder(
                 "FALLBACK_EXOPLAYER reason=sampler_play_failed error=${error.message}",
                 error
             )
-            structureUsingSampler = false
+            stopStructurePreviewPlayback(reason = "sampler_play_failed")
         }.isSuccess
     }
 
@@ -3023,7 +3045,7 @@ private fun TimelineMeasuresPlaceholder(
                             "actualPlayerPositionMs=${arrangementPreviewPlayer.currentPositionMs()} " +
                             "source=${arrangementTimingSourceLabel(audioPath)} sourceUri=${Uri.fromFile(File(audioPath))}"
                     )
-                    onStructurePreviewActiveChange(true)
+                    publishSecondaryPlaybackState()
                 }
             }
             pendingSegmentEditUndoSnapshot = null
@@ -3072,9 +3094,7 @@ private fun TimelineMeasuresPlaceholder(
         }
         loopEnabled = false
         preparedLoopStartMs = null
-        if (isPlaying) {
-            onIsPlayingChange(false)
-        }
+        onIsPlayingChange(false)
         isStructureAudioPreparing = true
         scope.launch {
             try {
@@ -3147,6 +3167,7 @@ private fun TimelineMeasuresPlaceholder(
                                 "FALLBACK_EXOPLAYER reason=sampler_not_ready"
                             )
                             Log.d(ARR_STRUCTURE_SAMPLER_TAG, "USING_SAMPLER false")
+                            structureUsingWavSource = true
                             playStructureSegmentPreview(
                                 startIndex = startIndex,
                                 audioPath = wavFile.absolutePath,
@@ -3814,9 +3835,7 @@ private fun TimelineMeasuresPlaceholder(
             if (isPreparedClipLoopTestActive) {
                 onStopPreparedClipLoopTest()
             }
-            if (isPlaying) {
-                onIsPlayingChange(false)
-            }
+            onIsPlayingChange(false)
             preparedLoopStartMs = loopStartMs
             arrangementLoopPositionMs = 0L
             arrangementPreviewPlayer.setTrackGainDb(currentSongTrackGainDb.toFloat())
@@ -3832,7 +3851,7 @@ private fun TimelineMeasuresPlaceholder(
                     "source=${arrangementTimingSourceLabel(audioPath)} sourceUri=${Uri.fromFile(File(audioPath))}"
             )
             arrangementLoopPreviewActive = true
-            onStructurePreviewActiveChange(true)
+            publishSecondaryPlaybackState()
             return@LaunchedEffect
         }
         loopEnabled = false
