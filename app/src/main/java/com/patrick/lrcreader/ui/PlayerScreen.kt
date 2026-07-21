@@ -105,6 +105,7 @@ import com.patrick.lrcreader.core.resolveLyricsViewMode
 import com.patrick.lrcreader.core.TimelinePaletteStore
 import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
+import com.patrick.lrcreader.smp.ArrangementData
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpAnnotationsStore
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
@@ -173,6 +174,7 @@ fun PlayerScreen(
     manualTransitionTargetTitle: String? = null,
     onManualCrossfadeToNext: () -> Unit = {},
     onImportGeneratedSmp: suspend (Uri) -> SongUnit? = { null },
+    onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit? = { _, _ -> null },
     requestedNavigationTarget: String? = null,
     requestedNavigationToken: Int = 0,
     onOpenWaveform: (String) -> Unit = {},
@@ -3154,6 +3156,7 @@ fun PlayerScreen(
                     onOpenArrangementHub()
                 },
                 onImportGeneratedSmp = onImportGeneratedSmp,
+                onSaveVirtualArrangement = onSaveVirtualArrangement,
                 isPreparedClipLoopTestActive = isTimelinePreparedLoopActive,
                 onStartPreparedClipLoopTest = startTimelinePreparedLoopTest,
                 onStopPreparedClipLoopTest = stopTimelinePreparedLoopTest,

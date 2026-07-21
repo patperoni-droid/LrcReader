@@ -15,6 +15,7 @@ data class LibrarySongItem(
     val lufsManualDb: Int? = null
 ) {
     val songId: String get() = song.id
+    val isArrangementVariant: Boolean get() = song.arrangementSourceSongId != null
     val isLufsActive: Boolean get() = volumeSource == "lufs"
     val audioAvailable: Boolean get() = song.audioPath != null
     val hasLyrics: Boolean get() = song.lyricsPath != null

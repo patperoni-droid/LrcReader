@@ -162,13 +162,26 @@ class SmpLibraryScanner(private val context: Context) {
             midiPath = midiPath,
             midiCues = midiCues,
             dmxPath = resolveDmxPath(songDir, meta?.dmxFile),
-            prompterPath = findPrompterPath(songDir)
+            prompterPath = findPrompterPath(songDir),
+            arrangementSourceSongId = resolveArrangementSourceSongId(songDir)
         )
         Log.i(
             TRACE_TAG,
             "step=runtime_song_accept dir=${songDir.absolutePath} songId=${songUnit.id} title=${songUnit.title}"
         )
         return songUnit
+    }
+
+    private fun resolveArrangementSourceSongId(songDir: File): String? {
+        val arrangementFile = File(songDir, "arrangement.json")
+        if (!arrangementFile.isFile) return null
+        return runCatching {
+            ArrangementJsonCodec.decode(
+                org.json.JSONObject(arrangementFile.readText(Charsets.UTF_8))
+            ).sourceSongId.trim().takeIf { sourceSongId ->
+                sourceSongId.isNotEmpty() && sourceSongId != songDir.name
+            }
+        }.getOrNull()
     }
 
     private fun resolveAudioFile(songDir: File, meta: SmpMeta?, config: SmpConfig?): File? {

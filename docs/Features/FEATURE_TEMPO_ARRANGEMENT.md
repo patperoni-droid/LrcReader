@@ -12,10 +12,44 @@ Permettre à l’utilisateur de :
 - prévisualiser le résultat sans coupure
 - vérifier précisément les transitions
 - exporter une version finale propre
+- enregistrer plusieurs variantes virtuelles sans dupliquer l'audio source
 - sauvegarder l’ensemble de sa bibliothèque live
 
 👉 Cas d’usage principal :
 - adapter un morceau pour la scène (durée, structure, énergie)
+
+---
+
+## VARIANTES VIRTUELLES DANS LA BIBLIOTHÈQUE
+
+**Statut : architecture validée, première étape limitée à l'enregistrement dans la Bibliothèque.**
+
+Une variante virtuelle est un projet Arrangement léger, par exemple `Marina_AR01`, qui :
+
+- possède un identifiant stable propre ;
+- référence le `songId` du morceau source ;
+- conserve sa Structure et ses occurrences dans `arrangement.json` ;
+- ne copie et ne transforme jamais le fichier audio source ;
+- peut coexister avec plusieurs autres variantes du même morceau ;
+- ne produit un WAV que par une action d'assemblage explicite.
+
+Première étape :
+
+- l'action est proposée uniquement dans l'éditeur Arrangement tablette ;
+- la variante est créée dans le stockage interne normalisé et apparaît dans la Bibliothèque ;
+- elle est clairement identifiée comme variante Arrangement ;
+- elle reste non jouable et non assignable à une playlist tant que le lecteur principal ne sait pas résoudre et préparer sa Structure ;
+- le titre source et son Arrangement courant restent inchangés.
+
+Évolutions ultérieures :
+
+- résolution de la variante par le lecteur principal à partir de l'audio source local ;
+- ajout aux playlists et aux familles de versions ;
+- projection temporelle des paroles, accords, MIDI et DMX ;
+- transfert conjoint de la variante et de sa source ;
+- gestion explicite de la suppression d'une source possédant des variantes.
+
+Une variante virtuelle ne doit jamais être confondue avec un export WAV. L'export crée un audio indépendant ; la variante reste un montage non destructif dépendant de sa source.
 
 ---
 

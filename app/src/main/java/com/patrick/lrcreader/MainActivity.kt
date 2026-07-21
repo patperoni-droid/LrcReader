@@ -112,6 +112,8 @@ import com.patrick.lrcreader.smp.SmpRuntimeSongCache
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
+import com.patrick.lrcreader.smp.ArrangementData
+import com.patrick.lrcreader.smp.ArrangementVariantStore
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import com.patrick.lrcreader.ui.library.LibraryScreen
@@ -836,6 +838,23 @@ class MainActivity : AppCompatActivity() {
                     }
                     importedSong
                 }
+
+                val saveVirtualArrangement: suspend (String, ArrangementData) -> com.patrick.lrcreader.smp.SongUnit? =
+                    { title, arrangement ->
+                        val savedSong = ArrangementVariantStore.create(
+                            context = ctx.applicationContext,
+                            title = title,
+                            sourceSongId = arrangement.sourceSongId,
+                            arrangement = arrangement
+                        ).getOrNull()
+                        if (savedSong != null) {
+                            withContext(Dispatchers.Main) {
+                                smpSongsById = smpSongsById + (savedSong.id to savedSong)
+                                smpCacheRefreshTick++
+                            }
+                        }
+                        savedSong
+                    }
 
                 fun runPlaylistBatchImport(
                     playlistName: String,
@@ -4427,6 +4446,7 @@ class MainActivity : AppCompatActivity() {
                                         manualTransitionTargetTitle = manualCrossfadeTransitionTitle,
                                         onManualCrossfadeToNext = { launchManualCrossfadeToNext() },
                                         onImportGeneratedSmp = autoImportGeneratedSmp,
+                                        onSaveVirtualArrangement = saveVirtualArrangement,
                                         requestedNavigationTarget = playerNavigationTarget,
                                         requestedNavigationToken = playerNavigationToken,
                                         onOpenWaveform = {
@@ -5592,6 +5612,7 @@ class MainActivity : AppCompatActivity() {
                                         manualTransitionTargetTitle = manualCrossfadeTransitionTitle,
                                         onManualCrossfadeToNext = { launchManualCrossfadeToNext() },
                                         onImportGeneratedSmp = autoImportGeneratedSmp,
+                                        onSaveVirtualArrangement = saveVirtualArrangement,
                                         requestedNavigationTarget = playerNavigationTarget,
                                         requestedNavigationToken = playerNavigationToken,
                                         onOpenWaveform = {

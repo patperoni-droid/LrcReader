@@ -276,6 +276,7 @@
     <string name="library_list_rename">Renommer</string>
     <string name="library_variant_create_family">Créer famille de versions</string>
     <string name="library_variant_family_selection_min">Sélectionne au moins 2 morceaux pour créer une famille</string>
+    <string name="library_arrangement_variant_badge">ARR</string>
     <string name="library_list_delete_permanently">Supprimer définitivement</string>
     <string name="library_view_mode_songs">Songs</string>
     <string name="library_view_mode_files">Fichiers</string>
@@ -549,6 +550,11 @@
     <string name="timeline_tempo_preview_wave_title">Écoute du montage</string>
     <string name="timeline_tempo_preview_wave_position">%1$s / %2$s</string>
     <string name="timeline_tempo_action_export">Assembler</string>
+    <string name="arrangement_save_to_library_action">Bibliothèque</string>
+    <string name="arrangement_virtual_name_title">Enregistrer une variante</string>
+    <string name="arrangement_virtual_name_label">Nom de la variante</string>
+    <string name="arrangement_virtual_save_success">Variante ajoutée à la bibliothèque : %1$s</string>
+    <string name="arrangement_virtual_save_failed">Impossible d’enregistrer la variante : %1$s</string>
     <string name="timeline_tempo_preview_generating">Je prépare l’écoute…</string>
     <string name="timeline_tempo_export_generating">Assemblage en cours…</string>
     <string name="timeline_tempo_export_name_title">Nom de l’assemblage</string>

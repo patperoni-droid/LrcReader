@@ -143,6 +143,17 @@ private fun LibrarySongIndicators(song: LibrarySongItem) {
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (song.isArrangementVariant) {
+            Text(
+                text = stringResource(R.string.library_arrangement_variant_badge),
+                color = Color(0xFF80CBC4),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .background(Color(0xFF80CBC4).copy(alpha = 0.12f), RoundedCornerShape(5.dp))
+                    .padding(horizontal = 5.dp, vertical = 2.dp)
+            )
+        }
         if (song.hasLyrics) {
             Text(text = "🎤", fontSize = 12.sp, modifier = Modifier.alpha(0.92f))
         }
@@ -392,7 +403,8 @@ fun LibrarySongsList(
                                             )
                                             if (
                                                 showRichIndicators && (
-                                                    variant.hasLyrics ||
+                                                    variant.isArrangementVariant ||
+                                                        variant.hasLyrics ||
                                                         variant.hasChords ||
                                                         variant.hasMidi ||
                                                         variant.hasLight ||
@@ -440,7 +452,7 @@ fun LibrarySongsList(
             val isCurrentPlaying = currentPlayingSongId == song.songId
             val isKeyboardSelected = keyboardSelectedSongId == song.songId
             var menuOpen by remember(song.songId) { mutableStateOf(false) }
-            val rowClick = if (selectionMode) {
+            val rowClick = if (selectionMode && !song.isArrangementVariant) {
                 Modifier.clickable {
                     onKeyboardSelectedSongChange(song.songId)
                     onToggleSelect(songUri)
@@ -501,7 +513,7 @@ fun LibrarySongsList(
                                 if (isSelected) accent else Color.White.copy(alpha = 0.7f),
                                 RoundedCornerShape(4.dp)
                             )
-                            .clickable {
+                            .clickable(enabled = !song.isArrangementVariant) {
                                 onKeyboardSelectedSongChange(song.songId)
                                 onToggleSelect(songUri)
                             },
@@ -541,7 +553,8 @@ fun LibrarySongsList(
 
                         if (
                             showRichIndicators && (
-                                song.hasLyrics ||
+                                song.isArrangementVariant ||
+                                    song.hasLyrics ||
                                     song.hasChords ||
                                     song.hasMidi ||
                                     song.hasLight ||
@@ -581,10 +594,15 @@ fun LibrarySongsList(
                             onDismissRequest = { menuOpen = false }
                         ) {
                             DropdownMenuItem(
+                                enabled = !song.isArrangementVariant,
                                 text = {
                                     Text(
                                         stringResource(R.string.library_list_assign_to_playlist),
-                                        color = Color.White
+                                        color = if (song.isArrangementVariant) {
+                                            Color.White.copy(alpha = 0.35f)
+                                        } else {
+                                            Color.White
+                                        }
                                     )
                                 },
                                 onClick = {
@@ -593,10 +611,15 @@ fun LibrarySongsList(
                                 }
                             )
                             DropdownMenuItem(
+                                enabled = !song.isArrangementVariant,
                                 text = {
                                     Text(
                                         stringResource(R.string.library_variant_create_family),
-                                        color = Color.White
+                                        color = if (song.isArrangementVariant) {
+                                            Color.White.copy(alpha = 0.35f)
+                                        } else {
+                                            Color.White
+                                        }
                                     )
                                 },
                                 onClick = {
@@ -610,10 +633,15 @@ fun LibrarySongsList(
                                 }
                             )
                             DropdownMenuItem(
+                                enabled = !song.isArrangementVariant,
                                 text = {
                                     Text(
                                         stringResource(R.string.backup_share),
-                                        color = Color.White
+                                        color = if (song.isArrangementVariant) {
+                                            Color.White.copy(alpha = 0.35f)
+                                        } else {
+                                            Color.White
+                                        }
                                     )
                                 },
                                 onClick = {

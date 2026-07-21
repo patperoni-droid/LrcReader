@@ -282,6 +282,7 @@
     <string name="library_list_rename">Rename</string>
     <string name="library_variant_create_family">Create version family</string>
     <string name="library_variant_family_selection_min">Select at least 2 songs to create a family</string>
+    <string name="library_arrangement_variant_badge">ARR</string>
     <string name="library_list_delete_permanently">Delete permanently</string>
     <string name="library_view_mode_songs">Songs</string>
     <string name="library_view_mode_files">Files</string>
@@ -670,6 +671,11 @@
     <string name="timeline_tempo_preview_wave_title">Arrangement preview</string>
     <string name="timeline_tempo_preview_wave_position">%1$s / %2$s</string>
     <string name="timeline_tempo_action_export">Assemble</string>
+    <string name="arrangement_save_to_library_action">Library</string>
+    <string name="arrangement_virtual_name_title">Save a variant</string>
+    <string name="arrangement_virtual_name_label">Variant name</string>
+    <string name="arrangement_virtual_save_success">Variant added to the library: %1$s</string>
+    <string name="arrangement_virtual_save_failed">Unable to save the variant: %1$s</string>
     <string name="timeline_tempo_preview_generating">Preparing preview…</string>
     <string name="timeline_tempo_export_generating">Assembling…</string>
     <string name="timeline_tempo_export_name_title">Assembly name</string>

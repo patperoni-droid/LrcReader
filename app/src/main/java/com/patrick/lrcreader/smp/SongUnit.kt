@@ -13,5 +13,6 @@ data class SongUnit(
     val midiPath: String?,
     val midiCues: List<MidiCue> = emptyList(),
     val dmxPath: String?,
-    val prompterPath: String?
+    val prompterPath: String?,
+    val arrangementSourceSongId: String? = null
 )

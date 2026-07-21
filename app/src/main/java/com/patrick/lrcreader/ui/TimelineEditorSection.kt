@@ -118,6 +118,7 @@ import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.core.light.LightSceneState
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.ArrangementEntryData
+import com.patrick.lrcreader.smp.ArrangementData
 import com.patrick.lrcreader.smp.ArrangementSegmentData
 import com.patrick.lrcreader.smp.ArrangementStore
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
@@ -286,6 +287,7 @@ fun TimelineEditorSection(
     onMeasureAnchorHere: (Long) -> Unit,
     onOpenArrangement: () -> Unit = {},
     onImportGeneratedSmp: suspend (Uri) -> SongUnit? = { null },
+    onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit? = { _, _ -> null },
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -916,6 +918,7 @@ fun TimelineEditorSection(
                     onIsPlayingChange = onIsPlayingChange,
                     onOpenArrangement = onOpenArrangement,
                     onImportGeneratedSmp = onImportGeneratedSmp,
+                    onSaveVirtualArrangement = onSaveVirtualArrangement,
                     isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
                     onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
                     onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
@@ -1684,6 +1687,7 @@ private fun GridSetupHost(
     onIsPlayingChange: (Boolean) -> Unit,
     onOpenArrangement: () -> Unit,
     onImportGeneratedSmp: suspend (Uri) -> SongUnit?,
+    onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit?,
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -1771,6 +1775,7 @@ private fun GridSetupHost(
         onIsPlayingChange = onIsPlayingChange,
         onOpenArrangement = onOpenArrangement,
         onImportGeneratedSmp = onImportGeneratedSmp,
+        onSaveVirtualArrangement = onSaveVirtualArrangement,
         onMeasureAnchorHere = { anchorMs ->
             gridSyncPointMs = anchorMs
             saveGridSetup(gridTempoBpm, anchorMs)
@@ -1832,6 +1837,7 @@ private fun TimelineMeasuresPlaceholder(
     onIsPlayingChange: (Boolean) -> Unit,
     onOpenArrangement: () -> Unit,
     onImportGeneratedSmp: suspend (Uri) -> SongUnit?,
+    onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit?,
     onMeasureAnchorHere: (Long) -> Unit,
     onInitialSyncPointIfMissing: (Long) -> Unit,
     onSegmentInChange: (Long?) -> Unit,
@@ -1957,9 +1963,13 @@ private fun TimelineMeasuresPlaceholder(
     var colorArrangementEntryId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var showArrangementExportProDialog by remember(currentSongId) { mutableStateOf(false) }
     var showExportNameDialog by remember(currentSongId) { mutableStateOf(false) }
+    var showVirtualArrangementNameDialog by remember(currentSongId) { mutableStateOf(false) }
     var showSamplerTestScreen by remember(currentSongId) { mutableStateOf(false) }
     var exportNameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
+    var virtualArrangementNameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
     var isExportNameLoading by remember(currentSongId) { mutableStateOf(false) }
+    var isVirtualArrangementNameLoading by remember(currentSongId) { mutableStateOf(false) }
+    var isVirtualArrangementSaving by remember(currentSongId) { mutableStateOf(false) }
     var isFinalExporting by remember(currentSongId) { mutableStateOf(false) }
     var segmentSelectionMode by remember(currentSongId) {
         mutableStateOf(TimelineSegmentSelectionMode.KEEP)
@@ -4479,6 +4489,40 @@ private fun TimelineMeasuresPlaceholder(
                     .clickable(enabled = !isPreviewGenerating, onClick = listenAction)
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
+            if (constrainToAvailableHeight) {
+                Text(
+                    text = stringResource(R.string.arrangement_save_to_library_action),
+                    color = if (isVirtualArrangementSaving) Color(0xFF607D8B) else Color(0xFFFFD54F),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable(enabled = !isVirtualArrangementSaving) {
+                            if (structurePlaybackSegments.isEmpty()) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.arrangement_preview_structure_empty),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                return@clickable
+                            }
+                            showVirtualArrangementNameDialog = true
+                            isVirtualArrangementNameLoading = true
+                            virtualArrangementNameDraft = TextFieldValue("")
+                            scope.launch {
+                                val suggestedName = withContext(Dispatchers.IO) {
+                                    buildNextVirtualArrangementName(
+                                        songs = smpLibraryScanner.listSongs(),
+                                        sourceSongId = currentSongId,
+                                        sourceTitle = currentSongTitle
+                                    )
+                                }
+                                virtualArrangementNameDraft = TextFieldValue(suggestedName)
+                                isVirtualArrangementNameLoading = false
+                            }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                )
+            }
             Text(
                 text = stringResource(R.string.timeline_tempo_action_export),
                 color = if (isFinalExporting) Color(0xFF607D8B) else Color(0xFF80CBC4),
@@ -4933,6 +4977,83 @@ private fun TimelineMeasuresPlaceholder(
             },
             dismissButton = {
                 OutlinedButton(onClick = { renameSegmentId = null }) {
+                    Text(text = stringResource(R.string.common_cancel))
+                }
+            },
+            containerColor = Color(0xFF121212)
+        )
+    }
+
+    if (showVirtualArrangementNameDialog) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = {
+                if (!isVirtualArrangementNameLoading && !isVirtualArrangementSaving) {
+                    showVirtualArrangementNameDialog = false
+                }
+            },
+            title = {
+                Text(
+                    text = stringResource(R.string.arrangement_virtual_name_title),
+                    color = Color.White
+                )
+            },
+            text = {
+                OutlinedTextField(
+                    value = virtualArrangementNameDraft,
+                    onValueChange = { virtualArrangementNameDraft = it },
+                    singleLine = true,
+                    enabled = !isVirtualArrangementNameLoading && !isVirtualArrangementSaving,
+                    label = {
+                        Text(text = stringResource(R.string.arrangement_virtual_name_label))
+                    }
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = !isVirtualArrangementNameLoading &&
+                        !isVirtualArrangementSaving &&
+                        virtualArrangementNameDraft.text.trim().isNotEmpty(),
+                    onClick = {
+                        val sourceSongId = currentSongId?.trim().orEmpty()
+                        if (sourceSongId.isEmpty()) return@Button
+                        val chosenName = virtualArrangementNameDraft.text.trim()
+                        val variantData = buildArrangementDataForPersistence(
+                            useOccurrenceModel = constrainToAvailableHeight,
+                            name = chosenName,
+                            sourceSongId = sourceSongId,
+                            segments = arrangementSegments,
+                            structureSegmentIds = structureSegmentIds,
+                            existingEntries = arrangementEntries,
+                            preservedLegacySegments = preservedLegacyArrangementSegments
+                        )
+                        showVirtualArrangementNameDialog = false
+                        isVirtualArrangementSaving = true
+                        scope.launch {
+                            val savedSong = onSaveVirtualArrangement(chosenName, variantData)
+                            Toast.makeText(
+                                context,
+                                context.getString(
+                                    if (savedSong != null) {
+                                        R.string.arrangement_virtual_save_success
+                                    } else {
+                                        R.string.arrangement_virtual_save_failed
+                                    },
+                                    chosenName
+                                ),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            isVirtualArrangementSaving = false
+                        }
+                    }
+                ) {
+                    Text(text = stringResource(R.string.common_save))
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    enabled = !isVirtualArrangementNameLoading && !isVirtualArrangementSaving,
+                    onClick = { showVirtualArrangementNameDialog = false }
+                ) {
                     Text(text = stringResource(R.string.common_cancel))
                 }
             },
@@ -6526,6 +6647,26 @@ private fun buildNextTempoExportName(
         ?.plus(1)
         ?: 1
 
+    return "${baseName}_AR${nextIndex.coerceAtLeast(1).toString().padStart(2, '0')}"
+}
+
+private fun buildNextVirtualArrangementName(
+    songs: Collection<SongUnit>,
+    sourceSongId: String?,
+    sourceTitle: String?
+): String {
+    val baseName = normalizeTempoExportBaseName(sourceTitle)
+    val namePattern = Regex("^${Regex.escape(baseName)}_AR(\\d{2})$", RegexOption.IGNORE_CASE)
+    val cleanSourceSongId = sourceSongId?.trim().orEmpty()
+    val nextIndex = songs
+        .asSequence()
+        .filter { song -> song.arrangementSourceSongId == cleanSourceSongId }
+        .mapNotNull { song ->
+            namePattern.matchEntire(song.title.trim())?.groupValues?.getOrNull(1)?.toIntOrNull()
+        }
+        .maxOrNull()
+        ?.plus(1)
+        ?: 1
     return "${baseName}_AR${nextIndex.coerceAtLeast(1).toString().padStart(2, '0')}"
 }
 

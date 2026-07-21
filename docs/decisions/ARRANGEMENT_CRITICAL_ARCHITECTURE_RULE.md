@@ -95,6 +95,14 @@ ArrangementSegment :
 Structure :
 - liste ordonnée de segments
 
+Variante virtuelle :
+- possède un identifiant de bibliothèque distinct du `sourceSongId`
+- conserve la Structure dans son propre stockage normalisé
+- référence l'audio du SongUnit source sans le copier
+- peut être enregistrée et nommée avant tout rendu WAV
+- reste non jouable et non assignable à une playlist pendant la première étape d'intégration Bibliothèque
+- ne devient jouable qu'après ajout d'une résolution explicite dans le lecteur principal, avec préparation complète de la liste Media3 avant Play
+
 Évolution UX validée :
 - cette évolution d'interface est réservée à la tablette et ne modifie pas l'interface Arrangement du téléphone
 - l'interface tablette cible présente directement cette Structure sous la forme d'une piste horizontale unique de conteneurs audio ordonnés
