@@ -1950,7 +1950,10 @@ private fun TimelineMeasuresPlaceholder(
     var nextSegmentIndex by remember(currentSongId) { mutableLongStateOf(1L) }
     var renameSegmentId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var segmentOptionsTargetId by remember(currentSongId) { mutableStateOf<String?>(null) }
-    var copiedArrangementEntry by remember(currentSongId) { mutableStateOf<ArrangementEntryData?>(null) }
+    var retainedArrangementTrackPlayhead by remember(currentSongId) {
+        mutableStateOf<ArrangementTrackPlayhead?>(null)
+    }
+    var arrangementInsertionBoundaryIndex by remember(currentSongId) { mutableStateOf<Int?>(0) }
     var colorArrangementEntryId by remember(currentSongId) { mutableStateOf<String?>(null) }
     var showArrangementExportProDialog by remember(currentSongId) { mutableStateOf(false) }
     var showExportNameDialog by remember(currentSongId) { mutableStateOf(false) }
@@ -2751,7 +2754,7 @@ private fun TimelineMeasuresPlaceholder(
 	} else {
 	    null
 	}
-	val arrangementTrackPlayhead = preparedArrangementPlayhead?.let { playhead ->
+	val liveArrangementTrackPlayhead = preparedArrangementPlayhead?.let { playhead ->
 	    ArrangementTrackPlayhead(
 	        itemId = playhead.entryIndex.toString(),
 	        repeatIndex = playhead.repeatIndex,
@@ -2759,6 +2762,24 @@ private fun TimelineMeasuresPlaceholder(
 	        segmentProgressFraction = playhead.segmentProgressFraction
 	    )
 	}
+    val arrangementTrackLayoutItems = structureSegmentIds.mapIndexedNotNull { index, segmentId ->
+        val segment = arrangementSegments.firstOrNull { it.id == segmentId } ?: return@mapIndexedNotNull null
+        ArrangementListItem(
+            id = index.toString(),
+            title = segment.name,
+            durationMs = (segment.endMs - segment.startMs).coerceAtLeast(0L),
+            repeatCount = arrangementEntries.firstOrNull { it.entryId == segmentId }?.repeatCount ?: 1
+        )
+    }
+    LaunchedEffect(liveArrangementTrackPlayhead) {
+        liveArrangementTrackPlayhead?.let { livePlayhead ->
+            retainedArrangementTrackPlayhead = livePlayhead
+            arrangementInsertionBoundaryIndex = null
+        }
+    }
+    val arrangementTrackPlayhead = liveArrangementTrackPlayhead
+        ?: retainedArrangementTrackPlayhead
+        ?: arrangementTrackPlayheadAtBoundary(arrangementTrackLayoutItems, 0)
 	    val selectedStructureEditSegment = selectedStructureEditIndex
 	        ?.let { index -> structureSegmentIds.getOrNull(index) }
 	        ?.let { segmentId -> arrangementSegments.firstOrNull { it.id == segmentId } }
@@ -3264,12 +3285,12 @@ private fun TimelineMeasuresPlaceholder(
         persistArrangementState(nextSegments = nextSegments, nextEntries = nextEntries)
     }
 
-    fun insertArrangementOccurrenceAfter(
-        targetIndex: Int,
+    fun insertArrangementOccurrenceAt(
+        insertionIndex: Int,
         template: ArrangementEntryData
     ) {
         if (!constrainToAvailableHeight || !arrangementStructuralActionsEnabled) return
-        val insertIndex = (targetIndex + 1).coerceIn(0, structureSegmentIds.size)
+        val insertIndex = insertionIndex.coerceIn(0, structureSegmentIds.size)
         var candidateIndex = nextSegmentIndex
         val usedIds = (arrangementSegments.map { segment -> segment.id } +
             preservedLegacyArrangementSegments.map { segment -> segment.id }).toSet()
@@ -4682,6 +4703,22 @@ private fun TimelineMeasuresPlaceholder(
                 )
             }
 
+            val structureTrackItems = structureSegmentIds.mapIndexedNotNull { index, segmentId ->
+                val segment = arrangementSegments.firstOrNull { it.id == segmentId }
+                    ?: return@mapIndexedNotNull null
+                val entry = arrangementEntries.firstOrNull { it.entryId == segmentId }
+                ArrangementListItem(
+                    id = index.toString(),
+                    title = "${index + 1}. ${segment.name}",
+                    durationMs = (segment.endMs - segment.startMs).coerceAtLeast(0L),
+                    repeatCount = entry?.repeatCount ?: 1,
+                    isMuted = entry?.muted ?: false,
+                    color = entry?.color,
+                    isActive = index == selectedStructureEditIndex ||
+                        (structurePlaybackActive && index == activeStructureEntryIndex),
+                    isQueued = structurePlaybackActive && index == queuedStructureEntryIndex
+                )
+            }
             ArrangementListCard(
                 modifier = if (constrainToAvailableHeight) {
                     Modifier.fillMaxWidth()
@@ -4690,21 +4727,7 @@ private fun TimelineMeasuresPlaceholder(
                 },
                 title = stringResource(R.string.arrangement_structure_title),
                 emptyLabel = stringResource(R.string.arrangement_structure_empty),
-                items = structureSegmentIds.mapIndexedNotNull { index, segmentId ->
-                    val segment = arrangementSegments.firstOrNull { it.id == segmentId } ?: return@mapIndexedNotNull null
-                    val entry = arrangementEntries.firstOrNull { it.entryId == segmentId }
-                    ArrangementListItem(
-                        id = index.toString(),
-                        title = "${index + 1}. ${segment.name}",
-                        durationMs = (segment.endMs - segment.startMs).coerceAtLeast(0L),
-                        repeatCount = entry?.repeatCount ?: 1,
-                        isMuted = entry?.muted ?: false,
-                        color = entry?.color,
-                        isActive = index == selectedStructureEditIndex ||
-                            (structurePlaybackActive && index == activeStructureEntryIndex),
-                        isQueued = structurePlaybackActive && index == queuedStructureEntryIndex
-                    )
-                },
+                items = structureTrackItems,
                 onItemClick = { structureIndexId ->
                     val logicalIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
                     val selectedSegmentId = structureSegmentIds.getOrNull(logicalIndex)
@@ -4827,7 +4850,18 @@ private fun TimelineMeasuresPlaceholder(
                     null
                 },
                 itemActionsEnabled = !constrainToAvailableHeight || arrangementStructuralActionsEnabled,
-                playhead = arrangementTrackPlayhead
+                playhead = arrangementTrackPlayhead,
+                onPlayheadBoundaryChange = if (constrainToAvailableHeight) {
+                    { boundaryIndex ->
+                        arrangementInsertionBoundaryIndex = boundaryIndex
+                        retainedArrangementTrackPlayhead = arrangementTrackPlayheadAtBoundary(
+                            items = structureTrackItems,
+                            boundaryIndex = boundaryIndex
+                        )
+                    }
+                } else {
+                    null
+                }
             )
         }
         if (measuresStatus != null) {
@@ -5144,32 +5178,15 @@ private fun TimelineMeasuresPlaceholder(
                     )
                     if (constrainToAvailableHeight && targetEntry != null) {
                         Text(
-                            text = stringResource(R.string.arrangement_occurrence_duplicate),
-                            color = Color.White,
-                            modifier = Modifier.clickable {
-                                val targetIndex = structureSegmentIds.indexOf(targetEntry.entryId)
-                                if (targetIndex >= 0) {
-                                    insertArrangementOccurrenceAfter(targetIndex, targetEntry)
-                                }
-                                segmentOptionsTargetId = null
-                            }
-                        )
-                        Text(
-                            text = stringResource(R.string.library_bottom_copy),
-                            color = Color.White,
-                            modifier = Modifier.clickable {
-                                copiedArrangementEntry = targetEntry
-                                segmentOptionsTargetId = null
-                            }
-                        )
-                        Text(
-                            text = stringResource(R.string.arrangement_occurrence_paste_after),
-                            color = if (copiedArrangementEntry != null) Color.White else Color(0xFF546E7A),
-                            modifier = Modifier.clickable(enabled = copiedArrangementEntry != null) {
-                                val targetIndex = structureSegmentIds.indexOf(targetEntry.entryId)
-                                val copiedEntry = copiedArrangementEntry
-                                if (targetIndex >= 0 && copiedEntry != null) {
-                                    insertArrangementOccurrenceAfter(targetIndex, copiedEntry)
+                            text = stringResource(R.string.timeline_paste_here),
+                            color = if (arrangementInsertionBoundaryIndex != null) {
+                                Color.White
+                            } else {
+                                Color(0xFF546E7A)
+                            },
+                            modifier = Modifier.clickable(enabled = arrangementInsertionBoundaryIndex != null) {
+                                arrangementInsertionBoundaryIndex?.let { insertionIndex ->
+                                    insertArrangementOccurrenceAt(insertionIndex, targetEntry)
                                 }
                                 segmentOptionsTargetId = null
                             }

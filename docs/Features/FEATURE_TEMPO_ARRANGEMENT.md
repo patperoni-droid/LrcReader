@@ -112,13 +112,16 @@ Implémenté dans l'éditeur canonique tablette :
 - les segments V1 non placés dans la Structure restent conservés dans le fichier pour éviter toute perte pendant la migration ;
 - ouvrir l'Arrangement ou sélectionner un bloc ne réécrit pas le fichier : la migration V2 est enregistrée seulement lors d'une modification explicite ;
 - le téléphone continue d'enregistrer sa forme V1 lorsqu'il travaille sur un Arrangement V1.
-- chaque bloc tablette propose maintenant renommage, couleur, duplication, copie/collage, mute, répétition et suppression explicite ;
+- chaque bloc tablette propose maintenant renommage, couleur, collage à la tête, mute, répétition et suppression explicite ;
 - la poignée de déplacement déplace une occurrence d'un voisin vers la gauche ou la droite sans changer son `entryId` ;
-- une duplication ou un collage crée un nouvel `entryId` indépendant et ne duplique jamais le fichier audio ;
+- un collage crée à la frontière choisie une occurrence avec un nouvel `entryId` indépendant et ne duplique jamais le fichier audio ;
 - la couleur, le mute et `repeatCount` sont sauvegardés dans l'entrée V2 ;
 - avant la preview ou l'export, les occurrences en mute sont exclues et les répétitions sont développées dans la liste audio préparée ;
 - pendant une preview Structure ou WAV, une préparation ou un export, l'ajout, le déplacement et les actions de structure sont verrouillés afin de ne jamais reconstruire le montage en pleine lecture ;
-- une tête de lecture turquoise est dessinée sur la piste tablette uniquement pendant la preview Structure réelle ou la pré-écoute WAV ;
+- la tête turquoise reste visible sur la piste tablette hors lecture ; après Stop, elle conserve la dernière position exacte, y compris au milieu d'un segment ;
+- toucher ou faire glisser la zone supérieure de la piste passe en édition et quantifie la tête sur la frontière de segment la plus proche ;
+- après un Stop au milieu d'un segment, `Coller ici` reste indisponible tant qu'un toucher n'a pas choisi une frontière non ambiguë ;
+- `Coller ici`, dans le menu du segment sélectionné, duplique ce segment à la frontière indiquée par la tête ;
 - sa position utilise le temps cumulé du montage préparé, jamais le temps absolu de la waveform source ;
 - pour un bloc répété, la tête parcourt successivement chaque fraction du bloc et affiche la répétition active sous la forme `1/N`, `2/N`, etc. ;
 - les occurrences en mute restent visibles dans l'éditeur mais sont sautées par la tête de lecture comme elles le sont par la liste audio préparée ;

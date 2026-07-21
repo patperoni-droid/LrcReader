@@ -68,4 +68,29 @@ class ArrangementTrackLayoutTest {
 
         assertEquals(8f, offsetDp ?: -1f, 0f)
     }
+
+    @Test
+    fun boundaryPlayhead_mapsTheEndOfTheTrack() {
+        val items = listOf(
+            ArrangementListItem(id = "intro", title = "Intro", durationMs = 2_000L),
+            ArrangementListItem(id = "verse", title = "Verse", durationMs = 2_000L)
+        )
+
+        val playhead = arrangementTrackPlayheadAtBoundary(items, items.size)
+        val offsetDp = arrangementTrackPlayheadOffsetDp(items, playhead)
+
+        assertEquals(352f, offsetDp ?: -1f, 0f)
+    }
+
+    @Test
+    fun nearestBoundary_quantizesTouchBetweenSegments() {
+        val items = listOf(
+            ArrangementListItem(id = "intro", title = "Intro", durationMs = 2_000L),
+            ArrangementListItem(id = "verse", title = "Verse", durationMs = 2_000L)
+        )
+
+        assertEquals(0, arrangementTrackNearestBoundaryIndex(items, 20f))
+        assertEquals(1, arrangementTrackNearestBoundaryIndex(items, 180f))
+        assertEquals(2, arrangementTrackNearestBoundaryIndex(items, 340f))
+    }
 }

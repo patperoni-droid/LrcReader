@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -82,7 +83,8 @@ fun ArrangementListCard(
     horizontalTrack: Boolean = false,
     onItemMove: ((String, Int) -> Unit)? = null,
     itemActionsEnabled: Boolean = true,
-    playhead: ArrangementTrackPlayhead? = null
+    playhead: ArrangementTrackPlayhead? = null,
+    onPlayheadBoundaryChange: ((Int) -> Unit)? = null
 ) {
     Card(
         modifier = modifier,
@@ -126,7 +128,8 @@ fun ArrangementListCard(
                     onItemLongClick = onItemLongClick,
                     onItemMove = onItemMove,
                     itemActionsEnabled = itemActionsEnabled,
-                    playhead = playhead
+                    playhead = playhead,
+                    onPlayheadBoundaryChange = onPlayheadBoundaryChange
                 )
             } else {
                 Column(
@@ -213,7 +216,8 @@ private fun ArrangementHorizontalTrack(
     onItemLongClick: ((String) -> Unit)?,
     onItemMove: ((String, Int) -> Unit)?,
     itemActionsEnabled: Boolean,
-    playhead: ArrangementTrackPlayhead?
+    playhead: ArrangementTrackPlayhead?,
+    onPlayheadBoundaryChange: ((Int) -> Unit)?
 ) {
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
@@ -427,6 +431,45 @@ private fun ArrangementHorizontalTrack(
                 )
             }
         }
+        if (onPlayheadBoundaryChange != null && itemActionsEnabled) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(20.dp)
+                    .align(Alignment.TopStart)
+                    .pointerInput(items) {
+                        detectTapGestures { position ->
+                            val contentOffsetDp = with(density) {
+                                (position.x + scrollState.value).toDp().value
+                            }
+                            onPlayheadBoundaryChange(
+                                arrangementTrackNearestBoundaryIndex(items, contentOffsetDp)
+                            )
+                        }
+                    }
+                    .pointerInput(items) {
+                        detectDragGestures(
+                            onDragStart = { position ->
+                                val contentOffsetDp = with(density) {
+                                    (position.x + scrollState.value).toDp().value
+                                }
+                                onPlayheadBoundaryChange(
+                                    arrangementTrackNearestBoundaryIndex(items, contentOffsetDp)
+                                )
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                val contentOffsetDp = with(density) {
+                                    (change.position.x + scrollState.value).toDp().value
+                                }
+                                onPlayheadBoundaryChange(
+                                    arrangementTrackNearestBoundaryIndex(items, contentOffsetDp)
+                                )
+                            }
+                        )
+                    }
+            )
+        }
     }
 }
 
@@ -467,6 +510,52 @@ internal fun arrangementTrackPlayheadOffsetDp(
         previousWidthDp +
         (itemIndex * ARRANGEMENT_TRACK_SPACING_DP) +
         (targetWidthDp * blockProgress)
+}
+
+internal fun arrangementTrackPlayheadAtBoundary(
+    items: List<ArrangementListItem>,
+    boundaryIndex: Int
+): ArrangementTrackPlayhead? {
+    if (items.isEmpty()) return null
+    val safeBoundaryIndex = boundaryIndex.coerceIn(0, items.size)
+    return if (safeBoundaryIndex < items.size) {
+        ArrangementTrackPlayhead(
+            itemId = items[safeBoundaryIndex].id,
+            repeatIndex = 0,
+            repeatCount = items[safeBoundaryIndex].repeatCount.coerceAtLeast(1),
+            segmentProgressFraction = 0f
+        )
+    } else {
+        val lastItem = items.last()
+        val repeatCount = lastItem.repeatCount.coerceAtLeast(1)
+        ArrangementTrackPlayhead(
+            itemId = lastItem.id,
+            repeatIndex = repeatCount - 1,
+            repeatCount = repeatCount,
+            segmentProgressFraction = 1f
+        )
+    }
+}
+
+internal fun arrangementTrackNearestBoundaryIndex(
+    items: List<ArrangementListItem>,
+    contentOffsetDp: Float
+): Int {
+    if (items.isEmpty()) return 0
+    val boundaryOffsets = buildList {
+        var nextOffsetDp = ARRANGEMENT_TRACK_CONTENT_PADDING_DP
+        add(nextOffsetDp)
+        items.forEachIndexed { index, item ->
+            nextOffsetDp += arrangementTrackBlockWidthDp(item.durationMs)
+            if (index < items.lastIndex) {
+                nextOffsetDp += ARRANGEMENT_TRACK_SPACING_DP
+            }
+            add(nextOffsetDp)
+        }
+    }
+    return boundaryOffsets.indices.minByOrNull { index ->
+        abs(boundaryOffsets[index] - contentOffsetDp)
+    } ?: 0
 }
 
 private fun formatArrangementTrackDuration(durationMs: Long): String {
