@@ -3886,13 +3886,13 @@ private fun TimelineMeasuresPlaceholder(
         },
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Box(modifier = Modifier.fillMaxWidth()) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
 	                Row(
-	                    modifier = Modifier.fillMaxWidth(),
+	                    modifier = if (constrainToAvailableHeight) Modifier else Modifier.fillMaxWidth(),
 	                    horizontalArrangement = Arrangement.spacedBy(8.dp),
 	                    verticalAlignment = Alignment.CenterVertically
 	                ) {
@@ -4003,12 +4003,12 @@ private fun TimelineMeasuresPlaceholder(
                             fontSize = 18.sp
                         )
                     }
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-        }
+	                    if (!constrainToAvailableHeight) {
+	                        Spacer(modifier = Modifier.weight(1f))
+	                    }
+	                }
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = if (constrainToAvailableHeight) Modifier else Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -4181,6 +4181,7 @@ private fun TimelineMeasuresPlaceholder(
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
+        }
         }
         TimelineGridWaveformSection(
             peaks = waveformPeaks,
@@ -4471,7 +4472,28 @@ private fun TimelineMeasuresPlaceholder(
                     }
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
+	        if (constrainToAvailableHeight) {
+	            Text(
+	                text = stringResource(R.string.arrangement_sampler_test_open_action),
+	                color = Color(0xFFB0BEC5),
+	                fontSize = 14.sp,
+	                modifier = Modifier
+	                    .clickable {
+	                        stopStructurePreviewPlayback(reason = "open_sampler_test")
+	                        stopArrangementLoopPreviewPlayback()
+	                        if (isPreparedClipLoopTestActive) {
+	                            onStopPreparedClipLoopTest()
+	                        }
+	                        if (isPlaying) {
+	                            onIsPlayingChange(false)
+	                        }
+	                        showSamplerTestScreen = true
+	                    }
+	                    .padding(horizontal = 10.dp, vertical = 8.dp)
+	            )
+	        }
         }
+	    if (!constrainToAvailableHeight) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Start
@@ -4495,6 +4517,7 @@ private fun TimelineMeasuresPlaceholder(
                     .padding(horizontal = 10.dp, vertical = 4.dp)
             )
         }
+	    }
         if (isPreviewGenerating) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
