@@ -5893,13 +5893,39 @@ private fun TimelineGridWaveformSection(
                         val effectiveEndFraction = if (endFraction <= startFraction) 1f else endFraction
                         val waveformNormalColor = Color(0xFF80CBC4)
                         val waveformAccentColor = Color(0xFFB2FF59)
-                        peaks.forEachIndexed { index, peak ->
-                            val realTimeMs = ((index.toFloat() + 0.5f) / peakCount.toFloat()) * safeDuration.toFloat()
+                        val visibleAudioStartMs = (
+                            startFraction * visualDurationFloat - visualPreRollMs.toFloat()
+                            ).coerceIn(0f, safeDuration.toFloat())
+                        val visibleAudioEndMs = (
+                            effectiveEndFraction * visualDurationFloat - visualPreRollMs.toFloat()
+                            ).coerceIn(0f, safeDuration.toFloat())
+                        val firstVisiblePeakIndex = (
+                            visibleAudioStartMs / safeDuration.toFloat() * peakCount.toFloat()
+                            ).toInt().coerceIn(0, peaks.lastIndex)
+                        val lastVisiblePeakIndexExclusive = (
+                            visibleAudioEndMs / safeDuration.toFloat() * peakCount.toFloat()
+                            ).toInt().plus(1).coerceIn(firstVisiblePeakIndex + 1, peakCount)
+                        val visiblePeakCount = lastVisiblePeakIndexExclusive - firstVisiblePeakIndex
+                        val maxWaveformColumns = widthPx.roundToInt().coerceAtLeast(1)
+                        val peaksPerColumn = (
+                            (visiblePeakCount + maxWaveformColumns - 1) / maxWaveformColumns
+                            ).coerceAtLeast(1)
+                        var bucketStartIndex = firstVisiblePeakIndex
+                        while (bucketStartIndex < lastVisiblePeakIndexExclusive) {
+                            val bucketEndIndex = minOf(
+                                bucketStartIndex + peaksPerColumn,
+                                lastVisiblePeakIndexExclusive
+                            )
+                            var peak = 0f
+                            for (index in bucketStartIndex until bucketEndIndex) {
+                                peak = maxOf(peak, peaks[index])
+                            }
+                            val bucketCenterIndex = (bucketStartIndex + bucketEndIndex - 1) / 2f
+                            val realTimeMs = (
+                                (bucketCenterIndex + 0.5f) / peakCount.toFloat()
+                                ) * safeDuration.toFloat()
                             val positionFraction = ((realTimeMs + visualPreRollMs.toFloat()) / visualDurationFloat)
                                 .coerceIn(0f, 1f)
-                            if (positionFraction < startFraction || positionFraction > effectiveEndFraction) {
-                                return@forEachIndexed
-                            }
                             val x = ((positionFraction - startFraction) /
                                 (effectiveEndFraction - startFraction)) * widthPx
                             val normalizedPeak = peak
@@ -5919,40 +5945,7 @@ private fun TimelineGridWaveformSection(
                                 strokeWidth = 1f,
                                 cap = androidx.compose.ui.graphics.StrokeCap.Round
                             )
-                            if (index < peaks.lastIndex) {
-                                val nextRealTimeMs = (((index + 1).toFloat() + 0.5f) /
-                                    peakCount.toFloat()) * safeDuration.toFloat()
-                                val nextPositionFraction = ((nextRealTimeMs + visualPreRollMs.toFloat()) /
-                                    visualDurationFloat).coerceIn(0f, 1f)
-                                val midpointFraction = (positionFraction + nextPositionFraction) / 2f
-                                if (midpointFraction in startFraction..effectiveEndFraction) {
-                                    val midpointX = ((midpointFraction - startFraction) /
-                                        (effectiveEndFraction - startFraction)) * widthPx
-                                    val midpointPeak = ((peak + peaks[index + 1]) / 2f)
-                                        .coerceIn(0f, 1f)
-                                        .pow(0.7f)
-                                        .times(1.08f)
-                                        .coerceIn(0f, 1f)
-                                    val midpointAmplitude = midpointPeak * (heightPx / 2f)
-                                    drawLine(
-                                        color = if (midpointPeak > 0.6f) {
-                                            waveformAccentColor.copy(alpha = 0.9f)
-                                        } else {
-                                            waveformNormalColor.copy(alpha = 0.82f)
-                                        },
-                                        start = androidx.compose.ui.geometry.Offset(
-                                            midpointX,
-                                            centerY - midpointAmplitude
-                                        ),
-                                        end = androidx.compose.ui.geometry.Offset(
-                                            midpointX,
-                                            centerY + midpointAmplitude
-                                        ),
-                                        strokeWidth = 0.8f,
-                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
-                                    )
-                                }
-                            }
+                            bucketStartIndex = bucketEndIndex
                         }
 
                         if (tempoBpm != null && tempoBpm > 0 && measureAnchorMs != null) {
