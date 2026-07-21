@@ -3095,6 +3095,20 @@ private fun TimelineMeasuresPlaceholder(
         loopEnabled = false
         preparedLoopStartMs = null
         onIsPlayingChange(false)
+        if (constrainToAvailableHeight) {
+            structureSamplerReady = false
+            structureUsingWavSource = false
+            Log.d(
+                ARR_STRUCTURE_FLOW_TAG,
+                "DIRECT_SOURCE_START mode=tablet_arrangement source=${arrangementTimingSourceLabel(sourceAudioPath)}"
+            )
+            playStructureSegmentPreview(
+                startIndex = startIndex,
+                audioPath = sourceAudioPath,
+                segments = playbackSegments
+            )
+            return
+        }
         isStructureAudioPreparing = true
         scope.launch {
             try {

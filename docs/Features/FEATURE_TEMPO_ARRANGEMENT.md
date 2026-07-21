@@ -409,6 +409,7 @@ Bouton Ajouter :
 - player secondaire local
 - playlist de segments clipés (MediaItems)
 - lecture fluide basée sur ExoPlayer
+- sur tablette, le premier Play d'un segment utilise directement le fichier audio source et ne doit jamais attendre un transcodage WAV
 - structure basée sur segments préparés
 
 ---
@@ -462,6 +463,7 @@ Bouton Ajouter :
 
 - Sampler PCM expérimental
 - utilisé pour tester transitions et segments Arrangement
+- il n'est pas utilisé par la lecture Structure normale sur tablette
 - ne pilote jamais le Player principal
 - ne doit pas être couplé à AudioEngine live
 
