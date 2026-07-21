@@ -127,6 +127,7 @@ Implémenté dans l'éditeur canonique tablette :
 - tant qu'aucun bloc n'est sélectionné, le `Playback Control` pilote le titre complet ;
 - toucher un bloc arrête d'abord le titre complet puis donne temporairement les commandes du `Playback Control` à cette occurrence ;
 - pendant ce ciblage, Pause arrête entièrement la preview secondaire et Play relance le segment sélectionné depuis son début ;
+- toucher la waveform source arrête immédiatement la preview secondaire, libère le ciblage et place le titre complet en pause à la position touchée ; le Play suivant démarre donc le titre complet depuis cette position ;
 - le bouton retour début arrête la preview secondaire, libère le ciblage du bloc, replace le titre complet à `00:00` et rend les commandes au lecteur principal ;
 - le lecteur principal et la preview de segment ne doivent jamais jouer simultanément.
 

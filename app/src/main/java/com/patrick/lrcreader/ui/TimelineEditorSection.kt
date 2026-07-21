@@ -4205,6 +4205,14 @@ private fun TimelineMeasuresPlaceholder(
             revealAnchorRequest = revealSyncPointRequest,
             onToggleExpanded = { isWaveformExpanded = !isWaveformExpanded },
             onSeekRequested = { requestedPositionMs ->
+                val shouldReturnToMainPlayback = constrainToAvailableHeight &&
+                    (selectedStructureEditIndex != null ||
+                        selectedSegmentLoopId != null ||
+                        isTimelineSecondaryPlaybackActive(
+                            structurePlaybackActive = structurePlaybackActive,
+                            wavPreviewActive = wavPreviewActive,
+                            arrangementLoopPreviewActive = arrangementLoopPreviewActive
+                        ))
                 Log.d(
                     ARR_TIMING_DIAG_TAG,
                     "ACTION action=SEEK x=NA calculatedTimeMs=$requestedPositionMs " +
@@ -4213,7 +4221,19 @@ private fun TimelineMeasuresPlaceholder(
                         "safeDurationMs=$waveformDurationMs isLoopActive=$arrangementLoopPreviewActive " +
                         "isStructureActive=$structurePlaybackActive"
                 )
-                if (structurePlaybackActive) {
+                if (shouldReturnToMainPlayback) {
+                    onIsPlayingChange(false)
+                    stopStructurePreviewPlayback(reason = "waveform_seek_to_main")
+                    loopEnabled = false
+                    preparedLoopStartMs = null
+                    stopArrangementLoopPreviewPlayback()
+                    selectedStructureEditIndex = null
+                    selectedSegmentLoopId = null
+                    selectedSegmentLoopStartMs = null
+                    selectedSegmentLoopEndMs = null
+                    onStructurePreviewTargetChange(false)
+                    seekToMs(requestedPositionMs.coerceAtLeast(0L))
+                } else if (structurePlaybackActive) {
                     seekStructurePreviewToAbsolutePosition(requestedPositionMs)
                 } else if (arrangementLoopPreviewActive) {
                     val activeLoop = activeLoopRange

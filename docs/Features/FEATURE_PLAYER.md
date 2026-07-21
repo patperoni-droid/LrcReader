@@ -78,6 +78,7 @@ Tablet Arrangement transport routing:
 - by default it controls the complete active song;
 - selecting a block on the tablet Arrangement track temporarily targets that segment preview;
 - Pause fully stops the targeted segment preview and Play restarts it from the segment beginning;
+- touching the source waveform stops the targeted segment preview, releases the segment target, seeks the complete song to the touched position and keeps it paused until Play is pressed;
 - Return to beginning stops the secondary preview, restores the complete song as transport target and seeks it to `00:00`;
 - the main Player and an Arrangement segment preview must never play at the same time;
 - this routing is tablet-only and does not change the phone Arrangement editor.
