@@ -114,6 +114,8 @@ import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
 import com.patrick.lrcreader.smp.ArrangementData
 import com.patrick.lrcreader.smp.ArrangementVariantStore
+import com.patrick.lrcreader.smp.PreparedVirtualArrangementPlayback
+import com.patrick.lrcreader.smp.VirtualArrangementPlaybackResolver
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import com.patrick.lrcreader.ui.library.LibraryScreen
@@ -658,6 +660,9 @@ class MainActivity : AppCompatActivity() {
                 var isSmpImportedSongsDialogOpen by remember { mutableStateOf(false) }
                 var smpImportedSongs by remember { mutableStateOf<List<com.patrick.lrcreader.smp.SongUnit>>(emptyList()) }
                 var smpSongsById by remember { mutableStateOf(startupSmpSongsById) }
+                var activeVirtualArrangementPlayback by remember {
+                    mutableStateOf<PreparedVirtualArrangementPlayback?>(null)
+                }
                 var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
                 var pendingPlaylistTrackTarget by remember { mutableStateOf<String?>(null) }
                 var pendingPlaylistBatchPlan by remember {
@@ -1284,6 +1289,40 @@ class MainActivity : AppCompatActivity() {
                 var currentPlayingPlaylistItemKey by rememberSaveable { mutableStateOf<String?>(null) }
                 val currentPlayingSongId = remember(currentPlayingUri) {
                     resolveSessionSongIdFromTrackUri(currentPlayingUri)
+                }
+
+                fun effectiveMainPlaybackPositionMs(): Long {
+                    val arrangement = activeVirtualArrangementPlayback ?: return exoPlayer.currentPosition
+                    val currentIndex = exoPlayer.currentMediaItemIndex.coerceAtLeast(0)
+                    val elapsedBefore = arrangement.occurrenceDurationsMs
+                        .take(currentIndex)
+                        .fold(0L) { total, duration ->
+                            if (duration > Long.MAX_VALUE - total) Long.MAX_VALUE else total + duration
+                        }
+                    return (elapsedBefore + exoPlayer.currentPosition.coerceAtLeast(0L))
+                        .coerceIn(0L, arrangement.durationMs)
+                }
+
+                fun seekMainPlaybackToMs(positionMs: Long) {
+                    val arrangement = activeVirtualArrangementPlayback
+                    if (arrangement == null || arrangement.occurrenceDurationsMs.isEmpty()) {
+                        exoPlayer.seekTo(positionMs)
+                        return
+                    }
+                    val safePositionMs = positionMs.coerceIn(0L, arrangement.durationMs)
+                    var elapsedMs = 0L
+                    var targetIndex = arrangement.occurrenceDurationsMs.lastIndex
+                    var targetOffsetMs = arrangement.occurrenceDurationsMs.last().coerceAtLeast(0L)
+                    for ((index, durationMs) in arrangement.occurrenceDurationsMs.withIndex()) {
+                        val nextElapsedMs = (elapsedMs + durationMs).coerceAtMost(arrangement.durationMs)
+                        if (safePositionMs < nextElapsedMs || index == arrangement.occurrenceDurationsMs.lastIndex) {
+                            targetIndex = index
+                            targetOffsetMs = (safePositionMs - elapsedMs).coerceIn(0L, durationMs)
+                            break
+                        }
+                        elapsedMs = nextElapsedMs
+                    }
+                    exoPlayer.seekTo(targetIndex, targetOffsetMs)
                 }
                 val quickPlaylistLiveSelectionInSync = remember(
                     quickPlaylistSequentialSelectionPendingPlay,
@@ -1999,6 +2038,7 @@ class MainActivity : AppCompatActivity() {
 	                }
 
                 fun resolveEffectiveDurationMs(requestedUri: String?, activeUri: String?): Long {
+                    activeVirtualArrangementPlayback?.let { return it.durationMs }
                     val effectiveRequestedUri = requestedUri?.takeIf { it.isNotBlank() }
                         ?: activeUri?.takeIf { it.isNotBlank() }
                         ?: return exoPlayer.duration
@@ -2355,7 +2395,10 @@ class MainActivity : AppCompatActivity() {
                     playlistName: String?,
                     playlistItemKey: String? = null,
                     openPlayerScreen: Boolean = true,
-                    startPositionMs: Long? = null
+                    startPositionMs: Long? = null,
+                    playbackIdentityUri: String? = null,
+                    playbackTitle: String? = null,
+                    preparedArrangement: PreparedVirtualArrangementPlayback? = null
                 ) {
                     if (manualCrossfadeTransitionTitle != null) {
                         return
@@ -2396,12 +2439,15 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    val playbackIdentity = playbackIdentityUri?.takeIf { it.isNotBlank() } ?: uriString
+                    activeVirtualArrangementPlayback = preparedArrangement
                     val shouldOpenPlayerScreen = shouldOpenPlayerScreenForLaunch(
                         trackUriString = uriString,
-                        allowPlayerOpen = openPlayerScreen
+                        allowPlayerOpen = openPlayerScreen || preparedArrangement != null
                     )
 
-                    val backingTitle = TitleAliasesStore.getTitleForTrack(ctx, uriString)
+                    val backingTitle = playbackTitle
+                        ?: TitleAliasesStore.getTitleForTrack(ctx, uriString)
                         ?: indexAll.firstOrNull { it.uriString == uriString }?.name
                         ?: Uri.parse(uriString).lastPathSegment
                         ?: HistoryRepository.UNTITLED_FALLBACK
@@ -2416,7 +2462,7 @@ class MainActivity : AppCompatActivity() {
                     embeddedLyricsListener.reset()
                     armPlaylistPlaybackState(
                         playlistName = playlistName,
-                        playbackUri = uriString,
+                        playbackUri = playbackIdentity,
                         playlistItemKey = playlistItemKey
                     )
 
@@ -2425,9 +2471,9 @@ class MainActivity : AppCompatActivity() {
                         try {
                             SessionPrefs.saveLastSession(
                                 context = ctx,
-                                trackUri = uriString,
+                                trackUri = playbackIdentity,
                                 playlistName = playlistName,
-                                songId = resolveSessionSongIdFromTrackUri(uriString)
+                                songId = resolveSessionSongIdFromTrackUri(playbackIdentity)
                             )
                         } catch (_: CancellationException) {
                             // coalesced on rapid taps
@@ -2490,7 +2536,9 @@ class MainActivity : AppCompatActivity() {
                         nextSpeed = loadedTrackMixSettings.tempo,
                         nextPitchSemi = loadedTrackMixSettings.pitchSemi
                     )
-                    val forceSequentialPlayback = forceSequentialForPitchSpeed || forceSequentialForTrackGainPipeline
+                    val forceSequentialPlayback = preparedArrangement != null ||
+                        forceSequentialForPitchSpeed ||
+                        forceSequentialForTrackGainPipeline
                     val playerIsCurrentlyPlaying = runCatching { exoPlayer.isPlaying }.getOrDefault(false)
                     Log.d(
                         "PITCH_TRANSITION_GUARD",
@@ -2519,7 +2567,7 @@ class MainActivity : AppCompatActivity() {
                         parsedLines = emptyList()
                         lyricsLoading = false
                         isPlaying = true
-                        currentPlayingUri = uriString
+                        currentPlayingUri = playbackIdentity
                         currentPlayingPlaylist = playlistName
                         playbackPlayer = promotedPlayer
                         playbackLyricsListener = AudioEngine.getLyricsListener()
@@ -2650,7 +2698,7 @@ class MainActivity : AppCompatActivity() {
                                     ?.uri
                                     ?.toString()
                                     ?: uriString
-                                currentPlayingUri = activeUri
+                                currentPlayingUri = playbackIdentity
                                 currentPlayingPlaylist = playlistName
                                 Log.d(
                                     SMP_PLAY_TRACE_TAG,
@@ -2661,10 +2709,20 @@ class MainActivity : AppCompatActivity() {
                                     "player_on_start",
                                     "token=$myToken activeUri=$activeUri"
                                 )
-                                val trimConfig = resolveTrimConfig(
-                                    requestedUri = uriString,
-                                    activeUri = activeUri
-                                )
+                                val trimConfig = if (preparedArrangement == null) {
+                                    resolveTrimConfig(
+                                        requestedUri = uriString,
+                                        activeUri = activeUri
+                                    )
+                                } else {
+                                    TrimConfig(
+                                        key = playbackIdentity,
+                                        store = "arrangement",
+                                        entryMs = 0L,
+                                        exitMs = null,
+                                        mode = "none"
+                                    )
+                                }
                                 if (BuildConfig.DEBUG) {
                                     Log.d(
                                         "TRIM",
@@ -2678,7 +2736,13 @@ class MainActivity : AppCompatActivity() {
                                     trimAppliedForThisTrack = true
                                 }
                                 startPositionMs?.let { requestedStartMs ->
-                                    runCatching { playbackPlayer.seekTo(requestedStartMs.coerceAtLeast(0L)) }
+                                    runCatching {
+                                        if (preparedArrangement != null && playbackPlayer === exoPlayer) {
+                                            seekMainPlaybackToMs(requestedStartMs.coerceAtLeast(0L))
+                                        } else {
+                                            playbackPlayer.seekTo(requestedStartMs.coerceAtLeast(0L))
+                                        }
+                                    }
                                 }
                                 val trimExitMs = trimConfig.exitMs
                                 if (trimConfig.mode == "seek-stop" && trimExitMs != null && trimExitMs > 0L) {
@@ -2730,6 +2794,8 @@ class MainActivity : AppCompatActivity() {
                                     reason = "MainActivity.beforePrepare"
                                 )
                             },
+                            preparedMediaItems = preparedArrangement?.mediaItems,
+                            loadEmbeddedLyrics = preparedArrangement == null,
                             onError = {
                                 if (manualCrossfadeTransitionTitle == null) {
                                     cancelTrimWatcher()
@@ -2767,6 +2833,9 @@ class MainActivity : AppCompatActivity() {
                                     if (treatAsEnded) {
                                         onEnded.value.invoke()
                                     } else {
+                                        if (preparedArrangement != null) {
+                                            activeVirtualArrangementPlayback = null
+                                        }
                                         isPlaying = false
                                         LightCueDispatcher.resetGlobal()
                                         PlaybackCoordinator.onPlayerStop()
@@ -2786,6 +2855,9 @@ class MainActivity : AppCompatActivity() {
                         runCatching {
                             playbackPlayer.stop()
                             playbackPlayer.clearMediaItems()
+                        }
+                        if (preparedArrangement != null) {
+                            activeVirtualArrangementPlayback = null
                         }
                         isPlaying = false
                         LightCueDispatcher.resetGlobal()
@@ -2905,6 +2977,44 @@ class MainActivity : AppCompatActivity() {
                         "Lecture SMP résolue: songId=${song.id} title=${song.title} uri=$resolvedUri playlist=$playlistName"
                     )
                     return PlaybackRouter.Target.Audio(resolvedUri, playlistName)
+                }
+
+                fun launchVirtualArrangementFromLibrary(
+                    songId: String,
+                    openPlayerScreen: Boolean,
+                    startPositionMs: Long?
+                ): Boolean {
+                    val variantSong = smpSongsById[songId]
+                        ?.takeIf { it.arrangementSourceSongId != null }
+                        ?: return false
+                    scope.launch {
+                        val prepared = VirtualArrangementPlaybackResolver.resolve(
+                            context = ctx.applicationContext,
+                            variantSong = variantSong,
+                            songsById = smpSongsById
+                        )
+                        if (prepared == null) {
+                            Toast.makeText(
+                                ctx,
+                                ctx.getString(R.string.arrangement_virtual_playback_unavailable),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return@launch
+                        }
+                        stopChainPlayback()
+                        playWithCrossfadeInternal(
+                            uriString = prepared.sourceAudioUri,
+                            playlistName = null,
+                            playlistItemKey = null,
+                            openPlayerScreen = openPlayerScreen,
+                            startPositionMs = startPositionMs,
+                            playbackIdentityUri = buildSmpItem(prepared.variantSongId),
+                            playbackTitle = prepared.title,
+                            preparedArrangement = prepared
+                        )
+                        currentLyricsColor = Color.White
+                    }
+                    return true
                 }
 
                 fun resolveAudioTarget(
@@ -3825,7 +3935,7 @@ class MainActivity : AppCompatActivity() {
                             currentTrackGainDb = currentTrackGainDb,
                             liveGainControlsEnabled = canAdjustLiveGain(),
                             onLiveGainDelta = ::adjustLiveGain,
-                            getPositionMs = { exoPlayer.currentPosition },
+                            getPositionMs = ::effectiveMainPlaybackPositionMs,
                             getEffectiveDurationMs = {
                                 resolveEffectiveDurationMs(
                                     requestedUri = currentPlayingUri,
@@ -3835,7 +3945,7 @@ class MainActivity : AppCompatActivity() {
                                         ?.toString()
                                 )
                             },
-                            seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                            seekToMs = ::seekMainPlaybackToMs,
                             onPlaybackControlPlayPause = ::togglePlaybackFromMainBus
                         )
                     } else if (isFillerSettingsOpen) {
@@ -3850,7 +3960,7 @@ class MainActivity : AppCompatActivity() {
                                 currentMainTrackGainDb = currentTrackGainDb,
                                 liveGainControlsEnabled = canAdjustLiveGain(),
                                 onMainLiveGainDelta = ::adjustLiveGain,
-                                getMainPositionMs = { exoPlayer.currentPosition },
+                                getMainPositionMs = ::effectiveMainPlaybackPositionMs,
                                 getMainDurationMs = {
                                     resolveEffectiveDurationMs(
                                         requestedUri = currentPlayingUri,
@@ -3860,7 +3970,7 @@ class MainActivity : AppCompatActivity() {
                                             ?.toString()
                                     )
                                 },
-                                seekMainToMs = { ms -> exoPlayer.seekTo(ms) },
+                                seekMainToMs = ::seekMainPlaybackToMs,
                                 onMainPlaybackPlayPause = ::togglePlaybackFromMainBus,
                                 mainPlaybackSelectionInSync = quickPlaylistLiveSelectionInSync
                             )
@@ -3948,7 +4058,7 @@ class MainActivity : AppCompatActivity() {
                                     },
                                     currentParsedLines = { parsedLines },
                                     currentPositionMs = {
-                                        runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                        runCatching { effectiveMainPlaybackPositionMs() }.getOrDefault(0L)
                                     },
                                     currentDurationMs = {
                                         runCatching {
@@ -4458,7 +4568,7 @@ class MainActivity : AppCompatActivity() {
                                                 setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
                                             }
                                         },
-                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getPositionMs = ::effectiveMainPlaybackPositionMs,
                                         getEffectiveDurationMs = {
                                             resolveEffectiveDurationMs(
                                                 requestedUri = currentPlayingUri,
@@ -4468,7 +4578,7 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekToMs = ::seekMainPlaybackToMs,
                                         onPlaySelectedPlaylistItem = ::requestQuickPlaylistSelectedPlayback,
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled,
@@ -4493,7 +4603,7 @@ class MainActivity : AppCompatActivity() {
                                         isActivePlaybackPlaying = isPlaying,
                                         currentTrackGainDb = currentTrackGainDb,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
-                                        getActivePlaybackPositionMs = { exoPlayer.currentPosition },
+                                        getActivePlaybackPositionMs = ::effectiveMainPlaybackPositionMs,
                                         getActivePlaybackDurationMs = {
                                             resolveEffectiveDurationMs(
                                                 requestedUri = currentPlayingUri,
@@ -4503,7 +4613,7 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekActivePlaybackToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekActivePlaybackToMs = ::seekMainPlaybackToMs,
                                         onActivePlaybackPlayPause = ::togglePlaybackFromMainBus,
                                         onActivePlaybackLivePlay = {
                                             val selectedTrackStarted =
@@ -4588,6 +4698,17 @@ class MainActivity : AppCompatActivity() {
                                                 playlistName = null,
                                                 songId = getSmpSongId(uriString)
                                             )
+                                            val requestedSongId = getSmpSongId(uriString)
+                                            if (
+                                                requestedSongId != null &&
+                                                launchVirtualArrangementFromLibrary(
+                                                    songId = requestedSongId,
+                                                    openPlayerScreen = openRichPlayer,
+                                                    startPositionMs = startPositionMs
+                                                )
+                                            ) {
+                                                return@LibraryScreen
+                                            }
                                             when (val target = PlaybackRouter.resolve(uriString, null)) {
                                                 is PlaybackRouter.Target.Audio,
                                                 is PlaybackRouter.Target.Smp -> {
@@ -4673,7 +4794,7 @@ class MainActivity : AppCompatActivity() {
                                                 ?.let { uri -> sanitizeDisplayTrackTitle(Uri.parse(uri).lastPathSegment) },
                                         currentParsedLines = parsedLines,
                                         getCurrentPositionMs = {
-                                            runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                            runCatching { effectiveMainPlaybackPositionMs() }.getOrDefault(0L)
                                         },
                                         getCurrentDurationMs = {
                                             runCatching {
@@ -4693,7 +4814,7 @@ class MainActivity : AppCompatActivity() {
                                         currentTrackGainDb = currentTrackGainDb,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
-                                        seekCurrentTrackToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekCurrentTrackToMs = ::seekMainPlaybackToMs,
                                         onPlaybackControlPlayPause = ::togglePlaybackFromMainBus,
                                         playbackControlSelectionInSync = quickPlaylistLiveSelectionInSync,
                                         loadCurrentParsedLines = {
@@ -4820,7 +4941,7 @@ class MainActivity : AppCompatActivity() {
                                             currentMainTrackGainDb = currentTrackGainDb,
                                             liveGainControlsEnabled = canAdjustLiveGain(),
                                             onMainLiveGainDelta = ::adjustLiveGain,
-                                            getMainPositionMs = { exoPlayer.currentPosition },
+                                            getMainPositionMs = ::effectiveMainPlaybackPositionMs,
                                             getMainDurationMs = {
                                                 resolveEffectiveDurationMs(
                                                     requestedUri = currentPlayingUri,
@@ -4830,7 +4951,7 @@ class MainActivity : AppCompatActivity() {
                                                         ?.toString()
                                                 )
                                             },
-                                            seekMainToMs = { ms -> exoPlayer.seekTo(ms) },
+                                            seekMainToMs = ::seekMainPlaybackToMs,
                                             onMainPlaybackPlayPause = ::togglePlaybackFromMainBus,
                                             onMainPlaybackLivePlay = {
                                                 val selectedTrackStarted =
@@ -4876,7 +4997,7 @@ class MainActivity : AppCompatActivity() {
                                         currentTrackGainDb = currentTrackGainDb,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
-                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getPositionMs = ::effectiveMainPlaybackPositionMs,
                                         getEffectiveDurationMs = {
                                             resolveEffectiveDurationMs(
                                                 requestedUri = currentPlayingUri,
@@ -4886,7 +5007,7 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekToMs = ::seekMainPlaybackToMs,
                                         onPlaybackControlPlayPause = ::togglePlaybackFromMainBus,
                                         onPlaybackControlLivePlay = {
                                             val selectedTrackStarted =
@@ -4910,7 +5031,7 @@ class MainActivity : AppCompatActivity() {
                                         currentTrackGainDb = currentTrackGainDb,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
-                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getPositionMs = ::effectiveMainPlaybackPositionMs,
                                         getEffectiveDurationMs = {
                                             resolveEffectiveDurationMs(
                                                 requestedUri = currentPlayingUri,
@@ -4920,7 +5041,7 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekToMs = ::seekMainPlaybackToMs,
                                         onPlaybackControlPlayPause = ::togglePlaybackFromMainBus,
                                         onPlaybackControlLivePlay = {
                                             val selectedTrackStarted =
@@ -4948,7 +5069,7 @@ class MainActivity : AppCompatActivity() {
                                         currentTrackGainDb = currentTrackGainDb,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
-                                        getOfficialPositionMs = { exoPlayer.currentPosition },
+                                        getOfficialPositionMs = ::effectiveMainPlaybackPositionMs,
                                         getOfficialDurationMs = {
                                             resolveEffectiveDurationMs(
                                                 requestedUri = currentPlayingUri,
@@ -4958,7 +5079,7 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekOfficialToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekOfficialToMs = ::seekMainPlaybackToMs,
                                         onOfficialPlaybackPlayPause = ::togglePlaybackFromMainBus,
                                         onOfficialPlaybackLivePlay = {
                                             val selectedTrackStarted =
@@ -5375,7 +5496,7 @@ class MainActivity : AppCompatActivity() {
                                                 currentTrackGainDb = currentTrackGainDb,
                                                 liveGainControlsEnabled = canAdjustLiveGain(),
                                                 onLiveGainDelta = ::adjustLiveGain,
-                                                getPositionMs = { exoPlayer.currentPosition },
+                                                getPositionMs = ::effectiveMainPlaybackPositionMs,
                                                 getEffectiveDurationMs = {
                                                     resolveEffectiveDurationMs(
                                                         requestedUri = currentPlayingUri,
@@ -5385,7 +5506,7 @@ class MainActivity : AppCompatActivity() {
                                                             ?.toString()
                                                     )
                                                 },
-                                                seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                                seekToMs = ::seekMainPlaybackToMs,
                                                 onPlaybackControlPlayPause = ::togglePlaybackFromMainBus
                                             )
                                         } else {
@@ -5624,7 +5745,7 @@ class MainActivity : AppCompatActivity() {
                                                 setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
                                             }
                                         },
-                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getPositionMs = ::effectiveMainPlaybackPositionMs,
                                         getEffectiveDurationMs = {
                                             resolveEffectiveDurationMs(
                                                 requestedUri = currentPlayingUri,
@@ -5634,7 +5755,7 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekToMs = ::seekMainPlaybackToMs,
                                         onPlaySelectedPlaylistItem = ::requestQuickPlaylistSelectedPlayback,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
@@ -5814,7 +5935,7 @@ class MainActivity : AppCompatActivity() {
                                         isActivePlaybackPlaying = isPlaying,
                                         currentTrackGainDb = currentTrackGainDb,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
-                                        getActivePlaybackPositionMs = { exoPlayer.currentPosition },
+                                        getActivePlaybackPositionMs = ::effectiveMainPlaybackPositionMs,
                                         getActivePlaybackDurationMs = {
                                             resolveEffectiveDurationMs(
                                                 requestedUri = currentPlayingUri,
@@ -5824,7 +5945,7 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekActivePlaybackToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekActivePlaybackToMs = ::seekMainPlaybackToMs,
                                         onActivePlaybackPlayPause = ::togglePlaybackFromMainBus,
                                         onActivePlaybackGainDelta = ::adjustLiveGain,
                                         reselectRootSignal = libraryTabReselectSignal,
@@ -5891,6 +6012,17 @@ class MainActivity : AppCompatActivity() {
                                                 playlistName = null,
                                                 songId = getSmpSongId(uriString)
                                             )
+                                            val requestedSongId = getSmpSongId(uriString)
+                                            if (
+                                                requestedSongId != null &&
+                                                launchVirtualArrangementFromLibrary(
+                                                    songId = requestedSongId,
+                                                    openPlayerScreen = openRichPlayer,
+                                                    startPositionMs = startPositionMs
+                                                )
+                                            ) {
+                                                return@LibraryScreen
+                                            }
                                             when (val target = PlaybackRouter.resolve(uriString, null)) {
                                                 is PlaybackRouter.Target.Audio,
                                                 is PlaybackRouter.Target.Smp -> {
@@ -5988,7 +6120,7 @@ class MainActivity : AppCompatActivity() {
                                                 ?.let { uri -> sanitizeDisplayTrackTitle(Uri.parse(uri).lastPathSegment) },
                                         currentParsedLines = parsedLines,
                                         getCurrentPositionMs = {
-                                            runCatching { exoPlayer.currentPosition }.getOrDefault(0L)
+                                            runCatching { effectiveMainPlaybackPositionMs() }.getOrDefault(0L)
                                         },
                                         getCurrentDurationMs = {
                                             runCatching {
@@ -6008,7 +6140,7 @@ class MainActivity : AppCompatActivity() {
                                         currentTrackGainDb = currentTrackGainDb,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
-                                        seekCurrentTrackToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekCurrentTrackToMs = ::seekMainPlaybackToMs,
                                         onPlaybackControlPlayPause = ::togglePlaybackFromMainBus,
                                         playbackControlSelectionInSync = quickPlaylistLiveSelectionInSync,
                                         loadCurrentParsedLines = {
@@ -6131,7 +6263,7 @@ class MainActivity : AppCompatActivity() {
                                         currentTrackGainDb = currentTrackGainDb,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
-                                        getPositionMs = { exoPlayer.currentPosition },
+                                        getPositionMs = ::effectiveMainPlaybackPositionMs,
                                         getEffectiveDurationMs = {
                                             resolveEffectiveDurationMs(
                                                 requestedUri = currentPlayingUri,
@@ -6141,7 +6273,7 @@ class MainActivity : AppCompatActivity() {
                                                     ?.toString()
                                             )
                                         },
-                                        seekToMs = { ms -> exoPlayer.seekTo(ms) },
+                                        seekToMs = ::seekMainPlaybackToMs,
                                         onPlaybackControlPlayPause = ::togglePlaybackFromMainBus
                                     )
 

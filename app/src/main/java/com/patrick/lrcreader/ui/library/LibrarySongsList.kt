@@ -293,7 +293,7 @@ fun LibrarySongsList(
                                         onKeyboardSelectedSongChange(activeSong.songId)
                                         if (selectionMode) {
                                             onToggleSelect(activeSongUri)
-                                        } else if (activeSong.audioAvailable) {
+                                        } else if (activeSong.playbackAvailable) {
                                             onOpenPlayer(activeSong)
                                         }
                                     }
@@ -313,12 +313,12 @@ fun LibrarySongsList(
                                     onKeyboardSelectedSongChange(activeSong.songId)
                                     onPreviewToggle(activeSong)
                                 },
-                                enabled = activeSong.audioAvailable
+                                enabled = activeSong.playbackAvailable
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.PlayArrow,
                                     contentDescription = null,
-                                    tint = if (activeSong.audioAvailable) accent else Color.White.copy(alpha = 0.35f)
+                                    tint = if (activeSong.playbackAvailable) accent else Color.White.copy(alpha = 0.35f)
                                 )
                             }
 
@@ -447,7 +447,7 @@ fun LibrarySongsList(
 
             val song = (row as LibrarySongListRow.Single).song
             val songUri = remember(song.playbackItem) { Uri.parse(song.playbackItem) }
-            val canPlay = song.audioAvailable
+            val canPlay = song.playbackAvailable
             val isSelected = selectedSongs.contains(songUri)
             val isCurrentPlaying = currentPlayingSongId == song.songId
             val isKeyboardSelected = keyboardSelectedSongId == song.songId

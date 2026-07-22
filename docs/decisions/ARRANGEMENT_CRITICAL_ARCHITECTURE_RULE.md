@@ -100,8 +100,10 @@ Variante virtuelle :
 - conserve la Structure dans son propre stockage normalisé
 - référence l'audio du SongUnit source sans le copier
 - peut être enregistrée et nommée avant tout rendu WAV
-- reste non jouable et non assignable à une playlist pendant la première étape d'intégration Bibliothèque
-- ne devient jouable qu'après ajout d'une résolution explicite dans le lecteur principal, avec préparation complète de la liste Media3 avant Play
+- reste non assignable à une playlist pendant la première étape d'intégration du lecteur
+- devient jouable depuis la Bibliothèque uniquement par une résolution explicite dans le lecteur principal, avec préparation complète de la liste Media3 avant Play
+- conserve une position et une durée cumulées calculées depuis les occurrences préparées, tandis que chaque MediaItem reste un clip du fichier source
+- ne projette pas encore paroles, accords, MIDI ou DMX pendant l'étape audio-only
 
 Évolution UX validée :
 - cette évolution d'interface est réservée à la tablette et ne modifie pas l'interface Arrangement du téléphone

@@ -1047,6 +1047,7 @@ fun LibraryScreen(
     }
 
     fun buildLibrarySongItemsFromSongs(songs: Collection<SongUnit>): List<LibrarySongItem> {
+        val songsById = songs.associateBy(SongUnit::id)
         return songs
             .map { song ->
                 val fallbackTitle = song.title.ifBlank { song.id }
@@ -1063,7 +1064,12 @@ fun LibraryScreen(
                     lufsMeasured = playback?.lufsMeasured,
                     lufsTarget = playback?.lufsTarget,
                     lufsAutoDb = playback?.lufsAutoDb,
-                    lufsManualDb = playback?.lufsManualDb
+                    lufsManualDb = playback?.lufsManualDb,
+                    arrangementPlayable = song.arrangementSourceSongId
+                        ?.let(songsById::get)
+                        ?.audioPath
+                        ?.let(::File)
+                        ?.isFile == true
                 )
             }
             .sortedBy { it.displayTitle.lowercase() }
@@ -4176,7 +4182,13 @@ fun LibraryScreen(
                                         },
                                         onPreviewToggle = { song ->
                                             keyboardSelectedSongId = song.songId
-                                            quickPlayToggle(song.playbackItem, song.volumeDb)
+                                            if (song.isArrangementVariant) {
+                                                closeLibrarySearch()
+                                                stopQuickPlay()
+                                                onPlayFromLibrary(song.playbackItem, isLibraryFullModeEnabled, null)
+                                            } else {
+                                                quickPlayToggle(song.playbackItem, song.volumeDb)
+                                            }
                                         },
                                         onAssignOne = { uri ->
                                             selectedSongs = setOf(uri)

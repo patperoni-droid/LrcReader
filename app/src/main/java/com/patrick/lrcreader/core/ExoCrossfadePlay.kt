@@ -41,6 +41,8 @@ fun exoCrossfadePlay(
     onError: () -> Unit,
     onNaturalEnd: () -> Unit = {},
     beforePrepare: ((ExoPlayer, String) -> Unit)? = null,
+    preparedMediaItems: List<MediaItem>? = null,
+    loadEmbeddedLyrics: Boolean = true,
     sequentialNoCrossfade: Boolean = false,
     fadeDurationMs: Long = 1000L
 ) {
@@ -109,7 +111,9 @@ fun exoCrossfadePlay(
 
         runCatching { embeddedLyricsListener.reset() }
         runCatching { exoPlayer.removeListener(embeddedLyricsListener) }
-        exoPlayer.addListener(embeddedLyricsListener)
+        if (loadEmbeddedLyrics) {
+            exoPlayer.addListener(embeddedLyricsListener)
+        }
 
         val endListener = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
@@ -185,7 +189,11 @@ fun exoCrossfadePlay(
         Log.d(PITCH_TRANSITION_GUARD_TAG, "beforeSetNext uri=$playableUriString sequential=$sequentialNoCrossfade")
         Log.d(PITCH_TRANSITION_DIAG_TAG, "MEDIA_ITEM_SET songId=$uriString media=$playableUriString")
         SmpLaunchTiming.markExoPrepareStart(playableUriString)
-        exoPlayer.setMediaItem(MediaItem.fromUri(playableUriString))
+        if (preparedMediaItems.isNullOrEmpty()) {
+            exoPlayer.setMediaItem(MediaItem.fromUri(playableUriString))
+        } else {
+            exoPlayer.setMediaItems(preparedMediaItems, true)
+        }
         Log.d(
             PITCH_TRANSITION_GUARD_TAG,
             "afterSetNext mediaItem=${exoPlayer.currentMediaItem?.localConfiguration?.uri} requested=$requestedNextUri sequential=$sequentialNoCrossfade"
@@ -217,9 +225,11 @@ fun exoCrossfadePlay(
             "PLAYER_PARAMS_AFTER_START speed=${exoPlayer.playbackParameters.speed} pitch=${exoPlayer.playbackParameters.pitch} state=${stateName(exoPlayer.playbackState)} isPlaying=${exoPlayer.isPlaying}"
         )
 
-        val lyrics = embeddedLyricsListener.lyrics.filterNotNull().firstOrNull()
-        if (getCurrentToken() != playToken) return@launch
-        onLyricsLoaded(lyrics)
+        if (loadEmbeddedLyrics) {
+            val lyrics = embeddedLyricsListener.lyrics.filterNotNull().firstOrNull()
+            if (getCurrentToken() != playToken) return@launch
+            onLyricsLoaded(lyrics)
+        }
     }
 }
 

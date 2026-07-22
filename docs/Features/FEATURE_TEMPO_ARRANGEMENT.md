@@ -22,7 +22,7 @@ Permettre à l’utilisateur de :
 
 ## VARIANTES VIRTUELLES DANS LA BIBLIOTHÈQUE
 
-**Statut : architecture validée, première étape limitée à l'enregistrement dans la Bibliothèque.**
+**Statut : enregistrement Bibliothèque et première lecture audio-only par le lecteur principal implémentés.**
 
 Une variante virtuelle est un projet Arrangement léger, par exemple `Marina_AR01`, qui :
 
@@ -38,12 +38,21 @@ Première étape :
 - l'action est proposée uniquement dans l'éditeur Arrangement tablette ;
 - la variante est créée dans le stockage interne normalisé et apparaît dans la Bibliothèque ;
 - elle est clairement identifiée comme variante Arrangement ;
-- elle reste non jouable et non assignable à une playlist tant que le lecteur principal ne sait pas résoudre et préparer sa Structure ;
+- elle reste non assignable à une playlist pendant cette étape ;
 - le titre source et son Arrangement courant restent inchangés.
+
+Deuxième étape — lecture Bibliothèque :
+
+- le Play de la Bibliothèque résout la variante vers son SongUnit source local ;
+- les occurrences actives et leurs répétitions sont transformées en une liste Media3 complète avant Play ;
+- les occurrences muettes sont exclues de cette préparation ;
+- cette liste est chargée dans le lecteur principal officiel, sans second lecteur et sans rendu WAV ;
+- Play, Pause, Stop et retour au début utilisent le `Playback Control` officiel ;
+- position et durée sont exprimées dans le temps cumulé de l'Arrangement ;
+- les paroles, accords, MIDI et DMX ne sont pas encore projetés dans ce nouvel espace temporel et restent hors de cette étape audio-only.
 
 Évolutions ultérieures :
 
-- résolution de la variante par le lecteur principal à partir de l'audio source local ;
 - ajout aux playlists et aux familles de versions ;
 - projection temporelle des paroles, accords, MIDI et DMX ;
 - transfert conjoint de la variante et de sa source ;

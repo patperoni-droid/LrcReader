@@ -12,12 +12,14 @@ data class LibrarySongItem(
     val lufsMeasured: Float? = null,
     val lufsTarget: Float? = null,
     val lufsAutoDb: Float? = null,
-    val lufsManualDb: Int? = null
+    val lufsManualDb: Int? = null,
+    val arrangementPlayable: Boolean = false
 ) {
     val songId: String get() = song.id
     val isArrangementVariant: Boolean get() = song.arrangementSourceSongId != null
     val isLufsActive: Boolean get() = volumeSource == "lufs"
     val audioAvailable: Boolean get() = song.audioPath != null
+    val playbackAvailable: Boolean get() = audioAvailable || arrangementPlayable
     val hasLyrics: Boolean get() = song.lyricsPath != null
     val hasChords: Boolean get() = song.chordsPath != null
     val hasNotes: Boolean get() = song.annotationsPath != null

@@ -1244,9 +1244,16 @@ object LrcStorage {
             }.getOrNull()?.takeIf { it.isNotBlank() }?.let { return it }
         }
 
-        return DocumentFile.fromSingleUri(context, uri)?.name
-            ?.takeIf { it.isNotBlank() }
-            ?: DocumentFile.fromTreeUri(context, uri)?.name?.takeIf { it.isNotBlank() }
+        if (uri.scheme != "content") {
+            return uri.lastPathSegment?.takeIf { it.isNotBlank() }
+                ?: uri.authority?.takeIf { it.isNotBlank() }
+        }
+
+        return runCatching {
+            DocumentFile.fromSingleUri(context, uri)?.name
+                ?.takeIf { it.isNotBlank() }
+                ?: DocumentFile.fromTreeUri(context, uri)?.name?.takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 
     private fun rememberCanonicalFileName(context: Context, trackUriString: String, fileName: String) {
