@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.core.audio
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
@@ -25,6 +26,15 @@ import java.util.WeakHashMap
 import kotlin.math.abs
 import kotlin.math.ln
 import kotlin.math.pow
+
+internal fun requiresSynchronousMediaCodecQueueing(
+    manufacturer: String,
+    hardware: String,
+    board: String
+): Boolean =
+    manufacturer.contains("mediatek", ignoreCase = true) ||
+        hardware.startsWith("mt", ignoreCase = true) ||
+        board.startsWith("mt", ignoreCase = true)
 
 @UnstableApi
 object AudioEngine {
@@ -147,6 +157,22 @@ object AudioEngine {
         }
             .setEnableAudioFloatOutput(false)
             .setEnableAudioTrackPlaybackParams(false)
+
+        if (
+            requiresSynchronousMediaCodecQueueing(
+                manufacturer = Build.MANUFACTURER.orEmpty(),
+                hardware = Build.HARDWARE.orEmpty(),
+                board = Build.BOARD.orEmpty()
+            )
+        ) {
+            renderersFactory
+                .forceDisableMediaCodecAsynchronousQueueing()
+                .setEnableDecoderFallback(true)
+            Log.w(
+                AUDIO_PLAYER_DIAG_TAG,
+                "MediaTek codec guard enabled hardware=${Build.HARDWARE} board=${Build.BOARD}"
+            )
+        }
 
         val player = ExoPlayer.Builder(appCtx, renderersFactory).build()
         playerBoostProcessors[player] = boostProcessor

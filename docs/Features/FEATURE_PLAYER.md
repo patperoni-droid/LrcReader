@@ -85,6 +85,12 @@ Tablet Arrangement transport routing:
 - Background Sound must never remain audible under a segment, Structure, or loop preview;
 - this routing is tablet-only and does not change the phone Arrangement editor.
 
+MediaTek decoder stability:
+
+- on MediaTek hardware only, MediaCodec input queueing is forced to synchronous mode to avoid runtime MP3 decoder failures observed with `c2.mtk.mp3.decoder` on Android API 36;
+- decoder fallback is enabled for the same targeted devices;
+- the audio gain, Pitch/Speed, SoundTouch and non-MediaTek pipelines remain unchanged.
+
 ⸻
 
 # PLAYBACK MODEL

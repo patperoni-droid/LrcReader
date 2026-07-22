@@ -557,8 +557,11 @@ fun TimelineEditorSection(
             }
             Spacer(modifier = Modifier.weight(1f))
             if (
-                tabletArrangementLayout ||
-                !(startInGridSetup || editorMode == TimelineEditorMode.GRID_SETUP)
+                !(tabletArrangementLayout && startInGridSetup) &&
+                (
+                    tabletArrangementLayout ||
+                        !(startInGridSetup || editorMode == TimelineEditorMode.GRID_SETUP)
+                    )
             ) {
                 TextButton(
                     onClick = ::closeOrReturnFromEditor

@@ -5335,22 +5335,8 @@ class MainActivity : AppCompatActivity() {
                                                 when (tabletRightPanel) {
                                                     TabletSplitRightPanel.LYRICS -> {
                                                         Column(Modifier.fillMaxSize()) {
-                                                            Box(
-                                                                modifier = if (
-                                                                    tabletPlayerFocusMode != TabletPlayerFocusMode.NONE
-                                                                ) {
-                                                                    Modifier
-                                                                        .fillMaxWidth()
-                                                                        .height(0.dp)
-                                                                } else {
-                                                                    Modifier.fillMaxWidth()
-                                                                }
-                                                            ) {
-                                                                if (
-                                                                    tabletPlayerFocusMode == TabletPlayerFocusMode.NONE
-                                                                ) {
-                                                                    TabletSplitTopNavigationShortcuts()
-                                                                }
+                                                            if (tabletPlayerFocusMode != TabletPlayerFocusMode.LYRICS) {
+                                                                TabletSplitTopNavigationShortcuts()
                                                             }
                                                             playerPane(
                                                                 Modifier

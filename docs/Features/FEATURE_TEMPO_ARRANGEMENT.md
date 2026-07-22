@@ -231,6 +231,7 @@ Implémenté dans l'éditeur canonique tablette :
 - le bouton retour début arrête la preview secondaire, libère le ciblage du bloc, replace le titre complet à `00:00` et rend les commandes au lecteur principal ;
 - le lecteur principal et la preview de segment ne doivent jamais jouer simultanément.
 - toute preview Arrangement active devient une source Player officielle et coupe le fond sonore via `PlaybackCoordinator` avant de produire du son.
+- sur tablette, le bandeau supérieur de navigation reste visible dans Arrangement afin d'ouvrir directement les autres écrans ; l'action textuelle `Fermer` n'est pas affichée dans ce mode, tandis que le bouton Retour Android reste disponible.
 
 ### Périmètre appareil — tablette uniquement
 
