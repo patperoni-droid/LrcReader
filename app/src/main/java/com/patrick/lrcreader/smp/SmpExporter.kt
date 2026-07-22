@@ -15,6 +15,7 @@ object SmpExporter {
     private const val CONFIG_ENTRY_NAME = "config.json"
     private const val GRID_ENTRY_NAME = "grid.json"
     private const val WAVEFORM_ENTRY_NAME = "waveform.json"
+    private const val ARRANGEMENT_ENTRY_NAME = "arrangement.json"
 
     fun exportSongUnitToSmp(context: Context, songUnit: SongUnit): File? {
         val exportsRoot = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
@@ -43,7 +44,24 @@ object SmpExporter {
         }
 
         val exportSong = refreshSongUnitForExport(context, songUnit)
+        if (exportSong.arrangementSourceSongId != null) {
+            Log.e(
+                TAG,
+                "Export SMP autonome refusé pour une variante Arrangement: songId=${exportSong.id} sourceSongId=${exportSong.arrangementSourceSongId}"
+            )
+            return null
+        }
         val config = SmpConfig.fromSongUnit(context, exportSong)
+        val arrangementVariants = runCatching {
+            resolveArrangementVariantsForExport(context, exportSong)
+        }.getOrElse { error ->
+            Log.e(
+                TAG,
+                "Export SMP refusé: variante Arrangement illisible pour le parent ${exportSong.id}",
+                error
+            )
+            return null
+        }
         val targetFile = resolveAvailableExportFile(exportDir, exportSong)
         val partFile = File(exportDir, "${targetFile.name}.part")
         val ignoredFiles = mutableListOf<String>()
@@ -135,6 +153,21 @@ object SmpExporter {
                     entryName = GRID_ENTRY_NAME,
                     ignoredFiles = ignoredFiles
                 )
+                exportedFiles += writeAssetEntry(
+                    zipOutput = zipOutput,
+                    label = "arrangement",
+                    sourcePath = resolveArrangementPathForExport(exportSong),
+                    entryName = ARRANGEMENT_ENTRY_NAME,
+                    ignoredFiles = ignoredFiles
+                )
+                if (arrangementVariants.variants.isNotEmpty()) {
+                    writeStringEntry(
+                        zipOutput = zipOutput,
+                        entryName = ArrangementVariantsArchiveCodec.FILE_NAME,
+                        contents = ArrangementVariantsArchiveCodec.encode(arrangementVariants).toString(2)
+                    )
+                    exportedFiles += 1
+                }
             }
 
             if (!partFile.renameTo(targetFile)) {
@@ -312,5 +345,53 @@ object SmpExporter {
             "Export waveform state: songId=${songUnit.id} path=${waveformFile.absolutePath} exists=${waveformFile.isFile}"
         )
         return waveformFile.takeIf { it.isFile }?.absolutePath
+    }
+
+    private fun resolveArrangementPathForExport(songUnit: SongUnit): String? {
+        val songDir = songUnit.storageFolder
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::File)
+            ?.takeIf { it.isDirectory }
+            ?: return null
+        return File(songDir, ARRANGEMENT_ENTRY_NAME)
+            .takeIf { it.isFile }
+            ?.absolutePath
+    }
+
+    private fun resolveArrangementVariantsForExport(
+        context: Context,
+        sourceSong: SongUnit
+    ): ArrangementVariantsArchive {
+        val variants = SmpLibraryScanner(context)
+            .listSongs()
+            .filter { candidate -> candidate.arrangementSourceSongId == sourceSong.id }
+            .map { variant ->
+                val variantDir = variant.storageFolder
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(::File)
+                    ?.takeIf { it.isDirectory }
+                    ?: throw IllegalStateException("Arrangement variant folder is missing: ${variant.id}")
+                val arrangementFile = File(variantDir, ARRANGEMENT_ENTRY_NAME)
+                val arrangement = runCatching {
+                    ArrangementJsonCodec.decode(
+                        org.json.JSONObject(arrangementFile.readText(Charsets.UTF_8))
+                    )
+                }.getOrElse { error ->
+                    throw IllegalStateException(
+                        "Arrangement variant structure is unreadable: ${variant.id}",
+                        error
+                    )
+                }
+                ArrangementVariantArchiveEntry(
+                    id = variant.id,
+                    title = variant.title,
+                    arrangement = arrangement
+                )
+            }
+
+        return ArrangementVariantsArchive(
+            sourceSongId = sourceSong.id,
+            variants = variants
+        )
     }
 }

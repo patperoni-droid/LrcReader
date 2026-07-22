@@ -38,6 +38,7 @@ If there is any conflict between:
   - DMX cues
   - prompter content
   - per-song settings/config
+  - non-destructive Arrangement project and virtual variants
 - Missing parts are allowed.
 - The absence of one asset does not change the fact that the song unit remains the canonical object.
 
@@ -51,8 +52,20 @@ If there is any conflict between:
   - `annotations.json`
   - `prompteur.txt` or `prompteur.json`
   - `dmx_cues.json`
+  - `arrangement.json`
+  - `arrangement_variants.json`
 - File names inside the archive are transport names.
 - Transport names must not become the long-term identity model of the app.
+
+### Virtual Arrangement Variants
+
+- A virtual Arrangement variant is not a complete standalone song because it does not own audio.
+- It has its own Library `songId`, title, and Arrangement structure at runtime.
+- For transport, it must be embedded in the `.smp` of its source SongUnit.
+- The source audio must appear only once in that parent archive.
+- Exporting a virtual variant as an independent audio-less `.smp` is forbidden.
+- Import must normalize the parent first, then recreate its variants as separate internal SongUnits.
+- Runtime playback must use only those normalized folders and must never read the variants manifest from the archive.
 
 ## Current Project Reality
 - The current beta is file-centric:

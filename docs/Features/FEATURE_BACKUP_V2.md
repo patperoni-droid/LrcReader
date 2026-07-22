@@ -289,6 +289,20 @@ Elle :
 
 La sauvegarde devient ainsi une image fidèle de la bibliothèque.
 
+## Variantes Arrangement virtuelles
+
+Une variante Arrangement virtuelle n'est pas un morceau audio autonome. Elle dépend du `songId` et du fichier audio de son titre parent.
+
+La représentation de sauvegarde retenue est donc :
+
+- le titre parent produit un seul fichier `.smp` ;
+- ce fichier transporte l'audio une seule fois ;
+- `arrangement.json` conserve le projet Arrangement courant du parent ;
+- `arrangement_variants.json` regroupe les variantes virtuelles du parent, avec leur identifiant, leur titre et leur Structure ;
+- aucun `.smp` incomplet n'est produit pour une variante seule.
+
+La restauration normalise d'abord le parent, puis recrée ses variantes comme entrées distinctes de la Bibliothèque. Un ancien `.smp` sans ces fichiers continue à être accepté.
+
 ## Restauration
 
 Ne pas confondre :

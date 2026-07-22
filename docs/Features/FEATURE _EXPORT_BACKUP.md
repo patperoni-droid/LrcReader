@@ -88,9 +88,26 @@ Arrangement → WAV → SMP → runtime
 ### Contenu sauvegardé
 
 - tous les morceaux importés (version runtime), incluant leurs réglages LUFS dans `config.json`
+- le projet `arrangement.json` courant de chaque morceau lorsqu'il existe
+- les variantes Arrangement virtuelles dans `arrangement_variants.json` à l'intérieur du `.smp` de leur morceau parent
 - tous les `.smp` présents dans le stockage
 - playlists
 - état utilisateur (played, lastPlayed, etc.)
+
+### Variantes Arrangement virtuelles
+
+Une variante virtuelle dépend de l'audio de son morceau parent. Elle ne doit jamais être exportée comme un `.smp` autonome sans audio.
+
+La sauvegarde complète applique donc les règles suivantes :
+
+- un seul `.smp` est créé pour le morceau parent ;
+- l'audio source n'est présent qu'une fois ;
+- les identifiants, titres et Structures de ses variantes sont embarqués dans ce même conteneur ;
+- une variante orpheline dont le parent est absent provoque un échec signalé au lieu d'être ignorée silencieusement.
+
+Lors de la restauration, le parent est importé en premier puis ses variantes sont recréées comme données runtime normalisées. Les anciens `.smp` sans variantes restent compatibles.
+
+Diagnostic du premier essai du 22 juillet 2026 : la sauvegarde concernée avait été créée avec une application installée avant cette évolution et son `.smp` ne contenait ni `arrangement.json` ni `arrangement_variants.json`. Les variantes encore visibles avaient été conservées par la restauration non destructive. Une ancienne archive reste compatible, mais elle ne peut pas recréer des données Arrangement absentes de son contenu. La validation fonctionnelle doit donc utiliser une nouvelle sauvegarde produite après installation du build corrigé.
 
 ---
 
@@ -157,6 +174,7 @@ Export_YYYY-MM-DD_HH-mm
 ✔ aucun doublon (`songId`)  
 ✔ aucune suppression automatique  
 ✔ les morceaux restaurés sont disponibles comme runtime normalisé  
+✔ les variantes virtuelles sont restaurées avec leur parent sans duplication audio
 ✔ les playlists peuvent être réactivées par import JSON dédié  
 ✔ fonctionnement non destructif
 

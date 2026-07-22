@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Log
 import com.patrick.lrcreader.core.EditSoundPrefs
+import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -29,13 +30,64 @@ class SmpImporter(private val context: Context) {
         private const val CONFIG_FILE_NAME = "config.json"
         private const val WAVEFORM_FILE_NAME = "waveform.json"
         private const val GRID_FILE_NAME = "grid.json"
+        private const val ARRANGEMENT_FILE_NAME = "arrangement.json"
+        private const val MAX_ARRANGEMENT_VARIANTS_BYTES = 4 * 1024 * 1024
         private const val MIDI_TRACE_TAG = "SMP_MIDI_TRACE"
     }
+
+    data class ArrangementVariantsRestoreOutcome(
+        val manifestFound: Boolean,
+        val success: Boolean
+    )
 
     private data class PreservedSongTextFile(
         val fileName: String,
         val bytes: ByteArray
     )
+
+    fun restoreArrangementVariantsOnly(
+        uri: Uri,
+        sourceSong: SongUnit,
+        replaceExisting: Boolean = false
+    ): ArrangementVariantsRestoreOutcome {
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            Log.w(TAG, "Restauration des variantes refusée sur le thread principal uri=$uri")
+            return ArrangementVariantsRestoreOutcome(manifestFound = false, success = false)
+        }
+
+        val archive = runCatching {
+            readArrangementVariantsArchive(uri)
+        }.getOrElse { error ->
+            Log.e(TAG, "Lecture des variantes Arrangement impossible uri=$uri", error)
+            return ArrangementVariantsRestoreOutcome(manifestFound = true, success = false)
+        } ?: return ArrangementVariantsRestoreOutcome(manifestFound = false, success = true)
+
+        if (archive.sourceSongId != sourceSong.id) {
+            Log.e(
+                TAG,
+                "Restauration des variantes refusée: archiveParent=${archive.sourceSongId} runtimeParent=${sourceSong.id}"
+            )
+            return ArrangementVariantsRestoreOutcome(manifestFound = true, success = false)
+        }
+
+        val restored = ArrangementVariantStore.restoreFromArchive(
+            context = context,
+            sourceSong = sourceSong,
+            archive = archive,
+            replaceExisting = replaceExisting
+        )
+        if (restored.isFailure) {
+            Log.e(
+                TAG,
+                "Restauration des variantes Arrangement impossible pour ${sourceSong.id}",
+                restored.exceptionOrNull()
+            )
+        }
+        return ArrangementVariantsRestoreOutcome(
+            manifestFound = true,
+            success = restored.isSuccess
+        )
+    }
 
     fun importSmp(
         uri: Uri,
@@ -202,6 +254,10 @@ class SmpImporter(private val context: Context) {
                 dmxPath = extracted.dmxFileName?.let { File(destinationDir, it).absolutePath },
                 prompterPath = extracted.prompterFileName?.let { File(destinationDir, it).absolutePath }
             )
+            normalizeImportedArrangementSource(
+                destinationDir = destinationDir,
+                sourceSongId = songId
+            )
             Log.d(
                 "RESTORE_DIAG",
                 "importedSongId=$songId importedTitle=$title importedDisplayTitle=$title importedAudioPath=${audioPath ?: "null"}"
@@ -212,6 +268,23 @@ class SmpImporter(private val context: Context) {
             )
             if (!SmpMetaStore.write(songUnit)) {
                 Log.w(TAG, "Ecriture meta.json impossible après import songId=$songId dir=${destinationDir.absolutePath}")
+            }
+            extracted.arrangementVariants?.let { variantsArchive ->
+                val restoreResult = ArrangementVariantStore.restoreFromArchive(
+                    context = context,
+                    sourceSong = songUnit,
+                    archive = variantsArchive,
+                    replaceExisting = true
+                )
+                if (restoreResult.isFailure) {
+                    lastFailureReason = "restauration des variantes Arrangement impossible"
+                    Log.e(
+                        TAG,
+                        "Import du parent terminé mais restauration de ses variantes impossible songId=$songId",
+                        restoreResult.exceptionOrNull()
+                    )
+                    return null
+                }
             }
 
             Log.d(
@@ -247,6 +320,7 @@ class SmpImporter(private val context: Context) {
         val extractedFiles = ExtractedFiles()
         val writtenFileNames = mutableSetOf<String>()
         var rawConfig: String? = null
+        var rawArrangementVariants: String? = null
 
         try {
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
@@ -264,6 +338,9 @@ class SmpImporter(private val context: Context) {
                                     }
 
                                     !writtenFileNames.add(canonicalName) -> {
+                                        if (canonicalName == ArrangementVariantsArchiveCodec.FILE_NAME) {
+                                            throw IOException("Duplicate Arrangement variants manifest")
+                                        }
                                         Log.w(TAG, "Entrée SMP dupliquée ignorée: ${entry.name} -> $canonicalName")
                                     }
 
@@ -279,6 +356,12 @@ class SmpImporter(private val context: Context) {
                                             val bytes = readEntryBytes(zipInputStream)
                                             rawConfig = String(bytes, Charsets.UTF_8)
                                             writeBytes(destination, bytes)
+                                        } else if (canonicalName == ArrangementVariantsArchiveCodec.FILE_NAME) {
+                                            val bytes = readEntryBytes(
+                                                zipInputStream = zipInputStream,
+                                                maximumBytes = MAX_ARRANGEMENT_VARIANTS_BYTES
+                                            )
+                                            rawArrangementVariants = String(bytes, Charsets.UTF_8)
                                         } else {
                                             writeEntry(zipInputStream, destination)
                                         }
@@ -327,6 +410,26 @@ class SmpImporter(private val context: Context) {
             return null
         }
 
+        val arrangementVariants = rawArrangementVariants?.let { rawManifest ->
+            val decoded = runCatching {
+                ArrangementVariantsArchiveCodec.decode(JSONObject(rawManifest))
+            }.getOrElse { error ->
+                lastFailureReason = "variantes Arrangement invalides"
+                Log.e(TAG, "Import .smp impossible: manifeste de variantes Arrangement invalide", error)
+                return null
+            }
+            val packagedSongId = config.id?.trim()
+            if (packagedSongId.isNullOrEmpty() || decoded.sourceSongId != packagedSongId) {
+                lastFailureReason = "parent des variantes Arrangement incohérent"
+                Log.e(
+                    TAG,
+                    "Import .smp impossible: parent Arrangement=${decoded.sourceSongId} configId=${packagedSongId ?: "null"}"
+                )
+                return null
+            }
+            decoded
+        }
+
         return ExtractedArchive(
             config = config,
             audioFileName = extractedFiles.audioFileName,
@@ -337,8 +440,41 @@ class SmpImporter(private val context: Context) {
             annotationsFileName = extractedFiles.annotationsFileName,
             midiFileName = extractedFiles.midiFileName,
             dmxFileName = extractedFiles.dmxFileName,
-            prompterFileName = extractedFiles.prompterFileName
+            prompterFileName = extractedFiles.prompterFileName,
+            arrangementFileName = extractedFiles.arrangementFileName,
+            arrangementVariants = arrangementVariants
         )
+    }
+
+    private fun readArrangementVariantsArchive(uri: Uri): ArrangementVariantsArchive? {
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            ZipInputStream(inputStream).use { zipInputStream ->
+                var entry = zipInputStream.nextEntry
+                var found: ArrangementVariantsArchive? = null
+                while (entry != null) {
+                    try {
+                        if (
+                            !entry.isDirectory &&
+                            canonicalNameFor(entry.name) == ArrangementVariantsArchiveCodec.FILE_NAME
+                        ) {
+                            require(found == null) { "Duplicate Arrangement variants manifest" }
+                            val rawJson = String(
+                                readEntryBytes(
+                                    zipInputStream = zipInputStream,
+                                    maximumBytes = MAX_ARRANGEMENT_VARIANTS_BYTES
+                                ),
+                                Charsets.UTF_8
+                            )
+                            found = ArrangementVariantsArchiveCodec.decode(JSONObject(rawJson))
+                        }
+                    } finally {
+                        runCatching { zipInputStream.closeEntry() }
+                    }
+                    entry = zipInputStream.nextEntry
+                }
+                return found
+            }
+        } ?: throw IOException("SMP uri is inaccessible")
     }
 
     private fun canonicalNameFor(entryName: String): String? {
@@ -356,6 +492,8 @@ class SmpImporter(private val context: Context) {
             fileName == "midi_cues.json" -> fileName
             fileName == "dmx_cues.json" -> fileName
             fileName == GRID_FILE_NAME -> fileName
+            fileName == ARRANGEMENT_FILE_NAME -> fileName
+            fileName == ArrangementVariantsArchiveCodec.FILE_NAME -> fileName
             fileName == "settings.json" -> fileName
             isPrompterFile(fileName) -> fileName
             else -> null
@@ -400,6 +538,25 @@ class SmpImporter(private val context: Context) {
         while (true) {
             val read = zipInputStream.read(buffer)
             if (read <= 0) break
+            output.write(buffer, 0, read)
+        }
+
+        return output.toByteArray()
+    }
+
+    private fun readEntryBytes(
+        zipInputStream: ZipInputStream,
+        maximumBytes: Int
+    ): ByteArray {
+        val output = ByteArrayOutputStream()
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+
+        while (true) {
+            val read = zipInputStream.read(buffer)
+            if (read <= 0) break
+            if (output.size() + read > maximumBytes) {
+                throw IOException("SMP entry is too large")
+            }
             output.write(buffer, 0, read)
         }
 
@@ -496,6 +653,33 @@ class SmpImporter(private val context: Context) {
             Log.e(
                 TAG,
                 "Impossible de restaurer les trims SMP: songId=$songId title=$title audioUri=$audioUri",
+                error
+            )
+        }
+    }
+
+    private fun normalizeImportedArrangementSource(
+        destinationDir: File,
+        sourceSongId: String
+    ) {
+        val arrangementFile = File(destinationDir, ARRANGEMENT_FILE_NAME)
+        if (!arrangementFile.isFile) return
+
+        runCatching {
+            val arrangement = ArrangementJsonCodec.decode(
+                JSONObject(arrangementFile.readText(Charsets.UTF_8))
+            )
+            if (arrangement.sourceSongId == sourceSongId) return
+            arrangementFile.writeText(
+                ArrangementJsonCodec.encode(
+                    arrangement.copy(sourceSongId = sourceSongId)
+                ).toString(2),
+                Charsets.UTF_8
+            )
+        }.onFailure { error ->
+            Log.e(
+                TAG,
+                "Normalisation du projet Arrangement impossible songId=$sourceSongId",
                 error
             )
         }
@@ -603,7 +787,9 @@ class SmpImporter(private val context: Context) {
         val annotationsFileName: String?,
         val midiFileName: String?,
         val dmxFileName: String?,
-        val prompterFileName: String?
+        val prompterFileName: String?,
+        val arrangementFileName: String?,
+        val arrangementVariants: ArrangementVariantsArchive?
     )
 
     private inner class ExtractedFiles {
@@ -627,6 +813,8 @@ class SmpImporter(private val context: Context) {
             private set
         var prompterFileName: String? = null
             private set
+        var arrangementFileName: String? = null
+            private set
 
         fun accept(fileName: String) {
             when {
@@ -639,6 +827,7 @@ class SmpImporter(private val context: Context) {
                 fileName == "annotations.json" -> annotationsFileName = fileName
                 fileName == "midi_cues.json" -> midiFileName = fileName
                 fileName == "dmx_cues.json" -> dmxFileName = fileName
+                fileName == ARRANGEMENT_FILE_NAME -> arrangementFileName = fileName
                 isPrompterFile(fileName) -> prompterFileName = fileName
             }
         }
@@ -652,7 +841,8 @@ class SmpImporter(private val context: Context) {
                 annotationsFileName != null ||
                 midiFileName != null ||
                 dmxFileName != null ||
-                prompterFileName != null
+                prompterFileName != null ||
+                arrangementFileName != null
         }
     }
 }

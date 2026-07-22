@@ -711,20 +711,29 @@ private fun MoreRootScreen(
                 return@launch
             }
 
-            val runtimeSongs = withContext(Dispatchers.IO) {
+            val allRuntimeSongs = withContext(Dispatchers.IO) {
                 SmpLibraryScanner(context.applicationContext).listSongs()
+            }
+            val runtimeSongs = allRuntimeSongs.filter { it.arrangementSourceSongId == null }
+            val runtimeParentIds = runtimeSongs.mapTo(linkedSetOf()) { it.id }
+            val orphanArrangementVariants = allRuntimeSongs.filter { song ->
+                val sourceSongId = song.arrangementSourceSongId
+                sourceSongId != null && sourceSongId !in runtimeParentIds
             }
             val archiveCandidates = withContext(Dispatchers.IO) {
                 SmpUserArchiveRebuilder(context.applicationContext).listUserArchiveCandidates()
             }
-            val runtimeSongIds = runtimeSongs.map { it.id.trim() }
+            val runtimeSongIds = allRuntimeSongs.map { it.id.trim() }
                 .filter { it.isNotEmpty() }
                 .toSet()
             val workspaceArchivesToCopy = selectWorkspaceArchivesForBackup(
                 runtimeSongIds = runtimeSongIds,
                 candidates = archiveCandidates
             )
-            exportLiveSongsTotal = runtimeSongs.size + workspaceArchivesToCopy.size + 2
+            exportLiveSongsTotal = runtimeSongs.size +
+                orphanArrangementVariants.size +
+                workspaceArchivesToCopy.size +
+                2
 
             var successCount = 0
             var failureCount = 0
@@ -746,6 +755,17 @@ private fun MoreRootScreen(
                 }
                 completedCount += 1
                 exportLiveSongsDone = completedCount
+            }
+
+            orphanArrangementVariants.forEach { variant ->
+                exportLiveSongsCurrentTitle = variant.title
+                failureCount += 1
+                completedCount += 1
+                exportLiveSongsDone = completedCount
+                Log.e(
+                    "SMP_EXPORT",
+                    "Variante Arrangement orpheline non sauvegardée: variantId=${variant.id} sourceSongId=${variant.arrangementSourceSongId}"
+                )
             }
 
             workspaceArchivesToCopy.forEach { archive ->
@@ -2385,7 +2405,16 @@ private fun restoreLibraryFromBackupFolder(
             else -> false
         }
         if (!shouldImport && existingSong != null) {
-            skippedCount += 1
+            val variantsOutcome = importer.restoreArrangementVariantsOnly(
+                uri = smpFile.uri,
+                sourceSong = existingSong,
+                replaceExisting = false
+            )
+            if (variantsOutcome.success) {
+                skippedCount += 1
+            } else {
+                failedCount += 1
+            }
             importedOrExistingSongIds += existingSong.id
             Log.d(
                 RESTORE_DIAG_TAG,

@@ -55,10 +55,62 @@ Deuxième étape — lecture Bibliothèque :
 
 - ajout aux playlists et aux familles de versions ;
 - projection temporelle des paroles, accords, MIDI et DMX ;
-- transfert conjoint de la variante et de sa source ;
 - gestion explicite de la suppression d'une source possédant des variantes.
 
 Une variante virtuelle ne doit jamais être confondue avec un export WAV. L'export crée un audio indépendant ; la variante reste un montage non destructif dépendant de sa source.
+
+### Sauvegarde et restauration des variantes virtuelles
+
+**Statut : transport implémenté ; nouvelle sauvegarde et restauration avec le build corrigé à valider sur appareil avant stabilisation.**
+
+Une variante virtuelle ne possède pas son propre audio et ne constitue donc pas un `.smp` autonome complet.
+
+Règles de transport :
+
+- le `.smp` du morceau parent contient l'audio une seule fois ;
+- son éventuel projet de travail `arrangement.json` est exporté avec le parent ;
+- toutes ses variantes virtuelles sont regroupées dans `arrangement_variants.json` ;
+- chaque variante y conserve son identifiant, son titre et sa Structure complète ;
+- aucun WAV, MP3 ou autre fichier audio supplémentaire n'est créé ;
+- l'export autonome d'une variante virtuelle est refusé afin de ne jamais produire une sauvegarde incomplète ;
+- une sauvegarde complète exporte uniquement le morceau parent, qui transporte automatiquement ses variantes.
+
+À l'import :
+
+- le morceau parent est d'abord validé, extrait et normalisé dans le runtime ;
+- le manifeste de variantes est ensuite recréé en SongUnits virtuelles distinctes dans la Bibliothèque ;
+- chaque Structure restaurée référence le `songId` local du parent importé ;
+- la lecture utilise ensuite uniquement le stockage interne normalisé et ne relit jamais le `.smp` ;
+- l'absence du manifeste dans un ancien `.smp` est normale et reste entièrement rétrocompatible.
+
+La variante voyage donc dans la « valise » de son titre parent, tout en restant un élément indépendant dans la Bibliothèque après restauration.
+
+### Diagnostic du premier essai de restauration
+
+Validation terrain du 22 juillet 2026 :
+
+- la sauvegarde inspectée a été créée par une application installée avant l'ajout du nouveau transport Arrangement ;
+- son `.smp` parent ne contient effectivement ni `arrangement.json` ni `arrangement_variants.json` ;
+- les variantes visibles après restauration étaient les variantes runtime déjà présentes, car la restauration Bibliothèque est non destructive ;
+- cet essai ne valide donc pas encore la recréation des variantes par le nouveau manifeste.
+
+Une ancienne sauvegarde ne peut pas reconstruire un projet Arrangement qu'elle n'a jamais transporté. Après installation du build corrigé, une nouvelle sauvegarde doit vérifier toute la chaîne :
+
+`arrangement.json runtime parent → export SMP → import SMP → chargement écran Arrangement`.
+
+La validation doit préserver exactement les occurrences, l'ordre, les points IN / OUT, les répétitions, les mutes, les noms et les couleurs, ainsi que recréer les variantes virtuelles à partir du manifeste.
+
+### Réouvrir une variante comme projet éditable
+
+Besoin produit à conserver pour une étape ultérieure :
+
+- si plusieurs variantes d'un même morceau existent, l'utilisateur doit pouvoir choisir celle qu'il préfère dans la Bibliothèque ;
+- il doit pouvoir la rouvrir dans Arrangement avec sa Structure exacte ;
+- les segments et toutes leurs propriétés doivent redevenir éditables ;
+- le titre parent ne doit pas être écrasé implicitement ;
+- après modification, l'utilisateur devra choisir explicitement entre mettre à jour cette variante et l'enregistrer comme une nouvelle variante.
+
+Exemple : avec `Marina-AR01`, `Marina-AR02` et `Marina-AR03`, il doit être possible de rouvrir `Marina-AR01`, la tester et continuer à la modifier sans reconstruire ses segments.
 
 ---
 

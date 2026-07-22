@@ -66,6 +66,14 @@ Un fichier .smp est une archive contenant :
 - waveform.json
 - annotations.json
 - dmx_cues.json
+- arrangement.json
+- arrangement_variants.json
+
+Arrangement transport rule:
+- `arrangement.json` stores the editable Arrangement project of the source SongUnit when present
+- `arrangement_variants.json` stores lightweight virtual variants belonging to that source
+- a virtual variant must never be exported alone without its source audio
+- the parent audio is stored once and the variants are normalized into separate runtime SongUnits after import
 
 ---
 

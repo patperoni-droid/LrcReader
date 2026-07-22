@@ -13,6 +13,11 @@ object ArrangementVariantStore {
     private const val CONFIG_FILE_NAME = "config.json"
     private const val ARRANGEMENT_FILE_NAME = "arrangement.json"
 
+    internal data class RestoreResult(
+        val restoredVariantIds: List<String>,
+        val preservedVariantIds: List<String>
+    )
+
     suspend fun create(
         context: Context,
         title: String,
@@ -77,5 +82,139 @@ object ArrangementVariantStore {
             SmpLibraryScanner(context).findSongById(variantId)
                 ?: throw IOException("Arrangement variant is not visible in the Library")
         }
+    }
+
+    internal fun restoreFromArchive(
+        context: Context,
+        sourceSong: SongUnit,
+        archive: ArrangementVariantsArchive,
+        replaceExisting: Boolean
+    ): Result<RestoreResult> = runCatching {
+        require(sourceSong.id.isNotBlank()) { "Arrangement variant parent id is empty" }
+        require(archive.sourceSongId == sourceSong.id) {
+            "Arrangement variants archive does not match its runtime parent"
+        }
+        require(!sourceSong.audioPath.isNullOrBlank() && File(sourceSong.audioPath).isFile) {
+            "Arrangement variant parent audio is missing"
+        }
+
+        val tracksRoot = File(context.filesDir, TRACKS_DIR_NAME)
+        require(tracksRoot.isDirectory || tracksRoot.mkdirs()) {
+            "Runtime tracks folder is unavailable"
+        }
+
+        data class PendingVariant(
+            val id: String,
+            val targetDir: File,
+            val tempDir: File,
+            val backupDir: File
+        )
+
+        val pending = mutableListOf<PendingVariant>()
+        val preserved = mutableListOf<String>()
+        archive.variants.forEach { variant ->
+            val targetDir = File(tracksRoot, variant.id)
+            if (targetDir.exists() && !replaceExisting) {
+                preserved += variant.id
+                return@forEach
+            }
+            if (targetDir.exists()) {
+                val existingArrangement = File(targetDir, ARRANGEMENT_FILE_NAME)
+                    .takeIf(File::isFile)
+                    ?.let { file ->
+                        runCatching {
+                            ArrangementJsonCodec.decode(JSONObject(file.readText(Charsets.UTF_8)))
+                        }.getOrNull()
+                    }
+                require(
+                    existingArrangement != null &&
+                        existingArrangement.sourceSongId.trim() != variant.id
+                ) {
+                    "Arrangement variant id conflicts with another runtime song: ${variant.id}"
+                }
+            }
+
+            val tempDir = File(tracksRoot, ".restore_${variant.id}_${UUID.randomUUID().toString().take(8)}")
+            val backupDir = File(tracksRoot, ".backup_${variant.id}_${UUID.randomUUID().toString().take(8)}")
+            require(tempDir.mkdirs()) { "Unable to prepare Arrangement variant restore" }
+            try {
+                val normalizedArrangement = variant.arrangement.copy(
+                    name = variant.title,
+                    sourceSongId = sourceSong.id
+                )
+                writeVariantFiles(
+                    targetDir = tempDir,
+                    variantId = variant.id,
+                    title = variant.title,
+                    sourceSongId = sourceSong.id,
+                    arrangement = normalizedArrangement
+                )
+                pending += PendingVariant(
+                    id = variant.id,
+                    targetDir = targetDir,
+                    tempDir = tempDir,
+                    backupDir = backupDir
+                )
+            } catch (error: Throwable) {
+                tempDir.deleteRecursively()
+                throw error
+            }
+        }
+
+        val published = mutableListOf<PendingVariant>()
+        try {
+            pending.forEach { item ->
+                if (item.targetDir.exists() && !item.targetDir.renameTo(item.backupDir)) {
+                    throw IOException("Unable to preserve existing Arrangement variant: ${item.id}")
+                }
+                if (!item.tempDir.renameTo(item.targetDir)) {
+                    if (item.backupDir.exists()) {
+                        item.backupDir.renameTo(item.targetDir)
+                    }
+                    throw IOException("Unable to publish restored Arrangement variant: ${item.id}")
+                }
+                published += item
+            }
+        } catch (error: Throwable) {
+            published.asReversed().forEach { item ->
+                item.targetDir.deleteRecursively()
+                if (item.backupDir.exists()) {
+                    item.backupDir.renameTo(item.targetDir)
+                }
+            }
+            pending.forEach { item -> item.tempDir.deleteRecursively() }
+            throw error
+        }
+
+        published.forEach { item -> item.backupDir.deleteRecursively() }
+        RestoreResult(
+            restoredVariantIds = published.map(PendingVariant::id),
+            preservedVariantIds = preserved
+        )
+    }
+
+    private fun writeVariantFiles(
+        targetDir: File,
+        variantId: String,
+        title: String,
+        sourceSongId: String,
+        arrangement: ArrangementData
+    ) {
+        File(targetDir, CONFIG_FILE_NAME).writeText(
+            JSONObject()
+                .put("version", 1)
+                .put("id", variantId)
+                .put("title", title)
+                .put(
+                    "arrangementVariant",
+                    JSONObject().put("sourceSongId", sourceSongId)
+                )
+                .toString(2),
+            Charsets.UTF_8
+        )
+        File(targetDir, ARRANGEMENT_FILE_NAME).writeText(
+            ArrangementJsonCodec.encode(arrangement).toString(2),
+            Charsets.UTF_8
+        )
     }
 }
