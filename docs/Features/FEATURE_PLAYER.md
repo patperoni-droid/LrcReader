@@ -81,6 +81,8 @@ Tablet Arrangement transport routing:
 - touching the source waveform stops the targeted segment preview, releases the segment target, seeks the complete song to the touched position and keeps it paused until Play is pressed;
 - Return to beginning stops the secondary preview, restores the complete song as transport target and seeks it to `00:00`;
 - the main Player and an Arrangement segment preview must never play at the same time;
+- every Arrangement secondary playback claims the official Player audio source before it starts, so DJ and Background Sound are stopped through `PlaybackCoordinator`;
+- Background Sound must never remain audible under a segment, Structure, or loop preview;
 - this routing is tablet-only and does not change the phone Arrangement editor.
 
 ⸻

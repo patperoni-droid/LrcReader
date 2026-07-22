@@ -11,14 +11,12 @@ class TimelinePlaybackRoutingTest {
         assertTrue(
             isTimelineSecondaryPlaybackActive(
                 structurePlaybackActive = true,
-                wavPreviewActive = false,
                 arrangementLoopPreviewActive = false
             )
         )
         assertFalse(
             isTimelineSecondaryPlaybackActive(
                 structurePlaybackActive = false,
-                wavPreviewActive = false,
                 arrangementLoopPreviewActive = false
             )
         )

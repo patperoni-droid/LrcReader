@@ -102,16 +102,17 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
+import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
 import com.patrick.lrcreader.core.audio.ArrangementPreviewPlayer
 import com.patrick.lrcreader.core.audio.ArrangementSourceWavCache
 import com.patrick.lrcreader.core.audio.ArrangementWavRenderer
+import com.patrick.lrcreader.core.audio.SampleSegment
 import com.patrick.lrcreader.core.audio.SamplerEngine
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
@@ -134,7 +135,6 @@ import com.patrick.lrcreader.smp.buildArrangementDataForPersistence
 import com.patrick.lrcreader.smp.prepareArrangementOccurrences
 import com.patrick.lrcreader.smp.reconcileArrangementEntries
 import com.patrick.lrcreader.smp.resolvePreparedArrangementPlayheadFromSource
-import com.patrick.lrcreader.smp.resolvePreparedArrangementPlayheadFromTimeline
 import com.patrick.lrcreader.smp.toOccurrenceProjection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -144,6 +144,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.io.RandomAccessFile
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.math.max
@@ -156,7 +157,6 @@ private enum class TimelineEditorMode {
     GRID_SETUP
 }
 
-private const val ARRANGEMENT_PREVIEW_FILE_NAME = "preview_arrangement.wav"
 private const val ARRANGEMENT_WAVEFORM_MAX_ZOOM = 240f
 private const val ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS = 2_000L
 private const val ARR_STRUCTURE_QUEUE_TAG = "ARR_STRUCTURE_QUEUE"
@@ -168,7 +168,6 @@ private const val ARR_SEGMENT_GESTURE_TAG = "ARR_SEGMENT_GESTURE"
 private const val ARR_UNDO_HANDLE_TAG = "ARR_UNDO_HANDLE"
 private const val ARR_SEGMENT_STATE_TAG = "ARR_SEGMENT_STATE"
 private const val ARR_TIMING_DIAG_TAG = "ARR_TIMING_DIAG"
-private const val ARR_PREVIEW_WAV_TAG = "ARR_PREVIEW_WAV"
 
 private fun arrangementTimingSourceLabel(audioPath: String?): String {
     val extension = audioPath
@@ -243,9 +242,8 @@ data class TimelinePlaybackControlOverride(
 
 internal fun isTimelineSecondaryPlaybackActive(
     structurePlaybackActive: Boolean,
-    wavPreviewActive: Boolean,
     arrangementLoopPreviewActive: Boolean
-): Boolean = structurePlaybackActive || wavPreviewActive || arrangementLoopPreviewActive
+): Boolean = structurePlaybackActive || arrangementLoopPreviewActive
 
 internal fun shouldUseTimelinePlaybackOverride(
     segmentTargeted: Boolean,
@@ -1904,9 +1902,6 @@ private fun TimelineMeasuresPlaceholder(
     val arrangementPreviewPlayer = remember(context.applicationContext) {
         ArrangementPreviewPlayer(context.applicationContext)
     }
-    val arrangementPreviewCacheFile = remember(context.applicationContext) {
-        File(context.applicationContext.cacheDir, ARRANGEMENT_PREVIEW_FILE_NAME)
-    }
     var currentSongAudioPath by remember(currentSongId) { mutableStateOf<String?>(null) }
     var currentSongTitle by remember(currentSongId) { mutableStateOf<String?>(null) }
     var currentSongTrackGainDb by remember(currentSongId) { mutableIntStateOf(0) }
@@ -1917,12 +1912,6 @@ private fun TimelineMeasuresPlaceholder(
     var structureSamplerSegmentStartRealtimeMs by remember(currentSongId) { mutableLongStateOf(0L) }
     var structurePreparationGeneration by remember(currentSongId) { mutableIntStateOf(0) }
     var isStructureAudioPreparing by remember(currentSongId) { mutableStateOf(false) }
-    var previewRenderedFile by remember(currentSongId) { mutableStateOf<File?>(null) }
-    var previewRenderedSignature by remember(currentSongId) { mutableStateOf<String?>(null) }
-    var wavPreviewActive by remember(currentSongId) { mutableStateOf(false) }
-    var wavPreviewPositionMs by remember(currentSongId) { mutableLongStateOf(0L) }
-    var wavPreviewDurationMs by remember(currentSongId) { mutableLongStateOf(0L) }
-    var isPreviewGenerating by remember(currentSongId) { mutableStateOf(false) }
     var waveformPeaks by remember(currentSongId) { mutableStateOf<List<Float>>(emptyList()) }
     var waveformDurationMs by remember(currentSongId) { mutableIntStateOf(0) }
     var waveformLoading by remember(currentSongId) { mutableStateOf(false) }
@@ -1964,7 +1953,6 @@ private fun TimelineMeasuresPlaceholder(
     var showArrangementExportProDialog by remember(currentSongId) { mutableStateOf(false) }
     var showExportNameDialog by remember(currentSongId) { mutableStateOf(false) }
     var showVirtualArrangementNameDialog by remember(currentSongId) { mutableStateOf(false) }
-    var showSamplerTestScreen by remember(currentSongId) { mutableStateOf(false) }
     var exportNameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
     var virtualArrangementNameDraft by remember(currentSongId) { mutableStateOf(TextFieldValue("")) }
     var isExportNameLoading by remember(currentSongId) { mutableStateOf(false) }
@@ -1985,13 +1973,14 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     fun publishSecondaryPlaybackState() {
-        onStructurePreviewActiveChange(
-            isTimelineSecondaryPlaybackActive(
-                structurePlaybackActive = structurePlaybackActive,
-                wavPreviewActive = wavPreviewActive,
-                arrangementLoopPreviewActive = arrangementLoopPreviewActive
-            )
+        val secondaryPlaybackActive = isTimelineSecondaryPlaybackActive(
+            structurePlaybackActive = structurePlaybackActive,
+            arrangementLoopPreviewActive = arrangementLoopPreviewActive
         )
+        if (secondaryPlaybackActive) {
+            PlaybackCoordinator.requestStartPlayer()
+        }
+        onStructurePreviewActiveChange(secondaryPlaybackActive)
     }
 
     fun stopStructurePreviewPlayback(reason: String = "unspecified") {
@@ -2027,10 +2016,6 @@ private fun TimelineMeasuresPlaceholder(
         structureSamplerSegmentStartRealtimeMs = 0L
         isStructureAudioPreparing = false
         structurePlaybackAbsolutePositionMs = currentPositionMs.coerceAtLeast(0L)
-        wavPreviewActive = false
-        wavPreviewPositionMs = 0L
-        wavPreviewDurationMs = 0L
-        isPreviewGenerating = false
         publishSecondaryPlaybackState()
     }
 
@@ -2039,70 +2024,6 @@ private fun TimelineMeasuresPlaceholder(
         arrangementLoopPreviewActive = false
         arrangementLoopPositionMs = 0L
         publishSecondaryPlaybackState()
-    }
-
-    fun replacePreviewRenderedFile(nextFile: File?) {
-        val previousFile = previewRenderedFile
-        previewRenderedFile = nextFile
-        previousFile
-            ?.takeIf { staleFile -> nextFile == null || staleFile.absolutePath != nextFile.absolutePath }
-            ?.let { staleFile -> runCatching { staleFile.delete() } }
-    }
-
-    fun clearArrangementPreviewCache() {
-        previewRenderedSignature = null
-        replacePreviewRenderedFile(null)
-        runCatching { arrangementPreviewCacheFile.delete() }
-    }
-
-    fun playArrangementPreviewFile(previewFile: File) {
-        Log.d(
-            ARR_PREVIEW_WAV_TAG,
-            "PLAYER_START_REQUEST path=${previewFile.absolutePath} exists=${previewFile.isFile} " +
-                "size=${previewFile.length()} currentState=${structurePreviewPlayer.playbackState} " +
-                "isPlaying=${structurePreviewPlayer.isPlaying}"
-        )
-        stopStructurePreviewPlayback(reason = "playArrangementPreviewFile")
-        stopArrangementLoopPreviewPlayback()
-        if (isPreparedClipLoopTestActive) {
-            onStopPreparedClipLoopTest()
-        }
-        loopEnabled = false
-        preparedLoopStartMs = null
-        onIsPlayingChange(false)
-        wavPreviewActive = true
-        wavPreviewPositionMs = 0L
-        wavPreviewDurationMs = 0L
-        publishSecondaryPlaybackState()
-        structurePreviewPlayer.pause()
-        Log.d(
-            ARR_STRUCTURE_FLOW_TAG,
-            "CLEAR_MEDIA_ITEMS_CALL reason=playArrangementPreviewFile mediaItemCountBefore=${structurePreviewPlayer.mediaItemCount}"
-        )
-        structurePreviewPlayer.clearMediaItems()
-        structurePreviewPlayer.repeatMode = Player.REPEAT_MODE_OFF
-        structurePreviewPlayer.volume = arrangementTrackGainLinear
-        structurePreviewPlayer.setMediaItem(
-            MediaItem.fromUri(Uri.fromFile(previewFile))
-        )
-        Log.d(
-            ARR_STRUCTURE_FLOW_TAG,
-            "PREPARE_CALL reason=playArrangementPreviewFile mediaItemCount=${structurePreviewPlayer.mediaItemCount} sourceUri=${Uri.fromFile(previewFile)}"
-        )
-        structurePreviewPlayer.prepare()
-        structurePreviewPlayer.play()
-        Log.d(
-            ARR_PREVIEW_WAV_TAG,
-            "PLAYER_START path=${previewFile.absolutePath} exists=${previewFile.isFile} " +
-                "size=${previewFile.length()} mediaItemCount=${structurePreviewPlayer.mediaItemCount} " +
-                "playbackState=${structurePreviewPlayer.playbackState} playWhenReady=${structurePreviewPlayer.playWhenReady}"
-        )
-        Log.d(
-            ARR_TIMING_DIAG_TAG,
-            "PLAY_START playMode=NORMAL_PREVIEW requestedStartMs=0 requestedEndMs=NA " +
-                "actualPlayerPositionMs=${runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(-1L)} " +
-                "source=WAV_PREVIEW sourceUri=${Uri.fromFile(previewFile)}"
-        )
     }
 
     fun playStructureSegmentPreview(
@@ -2557,7 +2478,6 @@ private fun TimelineMeasuresPlaceholder(
         currentSongAudioPath = null
         currentSongTitle = null
         currentSongTrackGainDb = 0
-        replacePreviewRenderedFile(null)
         if (songId.isEmpty()) {
             waveformPeaks = emptyList()
             waveformDurationMs = 0
@@ -2590,8 +2510,6 @@ private fun TimelineMeasuresPlaceholder(
             selectedStructureEditIndex = null
             structureEditFocusRequest = 0
             structurePlaybackAbsolutePositionMs = 0L
-            wavPreviewPositionMs = 0L
-            wavPreviewDurationMs = 0L
             return@LaunchedEffect
         }
 
@@ -2695,8 +2613,6 @@ private fun TimelineMeasuresPlaceholder(
         structurePlaybackIndex = -1
         queuedStructureSegmentIndex = null
         structurePlaybackAbsolutePositionMs = 0L
-        wavPreviewPositionMs = 0L
-        wavPreviewDurationMs = 0L
         suppressNextLoopAutoplay = false
     }
 
@@ -2726,20 +2642,6 @@ private fun TimelineMeasuresPlaceholder(
     val structurePlaybackSegments = remember(preparedStructureOccurrences) {
         preparedStructureOccurrences.map { occurrence -> occurrence.segment }
     }
-    val previewRenderSignature = remember(currentSongAudioPath, structurePlaybackSegments) {
-        buildString {
-            append(currentSongAudioPath.orEmpty())
-            append('|')
-            structurePlaybackSegments.forEach { segment ->
-                append(segment.id)
-                append(':')
-                append(segment.startMs)
-                append('-')
-                append(segment.endMs)
-                append(';')
-            }
-        }
-    }
     val activeStructureSegmentId = structurePlaybackSegments
         .getOrNull(structurePlaybackIndex)
         ?.id
@@ -2755,11 +2657,6 @@ private fun TimelineMeasuresPlaceholder(
 	        occurrences = preparedStructureOccurrences,
 	        playbackIndex = structurePlaybackIndex,
 	        sourcePositionMs = structurePlaybackAbsolutePositionMs
-	    )
-	} else if (wavPreviewActive) {
-	    resolvePreparedArrangementPlayheadFromTimeline(
-	        occurrences = preparedStructureOccurrences,
-	        arrangementPositionMs = wavPreviewPositionMs
 	    )
 	} else {
 	    null
@@ -3104,8 +3001,6 @@ private fun TimelineMeasuresPlaceholder(
     val arrangementStructuralActionsEnabled =
         !structurePlaybackActive &&
             !isStructureAudioPreparing &&
-            !wavPreviewActive &&
-            !isPreviewGenerating &&
             !isFinalExporting
 
     fun startStructurePreviewAtLogicalIndex(logicalIndex: Int) {
@@ -3166,7 +3061,7 @@ private fun TimelineMeasuresPlaceholder(
                         structureUsingWavSource = true
                         val sampleResult = withContext(Dispatchers.IO) {
                             runCatching {
-                                buildSampleSegmentsFromWav(
+                                buildSamplerSegmentsFromWav(
                                     wavFile = wavFile,
                                     structureSegments = playbackSegments
                                 )
@@ -3376,109 +3271,6 @@ private fun TimelineMeasuresPlaceholder(
         )
     }
 
-    val listenAction: () -> Unit = {
-        Log.d(
-            ARR_PREVIEW_WAV_TAG,
-            "PREVIEW_REQUESTED songId=${currentSongId?.trim().orEmpty()} " +
-                "audioPath=$currentSongAudioPath structureCount=${structurePlaybackSegments.size} " +
-                "structurePlaybackActive=$structurePlaybackActive wavPreviewActive=$wavPreviewActive " +
-                "arrangementLoopPreviewActive=$arrangementLoopPreviewActive isPreviewGenerating=$isPreviewGenerating"
-        )
-        if (structurePlaybackActive || wavPreviewActive || arrangementLoopPreviewActive) {
-            Log.d(
-                ARR_PREVIEW_WAV_TAG,
-                "PREVIEW_STOP_REQUEST reason=listen_action_toggle " +
-                    "structurePlaybackActive=$structurePlaybackActive wavPreviewActive=$wavPreviewActive " +
-                    "arrangementLoopPreviewActive=$arrangementLoopPreviewActive"
-            )
-            stopStructurePreviewPlayback(reason = "listen_action_stop")
-            stopArrangementLoopPreviewPlayback()
-        } else {
-            val audioPath = currentSongAudioPath
-            val playlistSegments = structurePlaybackSegments
-            if (audioPath.isNullOrBlank()) {
-                Unit
-            } else if (playlistSegments.isEmpty()) {
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.arrangement_preview_structure_empty),
-                    Toast.LENGTH_SHORT
-                ).show()
-            } else {
-                val reusablePreviewFile = previewRenderedFile?.takeIf { file ->
-                    file.absolutePath == arrangementPreviewCacheFile.absolutePath &&
-                        file.isFile &&
-                        previewRenderedSignature == previewRenderSignature
-                }
-                Log.d(
-                    ARR_PREVIEW_WAV_TAG,
-                    "SOURCE_ARRANGEMENT audioPath=$audioPath outputPath=${arrangementPreviewCacheFile.absolutePath} " +
-                        "signature=$previewRenderSignature reusable=${reusablePreviewFile != null} " +
-                        "segments=${playlistSegments.joinToString { segment ->
-                            "${segment.id}:${segment.startMs}-${segment.endMs}"
-                        }}"
-                )
-                if (reusablePreviewFile != null) {
-                    Log.d(
-                        ARR_PREVIEW_WAV_TAG,
-                        "REUSE_PREVIEW path=${reusablePreviewFile.absolutePath} exists=${reusablePreviewFile.isFile} " +
-                            "size=${reusablePreviewFile.length()}"
-                    )
-                    playArrangementPreviewFile(reusablePreviewFile)
-                } else {
-                    isPreviewGenerating = true
-                    scope.launch {
-                        Log.d(
-                            ARR_PREVIEW_WAV_TAG,
-                            "RENDER_START audioPath=$audioPath outputPath=${arrangementPreviewCacheFile.absolutePath} " +
-                                "segmentCount=${playlistSegments.size}"
-                        )
-                        val result = runCatching {
-                            ArrangementWavRenderer.render(
-                                context = context.applicationContext,
-                                audioPath = audioPath,
-                                segments = playlistSegments.map { segment ->
-                                    minOf(segment.startMs, segment.endMs) to
-                                        maxOf(segment.startMs, segment.endMs).coerceAtLeast(
-                                            minOf(segment.startMs, segment.endMs) + 1L
-                                        )
-                                },
-                                outputFile = arrangementPreviewCacheFile
-                            )
-                        }
-
-                        result
-                            .onSuccess { previewFile ->
-                                Log.d(
-                                    ARR_PREVIEW_WAV_TAG,
-                                    "RENDER_END path=${previewFile.absolutePath} exists=${previewFile.isFile} " +
-                                        "size=${previewFile.length()}"
-                                )
-                                replacePreviewRenderedFile(previewFile)
-                                previewRenderedSignature = previewRenderSignature
-                                playArrangementPreviewFile(previewFile)
-                            }
-                            .onFailure { error ->
-                                Log.w(
-                                    ARR_PREVIEW_WAV_TAG,
-                                    "RENDER_FAIL outputPath=${arrangementPreviewCacheFile.absolutePath} " +
-                                        "exists=${arrangementPreviewCacheFile.isFile} size=${arrangementPreviewCacheFile.length()} " +
-                                        "error=${error.message}",
-                                    error
-                                )
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.arrangement_preview_failed),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        isPreviewGenerating = false
-                    }
-                }
-            }
-        }
-    }
-
     DisposableEffect(structurePreviewPlayer) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -3538,24 +3330,7 @@ private fun TimelineMeasuresPlaceholder(
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (wavPreviewActive) {
-                    Log.d(
-                        ARR_PREVIEW_WAV_TAG,
-                        "PLAYER_STATE state=$playbackState isPlaying=${structurePreviewPlayer.isPlaying} " +
-                            "position=${structurePreviewPlayer.currentPosition} duration=${structurePreviewPlayer.duration} " +
-                            "mediaItemCount=${structurePreviewPlayer.mediaItemCount}"
-                    )
-                }
                 if (playbackState == Player.STATE_ENDED) {
-                    if (wavPreviewActive && !structurePlaybackActive) {
-                        Log.d(
-                            ARR_PREVIEW_WAV_TAG,
-                            "PLAYER_ENDED position=${structurePreviewPlayer.currentPosition} " +
-                                "duration=${structurePreviewPlayer.duration}"
-                        )
-                        stopStructurePreviewPlayback(reason = "wav_preview_ended")
-                        return
-                    }
                     val validationSegments = latestStructurePlaybackSegments
                     val validationListSize = validationSegments.size
                     val mediaItemCount = structurePreviewPlayer.mediaItemCount
@@ -3584,22 +3359,11 @@ private fun TimelineMeasuresPlaceholder(
                 }
             }
 
-            override fun onPlayerError(error: PlaybackException) {
-                if (wavPreviewActive) {
-                    Log.w(
-                        ARR_PREVIEW_WAV_TAG,
-                        "PLAYER_ERROR message=${error.message} code=${error.errorCode} " +
-                            "position=${structurePreviewPlayer.currentPosition} duration=${structurePreviewPlayer.duration}",
-                        error
-                    )
-                }
-            }
         }
         structurePreviewPlayer.addListener(listener)
         onDispose {
             structurePreviewPlayer.removeListener(listener)
             stopStructurePreviewPlayback(reason = "dispose_structurePreviewPlayer")
-            clearArrangementPreviewCache()
             runCatching { structurePreviewPlayer.release() }
         }
     }
@@ -3620,20 +3384,10 @@ private fun TimelineMeasuresPlaceholder(
         if (structurePreviewStopRequest > 0) {
             val activeStructurePlayback = structurePlaybackActive &&
                 (structureUsingSampler || runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false))
-            val activeWavPreviewPlayback = wavPreviewActive &&
-                runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false)
             if (activeStructurePlayback) {
                 Log.d(
                     ARR_STRUCTURE_FLOW_TAG,
                     "STOP_IGNORED reason=structure_preview_stop_request active_structure_playback=true currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=$queuedStructureSegmentIndex mediaItemCount=${structurePreviewPlayer.mediaItemCount}"
-                )
-                return@LaunchedEffect
-            }
-            if (activeWavPreviewPlayback) {
-                Log.d(
-                    ARR_PREVIEW_WAV_TAG,
-                    "STOP_IGNORED reason=structure_preview_stop_request active_wav_preview=true " +
-                        "position=${structurePreviewPlayer.currentPosition} duration=${structurePreviewPlayer.duration}"
                 )
                 return@LaunchedEffect
             }
@@ -3688,13 +3442,13 @@ private fun TimelineMeasuresPlaceholder(
             onStructurePreviewTargetChange(false)
         }
     }
-    LaunchedEffect(structurePlaybackActive, wavPreviewActive, structurePreviewPlayer) {
-        if (!structurePlaybackActive && !wavPreviewActive) {
+    LaunchedEffect(structurePlaybackActive, structurePreviewPlayer) {
+        if (!structurePlaybackActive) {
             runCatching { structurePreviewPlayer.volume = arrangementTrackGainLinear }
             return@LaunchedEffect
         }
         var lastTimingDiagLogMs = 0L
-        while (structurePlaybackActive || wavPreviewActive) {
+        while (structurePlaybackActive) {
             val currentMediaItemIndex = runCatching {
                 structurePreviewPlayer.currentMediaItemIndex
             }.getOrDefault(0).coerceAtLeast(0)
@@ -3719,15 +3473,10 @@ private fun TimelineMeasuresPlaceholder(
                     structurePlaybackAbsolutePositionMs = segmentStartMs + safeItemPositionMs
                 }
             }
-            if (wavPreviewActive) {
-                wavPreviewPositionMs = itemPositionMs.coerceAtLeast(0L)
-                wavPreviewDurationMs = itemDurationMs.coerceAtLeast(0L)
-            }
             val nowMs = SystemClock.elapsedRealtime()
             if (nowMs - lastTimingDiagLogMs >= 500L) {
                 lastTimingDiagLogMs = nowMs
                 val source = when {
-                    wavPreviewActive -> "WAV_PREVIEW"
                     structureUsingSampler -> "SAMPLER"
                     structureUsingWavSource -> "WAV_CACHE"
                     else -> arrangementTimingSourceLabel(currentStructureSourcePath ?: currentSongAudioPath)
@@ -3740,24 +3489,16 @@ private fun TimelineMeasuresPlaceholder(
                 } else {
                     itemPositionMs.coerceAtLeast(0L)
                 }
-                val visualPlayheadMs = if (structurePlaybackActive) {
-                    resolvePreparedArrangementPlayheadFromSource(
-                        occurrences = preparedStructureOccurrences,
-                        playbackIndex = structurePlaybackIndex,
-                        sourcePositionMs = structurePlaybackAbsolutePositionMs
-                    )?.arrangementPositionMs ?: structurePlaybackAbsolutePositionMs
-                } else {
-                    wavPreviewPositionMs
-                }
-                val playerArrangementPositionMs = if (structurePlaybackActive) {
-                    resolvePreparedArrangementPlayheadFromSource(
-                        occurrences = preparedStructureOccurrences,
-                        playbackIndex = structurePlaybackIndex,
-                        sourcePositionMs = playerAbsolutePositionMs
-                    )?.arrangementPositionMs ?: playerAbsolutePositionMs
-                } else {
-                    playerAbsolutePositionMs
-                }
+                val visualPlayheadMs = resolvePreparedArrangementPlayheadFromSource(
+                    occurrences = preparedStructureOccurrences,
+                    playbackIndex = structurePlaybackIndex,
+                    sourcePositionMs = structurePlaybackAbsolutePositionMs
+                )?.arrangementPositionMs ?: structurePlaybackAbsolutePositionMs
+                val playerArrangementPositionMs = resolvePreparedArrangementPlayheadFromSource(
+                    occurrences = preparedStructureOccurrences,
+                    playbackIndex = structurePlaybackIndex,
+                    sourcePositionMs = playerAbsolutePositionMs
+                )?.arrangementPositionMs ?: playerAbsolutePositionMs
                 Log.d(
                     ARR_TIMING_DIAG_TAG,
                     "PLAYHEAD visualPlayheadMs=$visualPlayheadMs " +
@@ -3904,20 +3645,6 @@ private fun TimelineMeasuresPlaceholder(
         stopArrangementLoopPreviewPlayback()
     }
 
-    if (showSamplerTestScreen) {
-        BackHandler {
-            showSamplerTestScreen = false
-        }
-        ArrangementSamplerTestScreen(
-            songId = currentSongId,
-            onClose = { showSamplerTestScreen = false },
-            modifier = if (constrainToAvailableHeight) {
-                modifier.fillMaxSize()
-            } else {
-                Modifier.fillMaxSize()
-            }
-        )
-    } else {
     Column(
         modifier = if (constrainToAvailableHeight) {
             modifier
@@ -4256,7 +3983,6 @@ private fun TimelineMeasuresPlaceholder(
                         selectedSegmentLoopId != null ||
                         isTimelineSecondaryPlaybackActive(
                             structurePlaybackActive = structurePlaybackActive,
-                            wavPreviewActive = wavPreviewActive,
                             arrangementLoopPreviewActive = arrangementLoopPreviewActive
                         ))
                 Log.d(
@@ -4481,14 +4207,6 @@ private fun TimelineMeasuresPlaceholder(
                     }
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
-            Text(
-                text = stringResource(R.string.timeline_tempo_action_listen),
-                color = if (isPreviewGenerating) Color(0xFF607D8B) else Color.White,
-                fontSize = 14.sp,
-                modifier = Modifier
-                    .clickable(enabled = !isPreviewGenerating, onClick = listenAction)
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
-            )
             if (constrainToAvailableHeight) {
                 Text(
                     text = stringResource(R.string.arrangement_save_to_library_action),
@@ -4551,68 +4269,6 @@ private fun TimelineMeasuresPlaceholder(
                     }
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
-	        if (constrainToAvailableHeight) {
-	            Text(
-	                text = stringResource(R.string.arrangement_sampler_test_open_action),
-	                color = Color(0xFFB0BEC5),
-	                fontSize = 14.sp,
-	                modifier = Modifier
-	                    .clickable {
-	                        stopStructurePreviewPlayback(reason = "open_sampler_test")
-	                        stopArrangementLoopPreviewPlayback()
-	                        if (isPreparedClipLoopTestActive) {
-	                            onStopPreparedClipLoopTest()
-	                        }
-	                        if (isPlaying) {
-	                            onIsPlayingChange(false)
-	                        }
-	                        showSamplerTestScreen = true
-	                    }
-	                    .padding(horizontal = 10.dp, vertical = 8.dp)
-	            )
-	        }
-        }
-	    if (!constrainToAvailableHeight) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Start
-        ) {
-            Text(
-                text = stringResource(R.string.arrangement_sampler_test_open_action),
-                color = Color(0xFFB0BEC5),
-                fontSize = 14.sp,
-                modifier = Modifier
-                    .clickable {
-                        stopStructurePreviewPlayback(reason = "open_sampler_test")
-                        stopArrangementLoopPreviewPlayback()
-                        if (isPreparedClipLoopTestActive) {
-                            onStopPreparedClipLoopTest()
-                        }
-                        if (isPlaying) {
-                            onIsPlayingChange(false)
-                        }
-                        showSamplerTestScreen = true
-                    }
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            )
-        }
-	    }
-        if (isPreviewGenerating) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                    color = Color(0xFFB0BEC5)
-                )
-                Text(
-                    text = stringResource(R.string.timeline_tempo_preview_generating),
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 12.sp
-                )
-            }
         }
         if (isStructureAudioPreparing) {
             Row(
@@ -4628,52 +4284,6 @@ private fun TimelineMeasuresPlaceholder(
                     text = stringResource(R.string.arrangement_structure_audio_preparing),
                     color = Color(0xFFB0BEC5),
                     fontSize = 12.sp
-                )
-            }
-        }
-        if (wavPreviewActive) {
-            var wavPreviewSliderPositionMs by remember(wavPreviewPositionMs, wavPreviewDurationMs) {
-                mutableLongStateOf(wavPreviewPositionMs.coerceIn(0L, wavPreviewDurationMs.coerceAtLeast(0L)))
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(10.dp))
-                    .border(
-                        width = 1.dp,
-                        color = Color.White.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(10.dp)
-                    )
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.timeline_tempo_preview_wave_title),
-                    color = Color.White,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = stringResource(
-                        R.string.timeline_tempo_preview_wave_position,
-                        formatTimelineMarkerTime(wavPreviewPositionMs),
-                        formatTimelineMarkerTime(wavPreviewDurationMs)
-                    ),
-                    color = Color(0xFFB0BEC5),
-                    fontSize = 11.sp
-                )
-                Slider(
-                    value = wavPreviewSliderPositionMs.toFloat(),
-                    onValueChange = { nextValue ->
-                        wavPreviewSliderPositionMs = nextValue.toLong()
-                    },
-                    onValueChangeFinished = {
-                        val targetPositionMs = wavPreviewSliderPositionMs
-                            .coerceIn(0L, wavPreviewDurationMs.coerceAtLeast(0L))
-                        wavPreviewPositionMs = targetPositionMs
-                        runCatching { structurePreviewPlayer.seekTo(targetPositionMs) }
-                    },
-                    valueRange = 0f..wavPreviewDurationMs.coerceAtLeast(1L).toFloat()
                 )
             }
         }
@@ -4920,7 +4530,6 @@ private fun TimelineMeasuresPlaceholder(
                 fontWeight = FontWeight.Medium
             )
         }
-    }
     }
 
     if (renameSegmentId != null) {
@@ -5457,6 +5066,128 @@ private fun TimelineMeasuresPlaceholder(
             containerColor = Color(0xFF121212)
         )
     }
+}
+
+private fun buildSamplerSegmentsFromWav(
+    wavFile: File,
+    structureSegments: List<ArrangementSegmentData>
+): List<SampleSegment> {
+    require(structureSegments.isNotEmpty()) { "empty_structure" }
+    val wavInfo = readSamplerWavInfo(wavFile)
+    require(wavInfo.bitsPerSample == 16) { "unsupported_bits_${wavInfo.bitsPerSample}" }
+    require(wavInfo.channelCount == SampleSegment.CHANNEL_COUNT) {
+        "unsupported_channels_${wavInfo.channelCount}"
+    }
+
+    val bytesPerFrame = wavInfo.channelCount * (wavInfo.bitsPerSample / 8)
+    RandomAccessFile(wavFile, "r").use { input ->
+        return structureSegments.mapIndexed { index, segment ->
+            val startMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
+            val endMs = maxOf(segment.startMs, segment.endMs).coerceAtLeast(startMs + 1L)
+            val startFrame = (startMs * wavInfo.sampleRate.toLong()) / 1_000L
+            val endFrame = (endMs * wavInfo.sampleRate.toLong()) / 1_000L
+            val startByteOffset = wavInfo.dataOffset + startFrame * bytesPerFrame.toLong()
+            val endByteOffset = wavInfo.dataOffset + endFrame * bytesPerFrame.toLong()
+            val clampedStart = startByteOffset.coerceIn(wavInfo.dataOffset, wavInfo.dataEndOffset)
+            val clampedEnd = endByteOffset.coerceIn(clampedStart, wavInfo.dataEndOffset)
+            val byteCount = (clampedEnd - clampedStart).coerceAtLeast(0L)
+            require(byteCount > 0L && byteCount <= Int.MAX_VALUE) { "invalid_segment_$index" }
+
+            val pcm = ByteArray(byteCount.toInt())
+            input.seek(clampedStart)
+            input.readFully(pcm)
+            SampleSegment(
+                id = segment.id,
+                name = segment.name,
+                startMs = startMs,
+                endMs = endMs,
+                sampleRateHz = wavInfo.sampleRate,
+                pcm16Stereo = pcm
+            )
+        }
+    }
+}
+
+private fun readSamplerWavInfo(file: File): SamplerWavInfo {
+    RandomAccessFile(file, "r").use { input ->
+        require(readSamplerAscii(input, 4) == "RIFF") { "invalid_wav" }
+        readSamplerIntLe(input)
+        require(readSamplerAscii(input, 4) == "WAVE") { "invalid_wav" }
+
+        var sampleRate: Int? = null
+        var channelCount: Int? = null
+        var bitsPerSample: Int? = null
+        var dataOffset: Long? = null
+        var dataSizeBytes: Long? = null
+
+        while (input.filePointer < input.length()) {
+            val chunkId = readSamplerAscii(input, 4)
+            val chunkSize = readSamplerIntLe(input).toLong() and 0xFFFFFFFFL
+            val chunkStart = input.filePointer
+
+            when (chunkId) {
+                "fmt " -> {
+                    readSamplerShortLe(input)
+                    channelCount = readSamplerShortLe(input)
+                    sampleRate = readSamplerIntLe(input)
+                    readSamplerIntLe(input)
+                    readSamplerShortLe(input)
+                    bitsPerSample = readSamplerShortLe(input)
+                }
+                "data" -> {
+                    dataOffset = chunkStart
+                    dataSizeBytes = chunkSize
+                    break
+                }
+            }
+
+            input.seek(chunkStart + chunkSize + (chunkSize and 1L))
+        }
+
+        return SamplerWavInfo(
+            sampleRate = sampleRate ?: error("sample_rate_missing"),
+            channelCount = channelCount ?: error("channel_count_missing"),
+            bitsPerSample = bitsPerSample ?: error("bits_missing"),
+            dataOffset = dataOffset ?: error("data_missing"),
+            dataSizeBytes = dataSizeBytes ?: error("data_missing")
+        )
+    }
+}
+
+private fun readSamplerAscii(input: RandomAccessFile, byteCount: Int): String {
+    val buffer = ByteArray(byteCount)
+    input.readFully(buffer)
+    return String(buffer, Charsets.US_ASCII)
+}
+
+private fun readSamplerIntLe(input: RandomAccessFile): Int {
+    val b0 = input.read()
+    val b1 = input.read()
+    val b2 = input.read()
+    val b3 = input.read()
+    require(b3 >= 0) { "unexpected_eof" }
+    return (b0 and 0xFF) or
+        ((b1 and 0xFF) shl 8) or
+        ((b2 and 0xFF) shl 16) or
+        ((b3 and 0xFF) shl 24)
+}
+
+private fun readSamplerShortLe(input: RandomAccessFile): Int {
+    val b0 = input.read()
+    val b1 = input.read()
+    require(b1 >= 0) { "unexpected_eof" }
+    return (b0 and 0xFF) or ((b1 and 0xFF) shl 8)
+}
+
+private data class SamplerWavInfo(
+    val sampleRate: Int,
+    val channelCount: Int,
+    val bitsPerSample: Int,
+    val dataOffset: Long,
+    val dataSizeBytes: Long
+) {
+    val dataEndOffset: Long
+        get() = dataOffset + dataSizeBytes
 }
 
 private fun arrangementOccurrenceColorPreview(color: String?): Color = when (color) {

@@ -212,11 +212,13 @@ Implémenté dans l'éditeur canonique tablette :
 - un collage crée à la frontière choisie une occurrence avec un nouvel `entryId` indépendant et ne duplique jamais le fichier audio ;
 - la couleur, le mute et `repeatCount` sont sauvegardés dans l'entrée V2 ;
 - avant la preview ou l'export, les occurrences en mute sont exclues et les répétitions sont développées dans la liste audio préparée ;
-- pendant une preview Structure ou WAV, une préparation ou un export, l'ajout, le déplacement et les actions de structure sont verrouillés afin de ne jamais reconstruire le montage en pleine lecture ;
+- pendant une lecture Structure, une préparation ou un export, l'ajout, le déplacement et les actions de structure sont verrouillés afin de ne jamais reconstruire le montage en pleine lecture ;
 - la tête turquoise reste visible sur la piste tablette hors lecture ; après Stop, elle conserve la dernière position exacte, y compris au milieu d'un segment ;
 - toucher ou faire glisser la zone supérieure de la piste passe en édition et quantifie la tête sur la frontière de segment la plus proche ;
 - après un Stop au milieu d'un segment, `Coller ici` reste indisponible tant qu'un toucher n'a pas choisi une frontière non ambiguë ;
 - `Coller ici`, dans le menu du segment sélectionné, duplique ce segment à la frontière indiquée par la tête ;
+- pour coller sans déclencher de lecture, l'utilisateur place d'abord la tête sur la frontière voulue, puis effectue un appui long sur le bloc source afin d'ouvrir directement son menu et choisit `Coller ici` ;
+- l'appui court conserve son rôle d'écoute du segment ; l'appui long est le geste d'édition qui ouvre le menu sans Play et sans déplacer la tête ;
 - sa position utilise le temps cumulé du montage préparé, jamais le temps absolu de la waveform source ;
 - pour un bloc répété, la tête parcourt successivement chaque fraction du bloc et affiche la répétition active sous la forme `1/N`, `2/N`, etc. ;
 - les occurrences en mute restent visibles dans l'éditeur mais sont sautées par la tête de lecture comme elles le sont par la liste audio préparée ;
@@ -228,6 +230,7 @@ Implémenté dans l'éditeur canonique tablette :
 - toucher la waveform source arrête immédiatement la preview secondaire, libère le ciblage et place le titre complet en pause à la position touchée ; le Play suivant démarre donc le titre complet depuis cette position ;
 - le bouton retour début arrête la preview secondaire, libère le ciblage du bloc, replace le titre complet à `00:00` et rend les commandes au lecteur principal ;
 - le lecteur principal et la preview de segment ne doivent jamais jouer simultanément.
+- toute preview Arrangement active devient une source Player officielle et coupe le fond sonore via `PlaybackCoordinator` avant de produire du son.
 
 ### Périmètre appareil — tablette uniquement
 
@@ -555,59 +558,16 @@ Bouton Ajouter :
 
 ---
 
-## 🧪 SAMPLER EXPÉRIMENTAL
+## 🧹 RETRAIT DES OUTILS EXPÉRIMENTAUX
 
-### Principe
+Décision validée le 22 juillet 2026 :
 
-- Sampler PCM expérimental
-- utilisé pour tester transitions et segments Arrangement
-- il n'est pas utilisé par la lecture Structure normale sur tablette
-- ne pilote jamais le Player principal
-- ne doit pas être couplé à AudioEngine live
-
-### Règles
-
-✔ usage limité aux tests / preview Arrangement  
-✔ pas de traitement lourd pendant le live  
-✔ reste expérimental tant qu’il n’est pas promu officiellement
-
----
-
-## 🎧 PREVIEW WAV (ÉCOUTER)
-
-### Principe
-
-Le bouton “Écouter” génère une preview audio du montage final.
-
-👉 Preview WAV = rendu fidèle de validation.
-
----
-
-### Fichier
-
-- cache contrôlé autour du fichier temporaire :  
-  preview_arrangement.wav
-- stocké dans le cache
-- aucun fichier temporaire accumulé
-
----
-
-### Optimisations
-
-- si la structure n’a pas changé :  
-  → réutilisation du fichier existant
-- sinon :  
-  → régénération
-
----
-
-### Lifecycle
-
-- fichier conservé pendant la session
-- supprimé automatiquement à la sortie de la page
-- nettoyage obligatoire
-
-👉 évite toute accumulation
+- l'écran utilisateur `Sampler Test` est supprimé ;
+- le bouton `Écouter` et sa pré-écoute WAV temporaire sont supprimés ;
+- la lecture directe de la Structure est le seul mode de contrôle du montage avant export ;
+- le moteur sampler interne peut rester utilisé comme détail technique de la lecture Structure : ce n'est pas une fonction utilisateur séparée ;
+- les limites constatées sur certains téléphones avec les fichiers compressés sont considérées comme matérielles et ne justifient pas un second parcours dans l'interface ;
+- `Assembler` reste la seule génération WAV, déclenchée volontairement pour créer le fichier final.
 
 ---
 
@@ -752,7 +712,6 @@ Fonction :
 ### Séparation fondamentale
 
 - preview Structure = travail rapide sur segments
-- preview WAV = rendu fidèle de validation
 - export = génération finale SMP/runtime
 
 ### Règles critiques
@@ -760,7 +719,6 @@ Fonction :
 - La Structure ne doit jamais piloter le Player principal.
 - Aucun traitement lourd pendant le live.
 - Les transitions doivent être préparées.
-- Le cache WAV doit rester contrôlé et nettoyé.
 - Ne pas modifier AudioEngine pour corriger Arrangement preview.
 
 ---
@@ -771,7 +729,6 @@ Fonction :
 - logique cachée ou automatique imprévisible
 - accumulation de fichiers temporaires
 - dépendance UI pour logique audio
-- coupler Sampler expérimental et Player principal
 - modifier AudioEngine pour corriger la preview Arrangement
 
 ---

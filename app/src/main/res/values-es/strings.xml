@@ -55,7 +55,7 @@
     <string name="arrangement_hub_cutting_action">Corte</string>
     <string name="arrangement_hub_help_action">Ayuda</string>
     <string name="arrangement_help_title">Ayuda de arrangement</string>
-    <string name="arrangement_help_message">1. Detecta el tempo de la canción\n\nEmpieza detectando automáticamente el BPM de la canción.\nDespués podrás ajustar la cuadrícula si hace falta.\n\n2. Activa la cuadrícula\n\nActiva “Cuadrícula” y luego ajústala si es necesario con “Sync”.\nEsto permite trabajar correctamente en ritmo.\n\nConsejo:\ncoloca la cabeza de lectura sobre un tiempo de la canción y luego pulsa “Sync”.\n\nEsto recalibrará automáticamente la cuadrícula sobre los tiempos de la canción.\n\nUna cuadrícula bien ajustada facilita muchísimo:\n• los bucles\n• los segmentos\n• las estructuras\n• los futuros ensamblajes\n\n3. Definir una zona (IN / OUT)\n\nColoca:\n• un punto IN\n• un punto OUT\n\npara aislar con precisión una parte de la canción.\n\nPuedes probar la repetición inmediatamente para ajustar tus puntos con precisión.\n\n4. Crear segmentos\n\nUna vez definidas tus zonas, crea segmentos:\n• intro\n• verso\n• estribillo\n• solo\n• outro\netc.\n\nLos segmentos servirán para construir tus arreglos.\n\nConsejo:\nel modo “-” es muy práctico para eliminar una parte de tu canción,\npor ejemplo:\n• un estribillo\n• un verso\n• una intro demasiado larga\n\n5. Organizar la estructura\n\nOrganiza tus segmentos en el orden deseado para crear:\n• una versión corta\n• una versión en directo\n• un medley\n• una estructura personalizada\n\n6. Modificar rápidamente\n\nLa estructura sigue siendo totalmente editable:\n• mover\n• reemplazar\n• eliminar\n• reorganizar\n\nPuedes probar ideas diferentes muy rápidamente.\n\n7. Probar tu montaje\n\nLanza la reproducción de la Estructura para comprobar:\n• las transiciones\n• los encadenamientos\n• el ritmo general de la canción\n\n8. Escucha final (WAV)\n\nPuedes generar una preescucha WAV para comprobar el resultado final de tu arreglo.\n\nEn algunos casos, la reproducción WAV también puede reducir pequeños defectos de lectura ligados a archivos comprimidos.\n\n9. 🎯 Ensamblaje final\n\nBotón “Ensamblar”:\n\n• crea la canción final\n• lista para usarse en directo en tu biblioteca</string>
+    <string name="arrangement_help_message">1. Detecta el tempo de la canción\n\nEmpieza detectando automáticamente el BPM de la canción.\nDespués podrás ajustar la cuadrícula si hace falta.\n\n2. Activa la cuadrícula\n\nActiva “Cuadrícula” y luego ajústala si es necesario con “Sync”.\nEsto permite trabajar correctamente en ritmo.\n\nConsejo:\ncoloca la cabeza de lectura sobre un tiempo de la canción y luego pulsa “Sync”.\n\nEsto recalibrará automáticamente la cuadrícula sobre los tiempos de la canción.\n\nUna cuadrícula bien ajustada facilita muchísimo:\n• los bucles\n• los segmentos\n• las estructuras\n• los futuros ensamblajes\n\n3. Definir una zona (IN / OUT)\n\nColoca:\n• un punto IN\n• un punto OUT\n\npara aislar con precisión una parte de la canción.\n\nPuedes probar la repetición inmediatamente para ajustar tus puntos con precisión.\n\n4. Crear segmentos\n\nUna vez definidas tus zonas, crea segmentos:\n• intro\n• verso\n• estribillo\n• solo\n• outro\netc.\n\nLos segmentos servirán para construir tus arreglos.\n\nConsejo:\nel modo “-” es muy práctico para eliminar una parte de tu canción,\npor ejemplo:\n• un estribillo\n• un verso\n• una intro demasiado larga\n\n5. Organizar la estructura\n\nOrganiza tus segmentos en el orden deseado para crear:\n• una versión corta\n• una versión en directo\n• un medley\n• una estructura personalizada\n\n6. Modificar rápidamente\n\nLa estructura sigue siendo totalmente editable:\n• mover\n• reemplazar\n• eliminar\n• reorganizar\n\nPuedes probar ideas diferentes muy rápidamente.\n\n7. Probar tu montaje\n\nLanza la reproducción de la Estructura para comprobar:\n• las transiciones\n• los encadenamientos\n• el ritmo general de la canción\n\n8. 🎯 Ensamblaje final\n\nBotón “Ensamblar”:\n\n• crea la canción final\n• lista para usarse en directo en tu biblioteca</string>
     <string name="arrangement_hub_tempo_message">Abre ARR desde el reproductor para ajustar el tempo.</string>
     <string name="arrangement_back_to_tempo">Volver a Tempo</string>
     <string name="arrangement_song_id">Canción: %1$s</string>
@@ -84,10 +84,7 @@
     <string name="arrangement_play_action">Play</string>
     <string name="arrangement_pause_action">Pausa</string>
     <string name="arrangement_return_action">Inicio</string>
-    <string name="arrangement_preview_action">Preview</string>
-    <string name="arrangement_preview_generating">Generación…</string>
     <string name="arrangement_preview_structure_empty">Añade al menos un segmento a la estructura</string>
-    <string name="arrangement_preview_failed">No se pudo generar la preescucha</string>
     <string name="arrangement_duration_label">Duración: %1$s</string>
     <string name="arrangement_songs_loading">Cargando canciones…</string>
     <string name="arrangement_no_smp_song_available">No hay canción SMP disponible</string>
@@ -616,9 +613,6 @@
     <string name="timeline_measures_signature_label">Compás</string>
     <string name="timeline_measures_signature_default">4/4</string>
     <string name="timeline_tempo_action_add">Agregar</string>
-    <string name="timeline_tempo_action_listen">Escuchar</string>
-    <string name="timeline_tempo_preview_wave_title">Escucha del montaje</string>
-    <string name="timeline_tempo_preview_wave_position">%1$s / %2$s</string>
     <string name="timeline_tempo_action_export">Ensamblar</string>
     <string name="arrangement_save_to_library_action">Biblioteca</string>
     <string name="arrangement_virtual_name_title">Guardar una variante</string>
@@ -626,7 +620,6 @@
     <string name="arrangement_virtual_save_success">Variante añadida a la biblioteca: %1$s</string>
     <string name="arrangement_virtual_save_failed">No se pudo guardar la variante: %1$s</string>
     <string name="arrangement_virtual_playback_unavailable">No se puede preparar esta variante de Arrangement</string>
-    <string name="timeline_tempo_preview_generating">Preparando la escucha…</string>
     <string name="timeline_tempo_export_generating">Ensamblando…</string>
     <string name="timeline_tempo_export_name_title">Nombre del ensamblaje</string>
     <string name="timeline_tempo_export_name_label">Nombre propuesto</string>
@@ -1193,19 +1186,6 @@ No olvides guardar.</string>
 
     <!-- Arrangement sampler test -->
     <string name="arrangement_undo_action">Deshacer</string>
-    <string name="arrangement_sampler_test_open_action">Sampler Test</string>
-    <string name="arrangement_sampler_test_title">Sampler Test</string>
-    <string name="arrangement_sampler_test_load_samples">Load Samples</string>
-    <string name="arrangement_sampler_test_loading">Cargando…</string>
-    <string name="arrangement_sampler_test_stop">Stop</string>
-    <string name="arrangement_sampler_test_release">Release</string>
-    <string name="arrangement_sampler_test_play">Play</string>
-    <string name="arrangement_sampler_test_queue_next">Queue Next</string>
-    <string name="arrangement_sampler_test_no_song">No hay canción actual.</string>
-    <string name="arrangement_sampler_test_empty_structure">No hay segmentos en la Structure actual.</string>
-    <string name="arrangement_sampler_test_loaded_status">%1$d sample(s) cargado(s).</string>
-    <string name="arrangement_sampler_test_error_status">Error al cargar samples. Ver Logcat.</string>
-    <string name="arrangement_sampler_test_segment_range">%1$d ms → %2$d ms</string>
 
     <!-- MainActivity -->
     <string name="debug_reset_setup">DEBUG: reiniciar configuración</string>

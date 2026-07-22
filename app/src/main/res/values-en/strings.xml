@@ -57,7 +57,7 @@
     <string name="arrangement_hub_cutting_action">Cutting</string>
     <string name="arrangement_hub_help_action">Help</string>
     <string name="arrangement_help_title">Arrangement help</string>
-    <string name="arrangement_help_message">1. Detect the song tempo\n\nStart by automatically detecting the song BPM.\nYou can then adjust the grid if needed.\n\n2. Enable the grid\n\nTurn on “Grid”, then adjust it if needed with “Sync”.\nThis lets you work correctly in time.\n\nTip:\nplace the playhead on a beat of the song, then press “Sync”.\n\nThis will automatically realign the grid to the song beats.\n\nA well-aligned grid makes the following much easier:\n• loops\n• segments\n• structures\n• future assemblies\n\n3. Define a zone (IN / OUT)\n\nPlace:\n• an IN point\n• an OUT point\n\nto isolate a specific part of the song precisely.\n\nYou can immediately test the loop to fine-tune your points accurately.\n\n4. Create segments\n\nOnce your zones are defined, create segments such as:\n• intro\n• verse\n• chorus\n• solo\n• outro\netc.\n\nThese segments will be used to build your arrangements.\n\nTip:\n“-” mode is very useful for removing part of a song,\nfor example:\n• a chorus\n• a verse\n• an intro that is too long\n\n5. Organize the structure\n\nArrange your segments in the desired order to create:\n• a short version\n• a live version\n• a medley\n• a custom structure\n\n6. Edit quickly\n\nThe structure remains fully editable:\n• move\n• replace\n• delete\n• reorganize\n\nYou can try different ideas very quickly.\n\n7. Test your arrangement\n\nStart Structure playback to check:\n• transitions\n• segment flow\n• the overall rhythm of the song\n\n8. Final listening (WAV)\n\nYou can generate a WAV preview to check the final result of your arrangement.\n\nIn some cases, WAV playback can also reduce small playback issues caused by compressed files.\n\n9. 🎯 Final assembly\n\n“Assemble” button:\n\n• creates the final song\n• ready to be used live in your library</string>
+    <string name="arrangement_help_message">1. Detect the song tempo\n\nStart by automatically detecting the song BPM.\nYou can then adjust the grid if needed.\n\n2. Enable the grid\n\nTurn on “Grid”, then adjust it if needed with “Sync”.\nThis lets you work correctly in time.\n\nTip:\nplace the playhead on a beat of the song, then press “Sync”.\n\nThis will automatically realign the grid to the song beats.\n\nA well-aligned grid makes the following much easier:\n• loops\n• segments\n• structures\n• future assemblies\n\n3. Define a zone (IN / OUT)\n\nPlace:\n• an IN point\n• an OUT point\n\nto isolate a specific part of the song precisely.\n\nYou can immediately test the loop to fine-tune your points accurately.\n\n4. Create segments\n\nOnce your zones are defined, create segments such as:\n• intro\n• verse\n• chorus\n• solo\n• outro\netc.\n\nThese segments will be used to build your arrangements.\n\nTip:\n“-” mode is very useful for removing part of a song,\nfor example:\n• a chorus\n• a verse\n• an intro that is too long\n\n5. Organize the structure\n\nArrange your segments in the desired order to create:\n• a short version\n• a live version\n• a medley\n• a custom structure\n\n6. Edit quickly\n\nThe structure remains fully editable:\n• move\n• replace\n• delete\n• reorganize\n\nYou can try different ideas very quickly.\n\n7. Test your arrangement\n\nStart Structure playback to check:\n• transitions\n• segment flow\n• the overall rhythm of the song\n\n8. 🎯 Final assembly\n\n“Assemble” button:\n\n• creates the final song\n• ready to be used live in your library</string>
     <string name="arrangement_hub_tempo_message">Open ARR from the player to adjust the tempo.</string>
     <string name="arrangement_back_to_tempo">Back to Tempo</string>
     <string name="arrangement_song_id">Song: %1$s</string>
@@ -86,10 +86,7 @@
     <string name="arrangement_play_action">Play</string>
     <string name="arrangement_pause_action">Pause</string>
     <string name="arrangement_return_action">Return</string>
-    <string name="arrangement_preview_action">Preview</string>
-    <string name="arrangement_preview_generating">Generating…</string>
     <string name="arrangement_preview_structure_empty">Add at least one segment to the structure</string>
-    <string name="arrangement_preview_failed">Unable to generate preview</string>
     <string name="arrangement_duration_label">Duration: %1$s</string>
     <string name="arrangement_songs_loading">Loading songs…</string>
     <string name="arrangement_no_smp_song_available">No SMP song available</string>
@@ -667,9 +664,6 @@
     <string name="timeline_measures_signature_label">Time signature</string>
     <string name="timeline_measures_signature_default">4/4</string>
     <string name="timeline_tempo_action_add">Add</string>
-    <string name="timeline_tempo_action_listen">Listen</string>
-    <string name="timeline_tempo_preview_wave_title">Arrangement preview</string>
-    <string name="timeline_tempo_preview_wave_position">%1$s / %2$s</string>
     <string name="timeline_tempo_action_export">Assemble</string>
     <string name="arrangement_save_to_library_action">Library</string>
     <string name="arrangement_virtual_name_title">Save a variant</string>
@@ -677,7 +671,6 @@
     <string name="arrangement_virtual_save_success">Variant added to the library: %1$s</string>
     <string name="arrangement_virtual_save_failed">Unable to save the variant: %1$s</string>
     <string name="arrangement_virtual_playback_unavailable">This Arrangement variant cannot be prepared</string>
-    <string name="timeline_tempo_preview_generating">Preparing preview…</string>
     <string name="timeline_tempo_export_generating">Assembling…</string>
     <string name="timeline_tempo_export_name_title">Assembly name</string>
     <string name="timeline_tempo_export_name_label">Suggested name</string>
@@ -1281,19 +1274,6 @@ Don’t forget to save.</string>
 
     <!-- Arrangement sampler test -->
     <string name="arrangement_undo_action">Undo</string>
-    <string name="arrangement_sampler_test_open_action">Sampler Test</string>
-    <string name="arrangement_sampler_test_title">Sampler Test</string>
-    <string name="arrangement_sampler_test_load_samples">Load Samples</string>
-    <string name="arrangement_sampler_test_loading">Loading…</string>
-    <string name="arrangement_sampler_test_stop">Stop</string>
-    <string name="arrangement_sampler_test_release">Release</string>
-    <string name="arrangement_sampler_test_play">Play</string>
-    <string name="arrangement_sampler_test_queue_next">Queue Next</string>
-    <string name="arrangement_sampler_test_no_song">No current song.</string>
-    <string name="arrangement_sampler_test_empty_structure">No segment in the current Structure.</string>
-    <string name="arrangement_sampler_test_loaded_status">%1$d sample(s) loaded.</string>
-    <string name="arrangement_sampler_test_error_status">Sample loading error. See Logcat.</string>
-    <string name="arrangement_sampler_test_segment_range">%1$d ms → %2$d ms</string>
 
     <!-- MainActivity -->
     <string name="debug_reset_setup">DEBUG: reset setup</string>
