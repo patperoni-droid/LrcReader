@@ -138,6 +138,16 @@ enum class TabletPlayerFocusMode {
     ARRANGEMENT
 }
 
+internal fun shouldShowTabletPlaylistPane(
+    focusMode: TabletPlayerFocusMode,
+    arrangementPlaylistVisible: Boolean
+): Boolean = focusMode != TabletPlayerFocusMode.ARRANGEMENT || arrangementPlaylistVisible
+
+internal fun shouldExpandTabletArrangementPane(
+    focusMode: TabletPlayerFocusMode,
+    arrangementPlaylistVisible: Boolean
+): Boolean = focusMode == TabletPlayerFocusMode.ARRANGEMENT && !arrangementPlaylistVisible
+
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is android.content.ContextWrapper -> baseContext.findActivity()
@@ -190,6 +200,8 @@ fun PlayerScreen(
     onLiveGainDelta: (Int) -> Unit = {},
     showPhoneLiveGainDrawer: Boolean = false,
     onTabletFocusModeChange: (TabletPlayerFocusMode) -> Unit = {},
+    tabletArrangementPlaylistVisible: Boolean = false,
+    onTabletArrangementPlaylistVisibilityChange: (Boolean) -> Unit = {},
     stableTabletLyricsEditorSession: Boolean = false,
     readerHeaderEndContent: @Composable RowScope.() -> Unit = {}
 ) {
@@ -3026,6 +3038,9 @@ fun PlayerScreen(
                 startInGridSetup = startTimelineInGridSetup,
                 tabletArrangementLayout = compactTabletLayout,
                 onTabletFocusModeChange = onTabletFocusModeChange,
+                tabletArrangementPlaylistVisible = tabletArrangementPlaylistVisible,
+                onTabletArrangementPlaylistVisibilityChange =
+                    onTabletArrangementPlaylistVisibilityChange,
                 markers = timelineEditorMarkers,
                 palette = timelinePalette,
                 isPlaying = isPlaying,

@@ -173,17 +173,15 @@ Segment A → Segment B → Segment C
 Fondation tablette réalisée :
 
 - l'entrée dans l'éditeur Arrangement est désormais signalée explicitement au layout tablette ;
-- pendant cette édition, la playlist est repliée et l'éditeur conserve la même instance tout en prenant toute la largeur disponible ;
+- pendant cette édition, la playlist est repliée par défaut et l'éditeur conserve la même instance tout en prenant toute la largeur disponible ;
+- une commande dans Arrangement permet d'afficher la playlist à gauche avec la répartition habituelle `38 % / 62 %`, puis de la replier sans quitter ni recréer l'éditeur ;
+- sélectionner un autre titre dans cette playlist conserve le contrat du Playback Control : l'Arrangement courant ne change que lorsque le titre préparé est effectivement lancé ;
 - les raccourcis supérieurs du panneau droit sont masqués afin de libérer la hauteur utile ;
 - le contenu d'Arrangement est contraint et défilable au-dessus du `Playback Control`, qui reste visible en bas ;
 - sur tablette, l'entrée `Arrangement` de l'écran `Paramètres / Plus` ouvre désormais l'éditeur canonique intégré à `Timeline / Grille` lorsqu'un morceau SMP est actif ;
 - l'ancien éditeur à deux colonnes n'est plus la route principale tablette ; il reste disponible sur téléphone et comme repli lorsqu'aucun morceau SMP actif ne peut alimenter l'éditeur canonique ;
 - dans l'éditeur canonique tablette, le bouton `Fermer` et le bouton Retour Android restaurent le cockpit `Playlist | Paroles` sans arrêter ni remplacer le morceau actif ;
 - ce comportement est strictement conditionné au layout tablette et ne modifie pas le téléphone.
-
-Reste à réaliser :
-
-- permettre d'ouvrir ou de fermer la playlist dans un panneau latéral gauche sans quitter Arrangement.
 
 Implémenté dans l'éditeur canonique tablette :
 

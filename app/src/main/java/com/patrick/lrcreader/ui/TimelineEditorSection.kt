@@ -257,6 +257,8 @@ fun TimelineEditorSection(
     startInGridSetup: Boolean = false,
     tabletArrangementLayout: Boolean = false,
     onTabletFocusModeChange: (TabletPlayerFocusMode) -> Unit = {},
+    tabletArrangementPlaylistVisible: Boolean = false,
+    onTabletArrangementPlaylistVisibilityChange: (Boolean) -> Unit = {},
     markers: List<TimelineMarker>,
     palette: List<String>,
     isPlaying: Boolean,
@@ -615,6 +617,27 @@ fun TimelineEditorSection(
                 }
                 TimelineEditorMode.GRID_SETUP -> {
                     if (startInGridSetup) {
+                        if (tabletArrangementLayout) {
+                            TextButton(
+                                onClick = {
+                                    onTabletArrangementPlaylistVisibilityChange(
+                                        !tabletArrangementPlaylistVisible
+                                    )
+                                }
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        if (tabletArrangementPlaylistVisible) {
+                                            R.string.arrangement_hide_playlist_action
+                                        } else {
+                                            R.string.arrangement_show_playlist_action
+                                        }
+                                    ),
+                                    color = Color(0xFF80CBC4),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
                         TextButton(onClick = { showArrangementHelpPage = true }) {
                             Text(
                                 text = stringResource(R.string.arrangement_hub_help_action),

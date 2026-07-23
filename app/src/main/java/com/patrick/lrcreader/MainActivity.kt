@@ -1515,6 +1515,9 @@ class MainActivity : AppCompatActivity() {
                 var tabletPlayerFocusMode by remember {
                     mutableStateOf(TabletPlayerFocusMode.NONE)
                 }
+                var tabletArrangementPlaylistVisible by remember {
+                    mutableStateOf(false)
+                }
 
                 // ✅ MODE de recherche (PLAYER ou DJ)
                 var searchMode by remember { mutableStateOf(SearchMode.PLAYER) }
@@ -4159,6 +4162,7 @@ class MainActivity : AppCompatActivity() {
 
                                 fun openTabletCanonicalArrangement() {
                                     openTabletSplitLyrics()
+                                    tabletArrangementPlaylistVisible = false
                                     playerNavigationTarget = "grid_setup"
                                     playerNavigationToken += 1
                                     setTabAndPersist(
@@ -4588,6 +4592,11 @@ class MainActivity : AppCompatActivity() {
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
                                         onTabletFocusModeChange = { tabletPlayerFocusMode = it },
+                                        tabletArrangementPlaylistVisible =
+                                            tabletArrangementPlaylistVisible,
+                                        onTabletArrangementPlaylistVisibilityChange = {
+                                            tabletArrangementPlaylistVisible = it
+                                        },
                                         stableTabletLyricsEditorSession = true,
                                         readerHeaderEndContent = {}
                                     )
@@ -5298,11 +5307,15 @@ class MainActivity : AppCompatActivity() {
                                         Row(
                                             modifier = Modifier.fillMaxSize()
                                         ) {
+                                            val expandArrangementPane =
+                                                shouldExpandTabletArrangementPane(
+                                                    focusMode = tabletPlayerFocusMode,
+                                                    arrangementPlaylistVisible =
+                                                        tabletArrangementPlaylistVisible
+                                                )
                                             // Experimental tablet live layout; each pane reuses the existing screen contract.
                                             Box(
-                                                modifier = if (
-                                                    tabletPlayerFocusMode == TabletPlayerFocusMode.ARRANGEMENT
-                                                ) {
+                                                modifier = if (expandArrangementPane) {
                                                     Modifier
                                                         .width(0.dp)
                                                         .fillMaxHeight()
@@ -5313,7 +5326,11 @@ class MainActivity : AppCompatActivity() {
                                                 }
                                             ) {
                                                 if (
-                                                    tabletPlayerFocusMode != TabletPlayerFocusMode.ARRANGEMENT
+                                                    shouldShowTabletPlaylistPane(
+                                                        focusMode = tabletPlayerFocusMode,
+                                                        arrangementPlaylistVisible =
+                                                            tabletArrangementPlaylistVisible
+                                                    )
                                                 ) {
                                                     quickPlaylistsPane(Modifier.fillMaxSize())
                                                 }
@@ -5321,10 +5338,7 @@ class MainActivity : AppCompatActivity() {
                                             Box(
                                                 Modifier
                                                     .weight(
-                                                        if (
-                                                            tabletPlayerFocusMode ==
-                                                            TabletPlayerFocusMode.ARRANGEMENT
-                                                        ) {
+                                                        if (expandArrangementPane) {
                                                             1f
                                                         } else {
                                                             0.62f
