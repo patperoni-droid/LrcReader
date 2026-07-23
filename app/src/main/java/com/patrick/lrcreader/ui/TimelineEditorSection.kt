@@ -2532,17 +2532,33 @@ private fun TimelineMeasuresPlaceholder(
                 val trackGainDb = TrackVolumePrefs.getDb(context, audioUri.toString())
                     ?: SmpConfig.readPlaybackFromSongUnit(song)?.volumeDb
                     ?: 0
-                val peaks = WaveformPeaksCache.getOrCompute(
-                    context = context,
-                    uri = audioUri,
-                    targetPoints = 20_000,
-                    durationMs = durationMs
-                ) {
-                    WaveformExtractor.extractNormalizedPeaks(
+                val peaks = if (constrainToAvailableHeight) {
+                    WaveformPeaksCache.getOrCompute(
                         context = context,
                         uri = audioUri,
-                        targetPoints = 20_000
-                    )
+                        targetPoints = 2_000,
+                        durationMs = durationMs,
+                        cacheVariant = "sampled-overview-v1"
+                    ) {
+                        WaveformExtractor.extractSampledOverview(
+                            context = context,
+                            uri = audioUri,
+                            targetPoints = 2_000
+                        )
+                    }
+                } else {
+                    WaveformPeaksCache.getOrCompute(
+                        context = context,
+                        uri = audioUri,
+                        targetPoints = 20_000,
+                        durationMs = durationMs
+                    ) {
+                        WaveformExtractor.extractNormalizedPeaks(
+                            context = context,
+                            uri = audioUri,
+                            targetPoints = 20_000
+                        )
+                    }
                 }
                 Quadruple(peaks, durationMs, song, trackGainDb)
             }

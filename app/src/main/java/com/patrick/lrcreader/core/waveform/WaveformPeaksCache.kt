@@ -2,6 +2,8 @@ package com.patrick.lrcreader.core.waveform
 
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
+import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -10,6 +12,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 object WaveformPeaksCache {
+    private const val PERF_TAG = "WAVEFORM_PERF"
     private const val CACHE_DIR_NAME = "waveforms"
     private const val MAX_CACHE_FILES = 200
     private const val MAX_CACHE_BYTES = 50L * 1024L * 1024L
@@ -32,16 +35,34 @@ object WaveformPeaksCache {
         uri: Uri,
         targetPoints: Int,
         durationMs: Int? = null,
+        cacheVariant: String? = null,
         compute: suspend () -> List<Float>
     ): List<Float> {
-        val cacheFile = cacheFile(context, uri, targetPoints, durationMs)
-        readPeaks(cacheFile)?.let { return it }
+        val startedAtMs = SystemClock.elapsedRealtime()
+        val cacheFile = cacheFile(context, uri, targetPoints, durationMs, cacheVariant)
+        readPeaks(cacheFile)?.let { peaks ->
+            Log.i(
+                PERF_TAG,
+                "cache_hit uri=$uri targetPoints=$targetPoints variant=$cacheVariant points=${peaks.size} " +
+                    "durationMs=${SystemClock.elapsedRealtime() - startedAtMs}"
+            )
+            return peaks
+        }
 
+        Log.i(
+            PERF_TAG,
+            "cache_miss uri=$uri targetPoints=$targetPoints variant=$cacheVariant"
+        )
         val computed = compute()
         withContext(Dispatchers.IO) {
             writePeaks(cacheFile, computed)
             pruneIfNeeded(cacheFile.parentFile)
         }
+        Log.i(
+            PERF_TAG,
+            "cache_store uri=$uri targetPoints=$targetPoints variant=$cacheVariant points=${computed.size} " +
+                "durationMs=${SystemClock.elapsedRealtime() - startedAtMs}"
+        )
         return computed
     }
 
@@ -62,7 +83,7 @@ object WaveformPeaksCache {
         targetPoints: Int,
         durationMs: Int? = null
     ) {
-        val file = cacheFile(context, uri, targetPoints, durationMs)
+        val file = cacheFile(context, uri, targetPoints, durationMs, cacheVariant = null)
         runCatching { if (file.exists()) file.delete() }
     }
 
@@ -70,10 +91,16 @@ object WaveformPeaksCache {
         context: Context,
         uri: Uri,
         targetPoints: Int,
-        durationMs: Int?
+        durationMs: Int?,
+        cacheVariant: String?
     ): File {
         val dir = File(context.cacheDir, CACHE_DIR_NAME).apply { mkdirs() }
-        val key = "${uri}|${targetPoints}|${durationMs ?: -1}"
+        val baseKey = "${uri}|${targetPoints}|${durationMs ?: -1}"
+        val key = if (cacheVariant.isNullOrBlank()) {
+            baseKey
+        } else {
+            "$baseKey|$cacheVariant"
+        }
         val hash = sha1Hex(key)
         return File(dir, "$hash.bin")
     }

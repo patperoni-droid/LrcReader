@@ -187,6 +187,7 @@ Reste à réaliser :
 
 Implémenté dans l'éditeur canonique tablette :
 
+- au premier affichage, la waveform utilise une vue générale échantillonnée de 2 000 points et un cache distinct afin d'éviter le décodage complet du MP3 ; le placement de la tête et des points IN / OUT reste calculé en millisecondes et conserve sa précision ;
 - les colonnes `Segments` et `Structure` sont fusionnées visuellement en une seule liste ordonnée ;
 - le bouton `Ajouter` insère directement le nouveau segment en tête de cette liste et dans la Structure de lecture ;
 - supprimer une ligne retire cette occurrence et supprime aussi son segment interne lorsqu'aucune autre occurrence ne le référence ;

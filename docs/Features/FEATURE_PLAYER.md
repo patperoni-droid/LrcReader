@@ -91,6 +91,17 @@ MediaTek decoder stability:
 - decoder fallback is enabled for the same targeted devices;
 - the audio gain, Pitch/Speed, SoundTouch and non-MediaTek pipelines remain unchanged.
 
+Waveform loading:
+
+- the source audio keeps its original format, including MP3; waveform preparation must never require a WAV transcode;
+- the first optimization step keeps the exact 20,000-point result but processes decoded PCM in blocks and records separate decode/aggregation timings;
+- MP3 waveform analysis prefers the platform software decoder (`c2.android` / `OMX.google`) when available, because some hardware decoders are optimized for economical real-time playback rather than fast offline analysis; this selection never modifies the main playback decoder;
+- the existing persistent cache contract remains compatible and a cache hit must stay immediate;
+- on Arrangement tablet, a cold opening uses a sampled 2,000-point overview cached separately instead of decoding the complete track; the phone and the dedicated Waveform screen keep their existing full-resolution contract;
+- the overview does not quantize seeking or IN / OUT placement: those gestures continue to use the exact source time in milliseconds;
+- detailed decoding by visible editing range remains an optional future extension only if field use shows that the sampled overview is insufficient at high zoom;
+- a progressive implementation must never launch two complete decodes of the same track and must never perform heavy waveform preparation during live playback.
+
 ⸻
 
 # PLAYBACK MODEL
