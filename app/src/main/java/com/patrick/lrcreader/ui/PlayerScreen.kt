@@ -180,11 +180,14 @@ fun PlayerScreen(
     onTrackPromotedToSmp: (SmpAutoMigrationResult) -> Unit = {},
     onRequestShowPlaylist: () -> Unit,
     currentSongId: String? = null,
+    currentArrangementSourceSongId: String? = null,
     onOpenArrangementHub: () -> Unit = {},
     manualTransitionTargetTitle: String? = null,
     onManualCrossfadeToNext: () -> Unit = {},
     onImportGeneratedSmp: suspend (Uri) -> SongUnit? = { null },
     onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit? = { _, _ -> null },
+    onUpdateVirtualArrangement: suspend (String, String, ArrangementData) -> SongUnit? =
+        { _, _, _ -> null },
     requestedNavigationTarget: String? = null,
     requestedNavigationToken: Int = 0,
     onOpenWaveform: (String) -> Unit = {},
@@ -287,12 +290,16 @@ fun PlayerScreen(
     var timelinePalette by remember(context) {
         mutableStateOf(TimelinePaletteStore.load(context))
     }
-    val isCurrentTrackSmp = remember(context, currentTrackUri) {
-        currentTrackUri?.let { trackUri ->
-            LrcStorage.isSmpRuntimeTrack(context, trackUri)
-        } ?: false
+    val isCurrentTrackSmp = remember(context, currentTrackUri, currentArrangementSourceSongId) {
+        !currentArrangementSourceSongId.isNullOrBlank() ||
+            (currentTrackUri?.let { trackUri ->
+                LrcStorage.isSmpRuntimeTrack(context, trackUri)
+            } ?: false)
     }
-    val canOpenWaveform = isCurrentTrackSmp && !currentSongId.isNullOrBlank()
+    val waveformSongId = currentArrangementSourceSongId
+        ?.takeIf { it.isNotBlank() }
+        ?: currentSongId
+    val canOpenWaveform = isCurrentTrackSmp && !waveformSongId.isNullOrBlank()
     val midiMonitorEvent = remember(lastTriggeredMidiProgramChange, currentTrackUri) {
         val trackUri = currentTrackUri?.takeIf { it.isNotBlank() } ?: return@remember null
         lastTriggeredMidiProgramChange?.takeIf { sent -> sent.trackUri == trackUri }
@@ -3172,6 +3179,7 @@ fun PlayerScreen(
                 },
                 onImportGeneratedSmp = onImportGeneratedSmp,
                 onSaveVirtualArrangement = onSaveVirtualArrangement,
+                onUpdateVirtualArrangement = onUpdateVirtualArrangement,
                 isPreparedClipLoopTestActive = isTimelinePreparedLoopActive,
                 onStartPreparedClipLoopTest = startTimelinePreparedLoopTest,
                 onStopPreparedClipLoopTest = stopTimelinePreparedLoopTest,
@@ -3339,7 +3347,7 @@ fun PlayerScreen(
                             },
                             showWaveformAction = canOpenWaveform,
                             onOpenWaveform = {
-                                currentSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
+                                waveformSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
                             },
                             showAutoReturnButton = showAutoReturnButton,
                             lyricsModeControls = {

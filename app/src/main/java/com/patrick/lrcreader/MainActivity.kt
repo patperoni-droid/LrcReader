@@ -861,6 +861,25 @@ class MainActivity : AppCompatActivity() {
                         savedSong
                     }
 
+                val updateVirtualArrangement:
+                    suspend (String, String, ArrangementData) -> com.patrick.lrcreader.smp.SongUnit? =
+                    { variantId, title, arrangement ->
+                        val updatedSong = ArrangementVariantStore.update(
+                            context = ctx.applicationContext,
+                            variantId = variantId,
+                            title = title,
+                            sourceSongId = arrangement.sourceSongId,
+                            arrangement = arrangement
+                        ).getOrNull()
+                        if (updatedSong != null) {
+                            withContext(Dispatchers.Main) {
+                                smpSongsById = smpSongsById + (updatedSong.id to updatedSong)
+                                smpCacheRefreshTick++
+                            }
+                        }
+                        updatedSong
+                    }
+
                 fun runPlaylistBatchImport(
                     playlistName: String,
                     plan: SmpBatchImportProcessor.BatchPlan
@@ -4552,6 +4571,9 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
                                         currentSongId = currentPlayingSongId,
+                                        currentArrangementSourceSongId = currentPlayingSongId
+                                            ?.let(smpSongsById::get)
+                                            ?.arrangementSourceSongId,
                                         onOpenArrangementHub = {
                                             moreNavigationTarget = "arrangement_from_tempo"
                                             moreNavigationToken += 1
@@ -4561,6 +4583,7 @@ class MainActivity : AppCompatActivity() {
                                         onManualCrossfadeToNext = { launchManualCrossfadeToNext() },
                                         onImportGeneratedSmp = autoImportGeneratedSmp,
                                         onSaveVirtualArrangement = saveVirtualArrangement,
+                                        onUpdateVirtualArrangement = updateVirtualArrangement,
                                         requestedNavigationTarget = playerNavigationTarget,
                                         requestedNavigationToken = playerNavigationToken,
                                         onOpenWaveform = {
@@ -5065,8 +5088,12 @@ class MainActivity : AppCompatActivity() {
                                 }
 
                                 val waveformPane: @Composable (Modifier) -> Unit = { paneModifier ->
-                                    val waveformSongId =
+                                    val requestedWaveformSongId =
                                         quickPlaylistPreparedSelectionSongId ?: currentPlayingSongId
+                                    val waveformSongId = requestedWaveformSongId
+                                        ?.let(smpSongsById::get)
+                                        ?.arrangementSourceSongId
+                                        ?: requestedWaveformSongId
                                     WaveformPreviewScreen(
                                         modifier = paneModifier,
                                         onBack = {

@@ -84,6 +84,85 @@ object ArrangementVariantStore {
         }
     }
 
+    suspend fun update(
+        context: Context,
+        variantId: String,
+        title: String,
+        sourceSongId: String,
+        arrangement: ArrangementData
+    ): Result<SongUnit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanVariantId = variantId.trim().takeIf(String::isNotEmpty)
+                ?: throw IllegalArgumentException("Arrangement variant id is empty")
+            val cleanTitle = title.trim().takeIf(String::isNotEmpty)
+                ?: throw IllegalArgumentException("Arrangement variant title is empty")
+            val cleanSourceSongId = sourceSongId.trim().takeIf(String::isNotEmpty)
+                ?: throw IllegalArgumentException("Arrangement variant sourceSongId is empty")
+            require(cleanVariantId != cleanSourceSongId) {
+                "Arrangement variant id matches its source"
+            }
+            require(arrangement.entries.isNotEmpty() || arrangement.structureSegmentIds.isNotEmpty()) {
+                "Arrangement variant structure is empty"
+            }
+
+            val scanner = SmpLibraryScanner(context)
+            val existingVariant = scanner.findSongById(cleanVariantId)
+                ?: throw IOException("Arrangement variant is missing")
+            require(existingVariant.arrangementSourceSongId == cleanSourceSongId) {
+                "Arrangement variant source does not match"
+            }
+            val sourceSong = scanner.findSongById(cleanSourceSongId)
+                ?: throw IOException("Arrangement variant source song is missing")
+            require(!sourceSong.audioPath.isNullOrBlank() && File(sourceSong.audioPath).isFile) {
+                "Arrangement variant source audio is missing"
+            }
+
+            val tracksRoot = File(context.filesDir, TRACKS_DIR_NAME)
+            val targetDir = File(tracksRoot, cleanVariantId)
+            require(targetDir.isDirectory) { "Arrangement variant runtime folder is missing" }
+            val tempDir = File(
+                tracksRoot,
+                ".update_${cleanVariantId}_${UUID.randomUUID().toString().take(8)}"
+            )
+            val backupDir = File(
+                tracksRoot,
+                ".backup_${cleanVariantId}_${UUID.randomUUID().toString().take(8)}"
+            )
+            require(tempDir.mkdirs()) { "Unable to prepare Arrangement variant update" }
+
+            try {
+                writeVariantFiles(
+                    targetDir = tempDir,
+                    variantId = cleanVariantId,
+                    title = cleanTitle,
+                    sourceSongId = cleanSourceSongId,
+                    arrangement = arrangement.copy(
+                        name = cleanTitle,
+                        sourceSongId = cleanSourceSongId,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+                if (!targetDir.renameTo(backupDir)) {
+                    throw IOException("Unable to preserve Arrangement variant before update")
+                }
+                if (!tempDir.renameTo(targetDir)) {
+                    backupDir.renameTo(targetDir)
+                    throw IOException("Unable to publish Arrangement variant update")
+                }
+                backupDir.deleteRecursively()
+            } catch (error: Throwable) {
+                tempDir.deleteRecursively()
+                if (!targetDir.exists() && backupDir.exists()) {
+                    backupDir.renameTo(targetDir)
+                }
+                throw error
+            }
+
+            scanner.findSongById(cleanVariantId)
+                ?: throw IOException("Updated Arrangement variant is not visible in the Library")
+        }
+    }
+
     internal fun restoreFromArchive(
         context: Context,
         sourceSong: SongUnit,

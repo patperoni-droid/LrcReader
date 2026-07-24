@@ -551,6 +551,10 @@
     <string name="arrangement_virtual_name_label">Nom de la variante</string>
     <string name="arrangement_virtual_save_success">Variante ajoutée à la bibliothèque : %1$s</string>
     <string name="arrangement_virtual_save_failed">Impossible d’enregistrer la variante : %1$s</string>
+    <string name="arrangement_virtual_update_action">Mettre à jour</string>
+    <string name="arrangement_virtual_save_as_new_action">Nouvelle variante</string>
+    <string name="arrangement_virtual_update_success">Variante mise à jour : %1$s</string>
+    <string name="arrangement_virtual_update_failed">Impossible de mettre à jour la variante : %1$s</string>
     <string name="arrangement_virtual_playback_unavailable">Cette variante Arrangement ne peut pas être préparée</string>
     <string name="timeline_tempo_export_generating">Assemblage en cours…</string>
     <string name="timeline_tempo_export_name_title">Nom de l’assemblage</string>

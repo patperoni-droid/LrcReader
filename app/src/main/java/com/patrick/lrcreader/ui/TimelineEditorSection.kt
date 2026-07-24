@@ -120,6 +120,7 @@ import com.patrick.lrcreader.core.light.LightSceneState
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.ArrangementEntryData
 import com.patrick.lrcreader.smp.ArrangementData
+import com.patrick.lrcreader.smp.ArrangementEditingTarget
 import com.patrick.lrcreader.smp.ArrangementSegmentData
 import com.patrick.lrcreader.smp.ArrangementStore
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
@@ -135,6 +136,7 @@ import com.patrick.lrcreader.smp.buildArrangementDataForPersistence
 import com.patrick.lrcreader.smp.prepareArrangementOccurrences
 import com.patrick.lrcreader.smp.reconcileArrangementEntries
 import com.patrick.lrcreader.smp.resolvePreparedArrangementPlayheadFromSource
+import com.patrick.lrcreader.smp.resolveArrangementEditingTarget
 import com.patrick.lrcreader.smp.toOccurrenceProjection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -288,6 +290,8 @@ fun TimelineEditorSection(
     onOpenArrangement: () -> Unit = {},
     onImportGeneratedSmp: suspend (Uri) -> SongUnit? = { null },
     onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit? = { _, _ -> null },
+    onUpdateVirtualArrangement: suspend (String, String, ArrangementData) -> SongUnit? =
+        { _, _, _ -> null },
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -943,6 +947,7 @@ fun TimelineEditorSection(
                     onOpenArrangement = onOpenArrangement,
                     onImportGeneratedSmp = onImportGeneratedSmp,
                     onSaveVirtualArrangement = onSaveVirtualArrangement,
+                    onUpdateVirtualArrangement = onUpdateVirtualArrangement,
                     isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
                     onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
                     onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
@@ -1712,6 +1717,7 @@ private fun GridSetupHost(
     onOpenArrangement: () -> Unit,
     onImportGeneratedSmp: suspend (Uri) -> SongUnit?,
     onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit?,
+    onUpdateVirtualArrangement: suspend (String, String, ArrangementData) -> SongUnit?,
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -1800,6 +1806,7 @@ private fun GridSetupHost(
         onOpenArrangement = onOpenArrangement,
         onImportGeneratedSmp = onImportGeneratedSmp,
         onSaveVirtualArrangement = onSaveVirtualArrangement,
+        onUpdateVirtualArrangement = onUpdateVirtualArrangement,
         onMeasureAnchorHere = { anchorMs ->
             gridSyncPointMs = anchorMs
             saveGridSetup(gridTempoBpm, anchorMs)
@@ -1862,6 +1869,7 @@ private fun TimelineMeasuresPlaceholder(
     onOpenArrangement: () -> Unit,
     onImportGeneratedSmp: suspend (Uri) -> SongUnit?,
     onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit?,
+    onUpdateVirtualArrangement: suspend (String, String, ArrangementData) -> SongUnit?,
     onMeasureAnchorHere: (Long) -> Unit,
     onInitialSyncPointIfMissing: (Long) -> Unit,
     onSegmentInChange: (Long?) -> Unit,
@@ -1930,6 +1938,10 @@ private fun TimelineMeasuresPlaceholder(
     }
     var currentSongAudioPath by remember(currentSongId) { mutableStateOf<String?>(null) }
     var currentSongTitle by remember(currentSongId) { mutableStateOf<String?>(null) }
+    var currentSourceSongTitle by remember(currentSongId) { mutableStateOf<String?>(null) }
+    var arrangementEditingTarget by remember(currentSongId) {
+        mutableStateOf<ArrangementEditingTarget?>(null)
+    }
     var currentSongTrackGainDb by remember(currentSongId) { mutableIntStateOf(0) }
     var currentStructureSourcePath by remember(currentSongId) { mutableStateOf<String?>(null) }
     var structureUsingWavSource by remember(currentSongId) { mutableStateOf(false) }
@@ -2310,8 +2322,9 @@ private fun TimelineMeasuresPlaceholder(
         nextEntries: List<ArrangementEntryData> = arrangementEntries,
         debugSegmentId: String? = null
     ) {
-        val songId = currentSongId?.trim().orEmpty()
-        if (songId.isEmpty()) return
+        val editingTarget = arrangementEditingTarget ?: return
+        val ownerSongId = editingTarget.ownerSongId
+        val sourceSongId = editingTarget.sourceSongId
         val snapshotName = arrangementName.ifBlank { "Arrangement 1" }
         val snapshotSegments = nextSegments.toList()
         val snapshotStructureSegmentIds = nextStructureSegmentIds.toList()
@@ -2320,12 +2333,19 @@ private fun TimelineMeasuresPlaceholder(
         val dataToPersist = buildArrangementDataForPersistence(
             useOccurrenceModel = constrainToAvailableHeight,
             name = snapshotName,
-            sourceSongId = songId,
+            sourceSongId = sourceSongId,
             segments = snapshotSegments,
             structureSegmentIds = snapshotStructureSegmentIds,
             existingEntries = snapshotEntries,
             preservedLegacySegments = snapshotLegacySegments
         )
+        if (editingTarget.variantSongId != null) {
+            Log.d(
+                ARR_SEGMENT_PERSIST_TAG,
+                "SAVE_DEFERRED variantId=${editingTarget.variantSongId} sourceSongId=$sourceSongId"
+            )
+            return
+        }
         debugSegmentId?.let { segmentId ->
             Log.d(
                 ARR_SEGMENT_PERSIST_TAG,
@@ -2344,11 +2364,11 @@ private fun TimelineMeasuresPlaceholder(
             arrangementSaveMutex.withLock {
                 val saved = ArrangementStore.save(
                     context = context.applicationContext,
-                    songId = songId,
+                    songId = ownerSongId,
                     data = dataToPersist
                 )
                 debugSegmentId?.let { segmentId ->
-                    val storedData = ArrangementStore.load(context.applicationContext, songId)
+                    val storedData = ArrangementStore.load(context.applicationContext, ownerSongId)
                     Log.d(
                         ARR_SEGMENT_PERSIST_TAG,
                         "SAVE_AFTER segmentId=$segmentId saved=$saved " +
@@ -2503,6 +2523,8 @@ private fun TimelineMeasuresPlaceholder(
         stopArrangementLoopPreviewPlayback()
         currentSongAudioPath = null
         currentSongTitle = null
+        currentSourceSongTitle = null
+        arrangementEditingTarget = null
         currentSongTrackGainDb = 0
         if (songId.isEmpty()) {
             waveformPeaks = emptyList()
@@ -2548,12 +2570,27 @@ private fun TimelineMeasuresPlaceholder(
             runCatching {
                 val song = smpLibraryScanner.findSongById(songId)
                     ?: error("Song not found")
-                val audioPath = song.audioPath?.takeIf { it.isNotBlank() }
+                val sourceSong = song.arrangementSourceSongId
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { sourceSongId ->
+                        smpLibraryScanner.findSongById(sourceSongId)
+                            ?: error("Arrangement source song not found")
+                    }
+                    ?: song
+                val editingTarget = resolveArrangementEditingTarget(
+                    selectedSong = song,
+                    songsById = mapOf(
+                        song.id to song,
+                        sourceSong.id to sourceSong
+                    )
+                ) ?: error("Arrangement editing target unavailable")
+                val audioPath = editingTarget.sourceSong.audioPath?.takeIf { it.isNotBlank() }
                     ?: error("Missing audio path")
                 val audioUri = Uri.fromFile(File(audioPath))
                 val durationMs = queryTimelineWaveformDurationMs(context, audioUri)
                 val trackGainDb = TrackVolumePrefs.getDb(context, audioUri.toString())
-                    ?: SmpConfig.readPlaybackFromSongUnit(song)?.volumeDb
+                    ?: SmpConfig.readPlaybackFromSongUnit(editingTarget.sourceSong)?.volumeDb
                     ?: 0
                 val peaks = if (constrainToAvailableHeight) {
                     WaveformPeaksCache.getOrCompute(
@@ -2583,53 +2620,75 @@ private fun TimelineMeasuresPlaceholder(
                         )
                     }
                 }
-                Quadruple(peaks, durationMs, song, trackGainDb)
+                TimelineArrangementLoadResult(
+                    peaks = peaks,
+                    durationMs = durationMs,
+                    editingTarget = editingTarget,
+                    arrangement = ArrangementStore.load(
+                        context.applicationContext,
+                        editingTarget.ownerSongId
+                    ),
+                    trackGainDb = trackGainDb
+                )
             }
         }
 
         result
-            .onSuccess { (peaks, durationMs, song, trackGainDb) ->
-                waveformPeaks = peaks
-                waveformDurationMs = durationMs
-                currentSongAudioPath = song.audioPath
-                currentSongTitle = song.title
-                currentSongTrackGainDb = trackGainDb
+            .onSuccess { loadResult ->
+                val editingTarget = loadResult.editingTarget
+                waveformPeaks = loadResult.peaks
+                waveformDurationMs = loadResult.durationMs
+                currentSongAudioPath = editingTarget.sourceSong.audioPath
+                currentSongTitle = editingTarget.ownerSong.title
+                currentSourceSongTitle = editingTarget.sourceSong.title
+                arrangementEditingTarget = editingTarget
+                currentSongTrackGainDb = loadResult.trackGainDb
                 Log.d(
                     ARR_TIMING_DIAG_TAG,
-                    "LOAD songId=$songId audioPath=${song.audioPath} " +
-                        "sourceUri=${song.audioPath?.let { Uri.fromFile(File(it)) }} " +
-                        "waveformDurationMs=$durationMs playerDurationMs=$durationMs " +
-                        "durationDiffMs=0 source=${arrangementTimingSourceLabel(song.audioPath)}"
+                    "LOAD ownerSongId=${editingTarget.ownerSongId} " +
+                        "sourceSongId=${editingTarget.sourceSongId} " +
+                        "variantSongId=${editingTarget.variantSongId} " +
+                        "audioPath=${editingTarget.sourceSong.audioPath} " +
+                        "sourceUri=${editingTarget.sourceSong.audioPath?.let { Uri.fromFile(File(it)) }} " +
+                        "waveformDurationMs=${loadResult.durationMs} " +
+                        "playerDurationMs=${loadResult.durationMs} durationDiffMs=0 " +
+                        "source=${arrangementTimingSourceLabel(editingTarget.sourceSong.audioPath)}"
                 )
                 waveformLoading = false
+
+                val arrangementData = loadResult.arrangement
+                arrangementName = arrangementData?.name?.ifBlank { "Arrangement 1" }
+                    ?: "Arrangement 1"
+                if (constrainToAvailableHeight && arrangementData != null) {
+                    val occurrenceProjection = arrangementData.toOccurrenceProjection()
+                    arrangementSegments = occurrenceProjection.segments
+                    structureSegmentIds = occurrenceProjection.structureSegmentIds
+                    arrangementEntries = occurrenceProjection.entries
+                    preservedLegacyArrangementSegments = occurrenceProjection.preservedLegacySegments
+                } else {
+                    arrangementSegments = arrangementData?.segments.orEmpty()
+                    structureSegmentIds = arrangementData?.structureSegmentIds.orEmpty()
+                    arrangementEntries = arrangementData?.entries.orEmpty()
+                    preservedLegacyArrangementSegments = emptyList()
+                }
             }
             .onFailure {
                 waveformPeaks = emptyList()
                 waveformDurationMs = 0
                 currentSongAudioPath = null
                 currentSongTitle = null
+                currentSourceSongTitle = null
+                arrangementEditingTarget = null
                 currentSongTrackGainDb = 0
                 waveformLoading = false
                 waveformError = true
             }
 
-        val arrangementData = ArrangementStore.load(context.applicationContext, songId)
-        arrangementName = arrangementData?.name?.ifBlank { "Arrangement 1" } ?: "Arrangement 1"
-        if (constrainToAvailableHeight && arrangementData != null) {
-            val occurrenceProjection = arrangementData.toOccurrenceProjection()
-            arrangementSegments = occurrenceProjection.segments
-            structureSegmentIds = occurrenceProjection.structureSegmentIds
-            arrangementEntries = occurrenceProjection.entries
-            preservedLegacyArrangementSegments = occurrenceProjection.preservedLegacySegments
-        } else {
-            arrangementSegments = arrangementData?.segments.orEmpty()
-            structureSegmentIds = arrangementData?.structureSegmentIds.orEmpty()
-            arrangementEntries = arrangementData?.entries.orEmpty()
-            preservedLegacyArrangementSegments = emptyList()
-        }
         Log.d(
             ARR_SEGMENT_PERSIST_TAG,
-            "LOAD_FROM_STORE songId=$songId segments=${arrangementSegments.persistDebugSnapshot()} " +
+            "LOAD_FROM_STORE ownerSongId=${arrangementEditingTarget?.ownerSongId ?: songId} " +
+                "sourceSongId=${arrangementEditingTarget?.sourceSongId} " +
+                "segments=${arrangementSegments.persistDebugSnapshot()} " +
                 "structureIds=$structureSegmentIds"
         )
         selectedStructureEditIndex = null
@@ -4250,8 +4309,67 @@ private fun TimelineMeasuresPlaceholder(
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
             if (constrainToAvailableHeight) {
+                arrangementEditingTarget?.variantSongId?.let { variantSongId ->
+                    Text(
+                        text = stringResource(R.string.arrangement_virtual_update_action),
+                        color = if (isVirtualArrangementSaving) {
+                            Color(0xFF607D8B)
+                        } else {
+                            Color(0xFFFFD54F)
+                        },
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clickable(enabled = !isVirtualArrangementSaving) {
+                                val editingTarget = arrangementEditingTarget
+                                    ?: return@clickable
+                                val variantTitle = currentSongTitle
+                                    ?.trim()
+                                    ?.takeIf { it.isNotEmpty() }
+                                    ?: arrangementName.ifBlank { "Arrangement 1" }
+                                val variantData = buildArrangementDataForPersistence(
+                                    useOccurrenceModel = constrainToAvailableHeight,
+                                    name = variantTitle,
+                                    sourceSongId = editingTarget.sourceSongId,
+                                    segments = arrangementSegments,
+                                    structureSegmentIds = structureSegmentIds,
+                                    existingEntries = arrangementEntries,
+                                    preservedLegacySegments =
+                                        preservedLegacyArrangementSegments
+                                )
+                                isVirtualArrangementSaving = true
+                                scope.launch {
+                                    val updatedSong = onUpdateVirtualArrangement(
+                                        variantSongId,
+                                        variantTitle,
+                                        variantData
+                                    )
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(
+                                            if (updatedSong != null) {
+                                                R.string.arrangement_virtual_update_success
+                                            } else {
+                                                R.string.arrangement_virtual_update_failed
+                                            },
+                                            variantTitle
+                                        ),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                    isVirtualArrangementSaving = false
+                                }
+                            }
+                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                    )
+                }
                 Text(
-                    text = stringResource(R.string.arrangement_save_to_library_action),
+                    text = stringResource(
+                        if (arrangementEditingTarget?.variantSongId != null) {
+                            R.string.arrangement_virtual_save_as_new_action
+                        } else {
+                            R.string.arrangement_save_to_library_action
+                        }
+                    ),
                     color = if (isVirtualArrangementSaving) Color(0xFF607D8B) else Color(0xFFFFD54F),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
@@ -4272,8 +4390,8 @@ private fun TimelineMeasuresPlaceholder(
                                 val suggestedName = withContext(Dispatchers.IO) {
                                     buildNextVirtualArrangementName(
                                         songs = smpLibraryScanner.listSongs(),
-                                        sourceSongId = currentSongId,
-                                        sourceTitle = currentSongTitle
+                                        sourceSongId = arrangementEditingTarget?.sourceSongId,
+                                        sourceTitle = currentSourceSongTitle ?: currentSongTitle
                                     )
                                 }
                                 virtualArrangementNameDraft = TextFieldValue(suggestedName)
@@ -4665,7 +4783,9 @@ private fun TimelineMeasuresPlaceholder(
                         !isVirtualArrangementSaving &&
                         virtualArrangementNameDraft.text.trim().isNotEmpty(),
                     onClick = {
-                        val sourceSongId = currentSongId?.trim().orEmpty()
+                        val sourceSongId = arrangementEditingTarget?.sourceSongId
+                            ?.trim()
+                            .orEmpty()
                         if (sourceSongId.isEmpty()) return@Button
                         val chosenName = virtualArrangementNameDraft.text.trim()
                         val variantData = buildArrangementDataForPersistence(
@@ -4765,7 +4885,7 @@ private fun TimelineMeasuresPlaceholder(
                             return@Button
                         }
                         arrangementName = chosenName
-                        val songId = currentSongId?.trim().orEmpty()
+                        val exportEditingTarget = arrangementEditingTarget
                         showExportNameDialog = false
                         isFinalExporting = true
                         scope.launch {
@@ -4799,14 +4919,17 @@ private fun TimelineMeasuresPlaceholder(
 
                             result
                                 .onSuccess { targetFile ->
-                                    if (songId.isNotEmpty()) {
+                                    if (
+                                        exportEditingTarget != null &&
+                                        exportEditingTarget.variantSongId == null
+                                    ) {
                                         ArrangementStore.save(
                                             context = context.applicationContext,
-                                            songId = songId,
+                                            songId = exportEditingTarget.ownerSongId,
                                             data = buildArrangementDataForPersistence(
                                                 useOccurrenceModel = constrainToAvailableHeight,
                                                 name = chosenName,
-                                                sourceSongId = songId,
+                                                sourceSongId = exportEditingTarget.sourceSongId,
                                                 segments = arrangementSegments,
                                                 structureSegmentIds = structureSegmentIds,
                                                 existingEntries = arrangementEntries,
@@ -5243,11 +5366,12 @@ private fun arrangementOccurrenceColorPreview(color: String?): Color = when (col
     else -> Color(0xFF1C2933)
 }
 
-private data class Quadruple<A, B, C, D>(
-    val first: A,
-    val second: B,
-    val third: C,
-    val fourth: D
+private data class TimelineArrangementLoadResult(
+    val peaks: List<Float>,
+    val durationMs: Int,
+    val editingTarget: ArrangementEditingTarget,
+    val arrangement: ArrangementData?,
+    val trackGainDb: Int
 )
 
 @Composable

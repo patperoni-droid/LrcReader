@@ -102,13 +102,24 @@ La validation doit préserver exactement les occurrences, l'ordre, les points IN
 
 ### Réouvrir une variante comme projet éditable
 
-Besoin produit à conserver pour une étape ultérieure :
+**Statut : mise en œuvre en cours sur tablette.**
 
 - si plusieurs variantes d'un même morceau existent, l'utilisateur doit pouvoir choisir celle qu'il préfère dans la Bibliothèque ;
 - il doit pouvoir la rouvrir dans Arrangement avec sa Structure exacte ;
 - les segments et toutes leurs propriétés doivent redevenir éditables ;
 - le titre parent ne doit pas être écrasé implicitement ;
 - après modification, l'utilisateur devra choisir explicitement entre mettre à jour cette variante et l'enregistrer comme une nouvelle variante.
+
+Contrat de stockage :
+
+- le `songId` de la variante reste le propriétaire de son `arrangement.json` ;
+- le `sourceSongId` désigne uniquement le SongUnit parent qui fournit l'audio et la waveform ;
+- l'ouverture d'une variante charge donc les données depuis son dossier normalisé, mais résout l'audio depuis le parent ;
+- sur tablette, une variante active conserve les accès `Timeline`, `Arrangement` et `Waveform` du lecteur ;
+- `Arrangement` ouvre le projet appartenant à la variante, tandis que `Waveform` résout le morceau parent qui possède réellement l'audio ;
+- une mise à jour conserve le `songId` et le titre de la variante et remplace son projet de façon atomique ;
+- « Enregistrer comme nouvelle variante » crée un nouveau `songId` et ne modifie ni la variante ouverte ni le parent ;
+- aucun accès au `.smp` n'est autorisé pour cette édition runtime.
 
 Exemple : avec `Marina-AR01`, `Marina-AR02` et `Marina-AR03`, il doit être possible de rouvrir `Marina-AR01`, la tester et continuer à la modifier sans reconstruire ses segments.
 
