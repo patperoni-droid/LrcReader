@@ -99,7 +99,50 @@ class BackupBundlePlannerTest {
         assertEquals(emptyList<String>(), preflight.missingSongIds)
     }
 
-    private fun fakeSong(songId: String): SongUnit {
+    @Test
+    fun buildSmpExportPreflight_exportsParentOnceForReferencedVirtualVariant() {
+        val parent = fakeSong("song_parent")
+        val variant = fakeSong(
+            songId = "song_variant",
+            arrangementSourceSongId = parent.id
+        )
+        val playlists = linkedMapOf(
+            "Live" to listOf(
+                buildSmpItem(variant.id),
+                buildSmpItem(parent.id)
+            )
+        )
+
+        val songs = listOf(parent, variant).associateBy(SongUnit::id)
+        val preflight = BackupBundlePlanner.buildSmpExportPreflight(playlists, songs::get)
+
+        assertTrue(preflight.isExportAllowed)
+        assertEquals(listOf(variant.id, parent.id), preflight.referencedSongIds)
+        assertEquals(listOf(parent), preflight.resolvedSongs)
+        assertEquals(emptyList<String>(), preflight.missingSongIds)
+    }
+
+    @Test
+    fun buildSmpExportPreflight_blocksVirtualVariantWhenParentIsMissing() {
+        val variant = fakeSong(
+            songId = "song_variant",
+            arrangementSourceSongId = "song_parent_missing"
+        )
+        val playlists = mapOf("Live" to listOf(buildSmpItem(variant.id)))
+
+        val preflight = BackupBundlePlanner.buildSmpExportPreflight(playlists) { songId ->
+            variant.takeIf { it.id == songId }
+        }
+
+        assertFalse(preflight.isExportAllowed)
+        assertEquals(emptyList<SongUnit>(), preflight.resolvedSongs)
+        assertEquals(listOf("song_parent_missing"), preflight.missingSongIds)
+    }
+
+    private fun fakeSong(
+        songId: String,
+        arrangementSourceSongId: String? = null
+    ): SongUnit {
         return SongUnit(
             id = songId,
             title = songId,
@@ -112,7 +155,8 @@ class BackupBundlePlannerTest {
             midiPath = null,
             midiCues = emptyList(),
             dmxPath = null,
-            prompterPath = null
+            prompterPath = null,
+            arrangementSourceSongId = arrangementSourceSongId
         )
     }
 }

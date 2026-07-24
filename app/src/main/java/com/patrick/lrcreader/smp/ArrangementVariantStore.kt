@@ -140,7 +140,8 @@ object ArrangementVariantStore {
                         name = cleanTitle,
                         sourceSongId = cleanSourceSongId,
                         updatedAt = System.currentTimeMillis()
-                    )
+                    ),
+                    existingVariantDir = targetDir
                 )
                 if (!targetDir.renameTo(backupDir)) {
                     throw IOException("Unable to preserve Arrangement variant before update")
@@ -272,23 +273,50 @@ object ArrangementVariantStore {
         )
     }
 
-    private fun writeVariantFiles(
+    internal fun writeVariantFiles(
         targetDir: File,
         variantId: String,
         title: String,
         sourceSongId: String,
-        arrangement: ArrangementData
+        arrangement: ArrangementData,
+        existingVariantDir: File? = null
     ) {
-        File(targetDir, CONFIG_FILE_NAME).writeText(
-            JSONObject()
-                .put("version", 1)
-                .put("id", variantId)
-                .put("title", title)
-                .put(
-                    "arrangementVariant",
-                    JSONObject().put("sourceSongId", sourceSongId)
+        existingVariantDir
+            ?.takeIf(File::isDirectory)
+            ?.listFiles()
+            .orEmpty()
+            .filterNot { child ->
+                child.name == CONFIG_FILE_NAME || child.name == ARRANGEMENT_FILE_NAME
+            }
+            .forEach { child ->
+                val copied = child.copyRecursively(
+                    target = File(targetDir, child.name),
+                    overwrite = true
                 )
-                .toString(2),
+                if (!copied) {
+                    throw IOException("Unable to preserve Arrangement variant asset: ${child.name}")
+                }
+            }
+
+        val configJson = existingVariantDir
+            ?.let { sourceDir -> File(sourceDir, CONFIG_FILE_NAME) }
+            ?.takeIf(File::isFile)
+            ?.let { configFile ->
+                runCatching {
+                    JSONObject(configFile.readText(Charsets.UTF_8))
+                }.getOrNull()
+            }
+            ?: JSONObject()
+        configJson
+            .put("version", configJson.optInt("version", 1).coerceAtLeast(1))
+            .put("id", variantId)
+            .put("title", title)
+            .put(
+                "arrangementVariant",
+                JSONObject().put("sourceSongId", sourceSongId)
+            )
+        File(targetDir, CONFIG_FILE_NAME).writeText(
+            configJson.toString(2),
             Charsets.UTF_8
         )
         File(targetDir, ARRANGEMENT_FILE_NAME).writeText(

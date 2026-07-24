@@ -594,15 +594,10 @@ fun LibrarySongsList(
                             onDismissRequest = { menuOpen = false }
                         ) {
                             DropdownMenuItem(
-                                enabled = !song.isArrangementVariant,
                                 text = {
                                     Text(
                                         stringResource(R.string.library_list_assign_to_playlist),
-                                        color = if (song.isArrangementVariant) {
-                                            Color.White.copy(alpha = 0.35f)
-                                        } else {
-                                            Color.White
-                                        }
+                                        color = Color.White
                                     )
                                 },
                                 onClick = {

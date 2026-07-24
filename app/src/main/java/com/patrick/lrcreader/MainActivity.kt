@@ -112,6 +112,7 @@ import com.patrick.lrcreader.smp.SmpRuntimeSongCache
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
+import com.patrick.lrcreader.smp.buildSmpSongDeletionPlan
 import com.patrick.lrcreader.smp.ArrangementData
 import com.patrick.lrcreader.smp.ArrangementVariantStore
 import com.patrick.lrcreader.smp.PreparedVirtualArrangementPlayback
@@ -3004,7 +3005,10 @@ class MainActivity : AppCompatActivity() {
                 fun launchVirtualArrangementFromLibrary(
                     songId: String,
                     openPlayerScreen: Boolean,
-                    startPositionMs: Long?
+                    startPositionMs: Long?,
+                    playlistName: String? = null,
+                    playlistItemKey: String? = null,
+                    preserveChainPlayback: Boolean = false
                 ): Boolean {
                     val variantSong = smpSongsById[songId]
                         ?.takeIf { it.arrangementSourceSongId != null }
@@ -3023,11 +3027,13 @@ class MainActivity : AppCompatActivity() {
                             ).show()
                             return@launch
                         }
-                        stopChainPlayback()
+                        if (!preserveChainPlayback) {
+                            stopChainPlayback()
+                        }
                         playWithCrossfadeInternal(
                             uriString = prepared.sourceAudioUri,
-                            playlistName = null,
-                            playlistItemKey = null,
+                            playlistName = playlistName,
+                            playlistItemKey = playlistItemKey,
                             openPlayerScreen = openPlayerScreen,
                             startPositionMs = startPositionMs,
                             playbackIdentityUri = buildSmpItem(prepared.variantSongId),
@@ -3037,6 +3043,30 @@ class MainActivity : AppCompatActivity() {
                         currentLyricsColor = Color.White
                     }
                     return true
+                }
+
+                fun launchVirtualArrangementFromPlaylist(
+                    playlistItemKey: String,
+                    playlistName: String?,
+                    openPlayerScreen: Boolean = true,
+                    preserveChainPlayback: Boolean = false
+                ): Boolean {
+                    val playlistSongId = playlistName
+                        ?.takeIf { it.isNotBlank() }
+                        ?.let { playlist ->
+                            PlaylistRepository.getPlaylistItem(playlist, playlistItemKey)?.songId
+                        }
+                        ?.takeIf { it.isNotBlank() }
+                        ?: getSmpSongId(playlistItemKey)
+                        ?: return false
+                    return launchVirtualArrangementFromLibrary(
+                        songId = playlistSongId,
+                        openPlayerScreen = openPlayerScreen,
+                        startPositionMs = null,
+                        playlistName = playlistName,
+                        playlistItemKey = playlistItemKey,
+                        preserveChainPlayback = preserveChainPlayback
+                    )
                 }
 
                 fun resolveAudioTarget(
@@ -3378,62 +3408,74 @@ class MainActivity : AppCompatActivity() {
                 suspend fun deleteSmpSongById(songId: String): Boolean {
                     val cleanSongId = songId.trim()
                     if (cleanSongId.isEmpty()) return false
+                    val deletionPlan = buildSmpSongDeletionPlan(
+                        requestedSongId = cleanSongId,
+                        songsById = smpSongsById
+                    ) ?: return false
+                    val deletedSongIds = deletionPlan.songIds
 
                     data class SmpDeleteIoResult(
                         val success: Boolean,
-                        val runtimeAudioUri: String?
+                        val runtimeAudioUris: List<String>
                     )
 
-                    val playlistReferences = playlistReferencesForSongId(cleanSongId)
-                    val currentMatches = resolveSessionSongIdFromTrackUri(currentPlayingUri) == cleanSongId
+                    val playlistReferences = deletedSongIds.flatMap(::playlistReferencesForSongId)
+                        .distinct()
+                    val currentMatches =
+                        resolveSessionSongIdFromTrackUri(currentPlayingUri) in deletedSongIds
                     val lastSessionState = SessionPrefs.getLastSessionState(ctx)
                     val lastSessionSongId = lastSessionState.songId?.takeIf { it.isNotBlank() }
                         ?: resolveSessionSongIdFromTrackUri(lastSessionState.trackUri)
-                    val lastSessionMatches = lastSessionSongId == cleanSongId
+                    val lastSessionMatches = lastSessionSongId in deletedSongIds
 
                     val ioResult = withContext(Dispatchers.IO) {
-                        val runtimeSong = runCatching {
-                            smpLibraryScanner.findSongById(cleanSongId)
-                        }.getOrNull()
-                        val runtimeDir = runtimeSong
-                            ?.storageFolder
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let(::File)
-                            ?: File(ctx.filesDir, "tracks/$cleanSongId")
-                        val runtimeAudioUri = runtimeSong
-                            ?.audioPath
-                            ?.takeIf { it.isNotBlank() }
-                            ?.let { path -> Uri.fromFile(File(path)).toString() }
-
-                        SmpArchiveFinalizeScheduler.cancel(ctx, cleanSongId)
-                        SmpArchiveFinalizeStore.clear(ctx, cleanSongId)
-
-                        val archiveDeleteResult = SmpWorkspaceArchiveStore.deleteArchivesForSongId(
-                            context = ctx,
-                            songId = cleanSongId
-                        )
-                        if (!archiveDeleteResult.isSuccess) {
-                            Log.w(
-                                "SMP_TRACE",
-                                "DELETE_SMP archive_failed songId=$cleanSongId deleted=${archiveDeleteResult.deletedCount} failed=${archiveDeleteResult.failedCount} reason=${archiveDeleteResult.failureReason}"
-                            )
-                            return@withContext SmpDeleteIoResult(
-                                success = false,
-                                runtimeAudioUri = runtimeAudioUri
-                            )
+                        val runtimeAudioUris = deletionPlan.songs.mapNotNull { song ->
+                            song.audioPath
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let(::File)
+                                ?.let(Uri::fromFile)
+                                ?.toString()
+                        }
+                        deletionPlan.songs.forEach { song ->
+                            SmpArchiveFinalizeScheduler.cancel(ctx, song.id)
+                            SmpArchiveFinalizeStore.clear(ctx, song.id)
                         }
 
-                        val runtimeDeleted = !runtimeDir.exists() || runtimeDir.deleteRecursively()
-                        if (!runtimeDeleted) {
-                            Log.w(
-                                "SMP_TRACE",
-                                "DELETE_SMP runtime_failed songId=$cleanSongId dir=${runtimeDir.absolutePath}"
-                            )
+                        deletionPlan.songs
+                            .filter { song -> song.arrangementSourceSongId == null }
+                            .forEach { song ->
+                                val archiveDeleteResult =
+                                    SmpWorkspaceArchiveStore.deleteArchivesForSongId(
+                                        context = ctx,
+                                        songId = song.id
+                                    )
+                                if (!archiveDeleteResult.isSuccess) {
+                                    Log.w(
+                                        "SMP_TRACE",
+                                        "DELETE_SMP archive_failed songId=${song.id} deleted=${archiveDeleteResult.deletedCount} failed=${archiveDeleteResult.failedCount} reason=${archiveDeleteResult.failureReason}"
+                                    )
+                                    return@withContext SmpDeleteIoResult(
+                                        success = false,
+                                        runtimeAudioUris = runtimeAudioUris
+                                    )
+                                }
+                            }
+
+                        val runtimeDeleted = deletionPlan.songs.all { song ->
+                            val runtimeDir = song.storageFolder
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let(::File)
+                                ?: File(ctx.filesDir, "tracks/${song.id}")
+                            val deleted = !runtimeDir.exists() || runtimeDir.deleteRecursively()
+                            if (!deleted) {
+                                Log.w(
+                                    "SMP_TRACE",
+                                    "DELETE_SMP runtime_failed songId=${song.id} dir=${runtimeDir.absolutePath}"
+                                )
+                            }
+                            deleted
                         }
-                        SmpDeleteIoResult(
-                            success = runtimeDeleted,
-                            runtimeAudioUri = runtimeAudioUri
-                        )
+                        SmpDeleteIoResult(runtimeDeleted, runtimeAudioUris)
                     }
 
                     if (!ioResult.success) {
@@ -3476,23 +3518,25 @@ class MainActivity : AppCompatActivity() {
                         persistCurrentUiSession(reason = "smpDeleteSessionCleanup")
                     }
 
-                    runCatching {
-                        TitleAliasesStore.clearTitleForTrack(ctx, buildSmpItem(cleanSongId))
-                    }
-                    ioResult.runtimeAudioUri?.let { runtimeAudioUri ->
+                    deletedSongIds.forEach { deletedSongId ->
                         runCatching {
-                            TitleAliasesStore.clearTitleForTrack(ctx, runtimeAudioUri)
+                            TitleAliasesStore.clearTitleForTrack(ctx, buildSmpItem(deletedSongId))
                         }
+                    }
+                    ioResult.runtimeAudioUris.forEach { runtimeAudioUri ->
+                        runCatching { TitleAliasesStore.clearTitleForTrack(ctx, runtimeAudioUri) }
                     }
 
                     lastImportedSmpUiSignal = lastImportedSmpUiSignal?.takeUnless { signal ->
-                        signal.songId == cleanSongId
+                        signal.songId in deletedSongIds
                     }
-                    smpSongsById = smpSongsById - cleanSongId
+                    smpSongsById = smpSongsById.filterKeys { existingSongId ->
+                        existingSongId !in deletedSongIds
+                    }
                     smpCacheRefreshTick++
                     Log.i(
                         "SMP_TRACE",
-                        "DELETE_SMP success songId=$cleanSongId currentCleared=$currentMatches lastSessionCleared=$lastSessionMatches playlistRefsRemoved=${playlistReferences.size}"
+                        "DELETE_SMP success requestedSongId=$cleanSongId deletedSongIds=$deletedSongIds currentCleared=$currentMatches lastSessionCleared=$lastSessionMatches playlistRefsRemoved=${playlistReferences.size}"
                     )
                     return true
                 }
@@ -3502,11 +3546,24 @@ class MainActivity : AppCompatActivity() {
                     var idx = startIndex
                     while (idx in chainQueue.indices) {
                         val playableIndex = nextPlayableIndexAtOrAfter(chainQueue, idx) ?: return false
-                        when (val target = PlaybackRouter.resolve(chainQueue[playableIndex], chainPlaylist)) {
+                        val playlistItemKey = chainQueue[playableIndex]
+                        if (
+                            launchVirtualArrangementFromPlaylist(
+                                playlistItemKey = playlistItemKey,
+                                playlistName = chainPlaylist,
+                                preserveChainPlayback = true
+                            )
+                        ) {
+                            chainIndex = playableIndex
+                            setQuickPlaylistAndPersist(chainPlaylist, reason = "chainPlayArrangement")
+                            currentLyricsColor = Color.White
+                            return true
+                        }
+                        when (val target = PlaybackRouter.resolve(playlistItemKey, chainPlaylist)) {
                             is PlaybackRouter.Target.Audio,
                             is PlaybackRouter.Target.Smp -> {
                                 val resolvedTarget = resolvePlaylistAudioTarget(
-                                    playlistItemKey = chainQueue[playableIndex],
+                                    playlistItemKey = playlistItemKey,
                                     playlistName = chainPlaylist,
                                     rawTarget = target
                                 )
@@ -3518,7 +3575,7 @@ class MainActivity : AppCompatActivity() {
                                 playWithCrossfade(
                                     resolvedTarget.uri,
                                     resolvedTarget.playlist,
-                                    chainQueue[playableIndex],
+                                    playlistItemKey,
                                     true
                                 )
                                 setQuickPlaylistAndPersist(resolvedTarget.playlist, reason = "chainPlay")
@@ -3544,6 +3601,19 @@ class MainActivity : AppCompatActivity() {
                         val started = when (val target = PlaybackRouter.resolve(forcedNext.uri, forcedNext.playlist)) {
                             is PlaybackRouter.Target.Audio,
                             is PlaybackRouter.Target.Smp -> {
+                                if (
+                                    launchVirtualArrangementFromPlaylist(
+                                        playlistItemKey = forcedNext.uri,
+                                        playlistName = forcedNext.playlist
+                                    )
+                                ) {
+                                    setQuickPlaylistAndPersist(
+                                        forcedNext.playlist,
+                                        reason = "nextArrangementTrigger"
+                                    )
+                                    currentLyricsColor = Color.White
+                                    true
+                                } else {
                                 val resolvedTarget = resolvePlaylistAudioTarget(
                                     playlistItemKey = forcedNext.uri,
                                     playlistName = forcedNext.playlist,
@@ -3562,6 +3632,7 @@ class MainActivity : AppCompatActivity() {
                                     setQuickPlaylistAndPersist(resolvedTarget.playlist, reason = "nextTrackTrigger")
                                     currentLyricsColor = Color.White
                                     true
+                                }
                                 }
                             }
                             is PlaybackRouter.Target.Prompter -> {
@@ -5151,6 +5222,16 @@ class MainActivity : AppCompatActivity() {
                                                 requestedItem = uri,
                                                 playlistName = playlistName
                                             )
+                                            if (
+                                                launchVirtualArrangementFromPlaylist(
+                                                    playlistItemKey = uri,
+                                                    playlistName = playlistName
+                                                )
+                                            ) {
+                                                selectedQuickPlaylist = playlistName
+                                                currentLyricsColor = color
+                                                return@QuickPlaylistsScreen
+                                            }
 
                                             when (val target = PlaybackRouter.resolve(uri, playlistName)) {
 
@@ -5810,6 +5891,16 @@ class MainActivity : AppCompatActivity() {
                                                 requestedItem = uri,
                                                 playlistName = playlistName
                                             )
+                                            if (
+                                                launchVirtualArrangementFromPlaylist(
+                                                    playlistItemKey = uri,
+                                                    playlistName = playlistName
+                                                )
+                                            ) {
+                                                selectedQuickPlaylist = playlistName
+                                                currentLyricsColor = color
+                                                return@QuickPlaylistsScreen
+                                            }
 
                                         when (val target = PlaybackRouter.resolve(uri, playlistName)) {
 

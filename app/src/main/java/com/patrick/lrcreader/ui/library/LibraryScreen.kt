@@ -5193,6 +5193,13 @@ fun LibraryScreen(
             }
 
             if (pendingDeleteSmpSelection.isNotEmpty()) {
+                val selectedSongIds = pendingDeleteSmpSelection
+                    .mapNotNull { uri -> getSmpSongId(uri.toString()) }
+                    .toSet()
+                val cascadeVariantCount = songItems.count { item ->
+                    item.song.arrangementSourceSongId in selectedSongIds &&
+                        item.songId !in selectedSongIds
+                }
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = {
                         if (deleteSmpInProgress) return@AlertDialog
@@ -5207,7 +5214,18 @@ fun LibraryScreen(
                         )
                     },
                     text = {
-                        androidx.compose.material3.Text(sDeleteSelectedSmpConfirmText)
+                        androidx.compose.material3.Text(
+                            if (cascadeVariantCount > 0) {
+                                "$sDeleteSelectedSmpConfirmText\n\n${
+                                    context.getString(
+                                        R.string.library_delete_smp_variants_cascade,
+                                        cascadeVariantCount
+                                    )
+                                }"
+                            } else {
+                                sDeleteSelectedSmpConfirmText
+                            }
+                        )
                     },
                     confirmButton = {
                         androidx.compose.material3.TextButton(
@@ -5292,6 +5310,14 @@ fun LibraryScreen(
             }
 
             if (pendingDeleteSmpUri != null) {
+                val pendingDeleteSongId = pendingDeleteSmpUri
+                    ?.toString()
+                    ?.let(::getSmpSongId)
+                val cascadeVariantCount = pendingDeleteSongId?.let { parentSongId ->
+                    songItems.count { item ->
+                        item.song.arrangementSourceSongId == parentSongId
+                    }
+                } ?: 0
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = {
                         if (deleteSmpInProgress) return@AlertDialog
@@ -5301,7 +5327,18 @@ fun LibraryScreen(
                         androidx.compose.material3.Text(sDeleteSmpTitle)
                     },
                     text = {
-                        androidx.compose.material3.Text(sDeleteSmpConfirmText)
+                        androidx.compose.material3.Text(
+                            if (cascadeVariantCount > 0) {
+                                "$sDeleteSmpConfirmText\n\n${
+                                    context.getString(
+                                        R.string.library_delete_smp_variants_cascade,
+                                        cascadeVariantCount
+                                    )
+                                }"
+                            } else {
+                                sDeleteSmpConfirmText
+                            }
+                        )
                     },
                     confirmButton = {
                         androidx.compose.material3.TextButton(

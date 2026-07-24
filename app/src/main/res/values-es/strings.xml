@@ -252,6 +252,7 @@
     <string name="library_delete_action">Eliminar</string>
     <string name="library_delete_smp_title">¿Eliminar esta canción?</string>
     <string name="library_delete_smp_confirm_text">¿Eliminar esta canción de la aplicación?</string>
+    <string name="library_delete_smp_variants_cascade">Variantes de Arrangement que también se eliminarán: %1$d.</string>
     <string name="library_delete_smp_failed">No se pudo eliminar la canción SMP.</string>
     <string name="library_share_smp_failed">No se pudo compartir la canción SMP.</string>
     <string name="library_rename_title">Renombrar</string>

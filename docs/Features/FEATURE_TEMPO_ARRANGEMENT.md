@@ -123,6 +123,41 @@ Contrat de stockage :
 
 Exemple : avec `Marina-AR01`, `Marina-AR02` et `Marina-AR03`, il doit être possible de rouvrir `Marina-AR01`, la tester et continuer à la modifier sans reconstruire ses segments.
 
+### Affecter une variante à une playlist
+
+- une variante virtuelle peut être affectée à une playlist comme un autre titre de la Bibliothèque ;
+- la playlist conserve uniquement son identité stable sous la forme `smp://songId` ;
+- l'affectation ne crée, ne transcode et ne duplique aucun fichier audio ;
+- la lecture depuis la playlist résout la Structure de la variante et l'audio de son titre parent depuis le runtime normalisé ;
+- la variante reste l'élément actif et visible dans la playlist et dans le Player ;
+- une sauvegarde contenant cette référence exporte le SongUnit parent, car son `.smp` transporte automatiquement toutes ses variantes ;
+- si le parent est absent, la lecture et la sauvegarde complète doivent échouer proprement sans modifier la playlist.
+
+### Propriété, dépendance et suppression
+
+Contrat fonctionnel :
+
+- une variante virtuelle ne peut exister que si son titre parent existe dans la Bibliothèque normalisée ;
+- le parent reste l'unique propriétaire du fichier audio ;
+- la variante possède son propre `songId`, son titre, sa Structure et pourra posséder ses propres paroles, accords, données Timeline, annotations et réglages ;
+- ces données propres à la variante sont stockées dans son dossier runtime, mais voyagent dans la « valise » `.smp` du parent ;
+- aucun `.smp` autonome incomplet ne doit être créé pour une variante.
+
+Suppression dans la Bibliothèque :
+
+- supprimer le parent doit supprimer toutes ses variantes et toutes les références de playlist correspondantes ;
+- la confirmation doit annoncer clairement le nombre de variantes concernées avant toute suppression ;
+- supprimer une variante ne supprime jamais le parent ni les autres variantes ;
+- aucune variante orpheline ne doit subsister silencieusement.
+
+Suppression dans une playlist :
+
+- retirer le parent d'une playlist ne retire aucune variante présente dans cette playlist ;
+- retirer une variante d'une playlist ne retire ni le parent ni les autres variantes ;
+- une playlist peut contenir uniquement la variante, sans occurrence visible du parent, tant que le parent reste présent dans la Bibliothèque.
+
+**État d'implémentation :** le contrat est validé. La suppression en cascade parent → variantes et le transport de futurs assets propres aux variantes restent à implémenter avant d'autoriser leurs paroles ou accords.
+
 ---
 
 ## 🧩 CONCEPTS CLÉS

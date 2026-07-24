@@ -33,14 +33,34 @@ object BackupBundlePlanner {
     ): BackupBundleSmpExportPreflight {
         val referencedSongIds = collectReferencedSmpSongIds(playlists)
         val resolvedSongs = mutableListOf<SongUnit>()
+        val resolvedExportSongIds = mutableSetOf<String>()
         val missingSongIds = mutableListOf<String>()
 
         referencedSongIds.forEach { songId ->
             val resolvedSong = resolveSongById(songId)
-            if (resolvedSong?.id?.trim() == songId) {
-                resolvedSongs += resolvedSong
-            } else {
+            if (resolvedSong?.id?.trim() != songId) {
                 missingSongIds += songId
+                return@forEach
+            }
+
+            val sourceSongId = resolvedSong.arrangementSourceSongId
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+            val exportSong = if (sourceSongId == null) {
+                resolvedSong
+            } else {
+                resolveSongById(sourceSongId)?.takeIf { it.id.trim() == sourceSongId }
+            }
+            if (exportSong == null) {
+                sourceSongId?.let(missingSongIds::add)
+                return@forEach
+            }
+            if (exportSong.arrangementSourceSongId != null) {
+                missingSongIds += exportSong.id
+                return@forEach
+            }
+            if (resolvedExportSongIds.add(exportSong.id)) {
+                resolvedSongs += exportSong
             }
         }
 

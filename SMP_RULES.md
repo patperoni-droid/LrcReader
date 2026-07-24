@@ -61,11 +61,17 @@ If there is any conflict between:
 
 - A virtual Arrangement variant is not a complete standalone song because it does not own audio.
 - It has its own Library `songId`, title, and Arrangement structure at runtime.
+- It may own variant-specific assets such as lyrics, chords, timeline data, annotations, and per-variant settings.
 - For transport, it must be embedded in the `.smp` of its source SongUnit.
-- The source audio must appear only once in that parent archive.
+- The source audio must appear only once in that parent archive, while variant-specific assets are transported with their owning variant entry.
 - Exporting a virtual variant as an independent audio-less `.smp` is forbidden.
 - Import must normalize the parent first, then recreate its variants as separate internal SongUnits.
 - Runtime playback must use only those normalized folders and must never read the variants manifest from the archive.
+- A variant cannot remain valid without its source SongUnit.
+- Deleting a source SongUnit from the Library must also delete all of its virtual variants and remove every playlist reference to those deleted SongUnits, after an explicit confirmation that reports the cascade.
+- Deleting one virtual variant must never delete its source SongUnit or sibling variants.
+- Removing a source song occurrence from a playlist must not remove occurrences of its variants.
+- A playlist may reference a virtual variant without referencing its source song, provided that the source SongUnit still exists in normalized Library storage.
 
 ## Current Project Reality
 - The current beta is file-centric:

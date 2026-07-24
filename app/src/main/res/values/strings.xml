@@ -249,6 +249,7 @@
     <string name="library_delete_action">Supprimer</string>
     <string name="library_delete_smp_title">Supprimer ce morceau ?</string>
     <string name="library_delete_smp_confirm_text">Supprimer ce morceau de l’application ?</string>
+    <string name="library_delete_smp_variants_cascade">Variantes Arrangement également supprimées : %1$d.</string>
     <string name="library_delete_smp_failed">Suppression du morceau SMP impossible.</string>
     <string name="library_share_smp_failed">Partage du morceau SMP impossible.</string>
     <string name="library_copy_failed">Copie impossible.</string>

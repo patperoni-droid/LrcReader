@@ -256,6 +256,7 @@
     <string name="library_delete_action">Delete</string>
     <string name="library_delete_smp_title">Delete this song?</string>
     <string name="library_delete_smp_confirm_text">Delete this song from the app?</string>
+    <string name="library_delete_smp_variants_cascade">Arrangement variants also deleted: %1$d.</string>
     <string name="library_delete_smp_failed">Unable to delete the SMP song.</string>
     <string name="library_share_smp_failed">Unable to share the SMP song.</string>
     <string name="library_copy_failed">Copy failed.</string>
