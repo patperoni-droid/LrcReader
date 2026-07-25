@@ -416,6 +416,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun warmQuickPlaylistComposeStores() {
+        PlaylistRepository.version.value
         TitleAliasesStore.version.intValue
         SongVariantFamiliesStore.version.intValue
     }
