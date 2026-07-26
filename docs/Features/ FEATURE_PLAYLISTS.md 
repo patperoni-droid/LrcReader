@@ -414,11 +414,12 @@ Known picker behavior:
 
 Restore philosophy:
 - library restore prioritizes rebuilding runtime SongUnits first
-- playlists can then be imported individually by the user
-- this allows the user to choose which playlists should be reactivated after a restore
+- a complete Library backup restores playlists automatically after parents and virtual variants are present in the refreshed Library index
+- direct JSON playlist import remains available when the user wants to import playlists individually
 
 Restore rules:
 - restored playlists must reference SMP songs by `smp://songId`
+- virtual Arrangement variants restored from their parent archive must be registered as valid playlist targets before playlist state remapping
 - display resolution for `smp://songId` must use the current Library index
 - playback must never be required to hydrate playlist titles
 - restored playlists must survive restart, device transfer, and backup restore without manual repair

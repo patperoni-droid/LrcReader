@@ -95,6 +95,7 @@ import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpImporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SongUnit
 import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpUserArchiveCandidate
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
@@ -2189,6 +2190,36 @@ private data class LibraryRestoreExecutionResult(
     val lastPlayed: BackupManager.LastPlayed? = null
 )
 
+internal fun buildLibraryRestoreSongMappings(
+    importedSongs: List<BackupBundleImportedSong>,
+    runtimeSongs: Collection<SongUnit>,
+    restoredParentSongIds: Set<String>
+): List<BackupBundleImportedSong> {
+    val mappedBundleSongIds = importedSongs
+        .mapTo(linkedSetOf()) { it.bundleSongId.trim() }
+    val restoredVariantMappings = runtimeSongs
+        .asSequence()
+        .filter { song ->
+            song.arrangementSourceSongId
+                ?.trim()
+                ?.takeIf(String::isNotEmpty) in restoredParentSongIds
+        }
+        .mapNotNull { variant ->
+            val variantId = variant.id.trim().takeIf(String::isNotEmpty)
+                ?: return@mapNotNull null
+            if (!mappedBundleSongIds.add(variantId)) {
+                return@mapNotNull null
+            }
+            BackupBundleImportedSong(
+                bundleSongId = variantId,
+                importedSongId = variantId,
+                storageFolder = variant.storageFolder
+            )
+        }
+        .toList()
+    return importedSongs + restoredVariantMappings
+}
+
 private fun selectWorkspaceArchivesForBackup(
     runtimeSongIds: Set<String>,
     candidates: List<SmpUserArchiveCandidate>
@@ -2594,9 +2625,19 @@ private fun restoreLibraryFromBackupFolder(
         "importedSuccessCount=$importedCount importedFailCount=$failedCount"
     )
     Log.d(RESTORE_DIAG_TAG, "libraryIndexCountBeforeRefresh=${runtimeSongsById.size}")
-    val songsAfterImportById = scanner.listSongs()
+    val songsAfterImport = scanner.listSongs()
+    val songsAfterImportById = songsAfterImport
         .associateBy { it.id.trim() }
+    val restoreSongMappings = buildLibraryRestoreSongMappings(
+        importedSongs = importedSongs,
+        runtimeSongs = songsAfterImport,
+        restoredParentSongIds = importedOrExistingSongIds
+    )
     Log.d(RESTORE_DIAG_TAG, "libraryIndexCountAfterRefresh=${songsAfterImportById.size}")
+    Log.d(
+        RESTORE_DIAG_TAG,
+        "playlistRestoreMappings parents=${importedSongs.size} total=${restoreSongMappings.size}"
+    )
     val missingImportedSongIds = importedOrExistingSongIds
         .filter { it !in songsAfterImportById.keys }
     importedOrExistingSongIds.forEach { songId ->
@@ -2614,7 +2655,12 @@ private fun restoreLibraryFromBackupFolder(
 
     scanResult.stateJson?.let { stateJson ->
         onProgress(completed, total, "state.json")
-        when (val remapResult = BackupStateRemapper.remapBundleStateJson(stateJson, importedSongs)) {
+        when (
+            val remapResult = BackupStateRemapper.remapBundleStateJson(
+                stateJson = stateJson,
+                importedSongs = restoreSongMappings
+            )
+        ) {
             is BackupStateRemapResult.Success -> {
                 stateWarningCount = remapResult.warnings.size + missingImportedSongIds.size
                 logPlaylistRestoreDiagnostics(
