@@ -6,20 +6,26 @@ import org.json.JSONObject
 internal data class ArrangementVariantArchiveEntry(
     val id: String,
     val title: String,
-    val arrangement: ArrangementData
+    val arrangement: ArrangementData,
+    val lyrics: String? = null,
+    val lyricsLineColors: Map<String, Int>? = null
 )
 
 internal data class ArrangementVariantsArchive(
     val sourceSongId: String,
-    val variants: List<ArrangementVariantArchiveEntry>
+    val variants: List<ArrangementVariantArchiveEntry>,
+    val selectedVariantId: String? = null
 )
 
 internal object ArrangementVariantsArchiveCodec {
     const val FILE_NAME = "arrangement_variants.json"
+    const val MAX_ARCHIVE_BYTES = 4 * 1024 * 1024
 
     private const val FORMAT = "smp_arrangement_variants"
     private const val VERSION = 1
     private const val MAX_VARIANTS = 250
+    private const val MAX_LYRICS_BYTES = 1024 * 1024
+    private const val MAX_LYRICS_LINE_COLORS = 10_000
     private val SAFE_ID = Regex("[A-Za-z0-9._-]+")
 
     fun encode(archive: ArrangementVariantsArchive): JSONObject {
@@ -37,19 +43,36 @@ internal object ArrangementVariantsArchiveCodec {
                 val title = variant.title.trim().takeIf(String::isNotEmpty)
                     ?: throw IllegalArgumentException("Arrangement variant title is empty")
                 validateArrangement(variant.arrangement, sourceSongId)
-                variantsJson.put(
-                    JSONObject()
+                val variantJson = JSONObject()
                         .put("id", variantId)
                         .put("title", title)
                         .put("arrangement", ArrangementJsonCodec.encode(variant.arrangement))
-                )
+                encodeAssets(variant)?.let { assets ->
+                    variantJson.put("assets", assets)
+                }
+                variantsJson.put(variantJson)
             }
 
+        val selectedVariantId = archive.selectedVariantId?.let { rawId ->
+            validateId(rawId, "selected variant id").also { selectedId ->
+                require(selectedId in seenIds) {
+                    "Selected Arrangement variant is missing from archive"
+                }
+            }
+        }
         return JSONObject()
             .put("format", FORMAT)
             .put("version", VERSION)
             .put("sourceSongId", sourceSongId)
             .put("variants", variantsJson)
+            .apply {
+                selectedVariantId?.let { put("selectedVariantId", it) }
+            }
+            .also { encoded ->
+                require(encoded.toString().toByteArray(Charsets.UTF_8).size <= MAX_ARCHIVE_BYTES) {
+                    "Arrangement variants archive is too large"
+                }
+            }
     }
 
     fun decode(json: JSONObject): ArrangementVariantsArchive {
@@ -75,19 +98,33 @@ internal object ArrangementVariantsArchiveCodec {
                     ?: throw IllegalArgumentException("Missing Arrangement variant structure")
                 val arrangement = ArrangementJsonCodec.decode(arrangementJson)
                 validateArrangement(arrangement, sourceSongId)
+                val assets = decodeAssets(item.optJSONObject("assets"))
                 add(
                     ArrangementVariantArchiveEntry(
                         id = variantId,
                         title = title,
-                        arrangement = arrangement
+                        arrangement = arrangement,
+                        lyrics = assets?.lyrics,
+                        lyricsLineColors = assets?.lyricsLineColors
                     )
                 )
             }
         }
+        val selectedVariantId = json.optString("selectedVariantId")
+            .trim()
+            .takeIf(String::isNotEmpty)
+            ?.let { rawId ->
+                validateId(rawId, "selected variant id").also { selectedId ->
+                    require(variants.any { it.id == selectedId }) {
+                        "Selected Arrangement variant is missing from archive"
+                    }
+                }
+            }
 
         return ArrangementVariantsArchive(
             sourceSongId = sourceSongId,
-            variants = variants
+            variants = variants,
+            selectedVariantId = selectedVariantId
         )
     }
 
@@ -103,6 +140,68 @@ internal object ArrangementVariantsArchiveCodec {
         }
         require(arrangement.entries.isNotEmpty() || arrangement.structureSegmentIds.isNotEmpty()) {
             "Arrangement variant structure is empty"
+        }
+    }
+
+    private data class VariantAssets(
+        val lyrics: String?,
+        val lyricsLineColors: Map<String, Int>?
+    )
+
+    private fun encodeAssets(variant: ArrangementVariantArchiveEntry): JSONObject? {
+        val lyrics = variant.lyrics?.also(::validateLyrics)
+        val lyricsLineColors = variant.lyricsLineColors?.also(::validateLyricsLineColors)
+        if (lyrics == null && lyricsLineColors == null) {
+            return null
+        }
+        return JSONObject().apply {
+            lyrics?.let { put("lyrics", it) }
+            lyricsLineColors?.let { colors ->
+                put(
+                    "lyricsLineColors",
+                    JSONObject().apply {
+                        colors.keys.sorted().forEach { key ->
+                            put(key, colors.getValue(key))
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    private fun decodeAssets(json: JSONObject?): VariantAssets? {
+        json ?: return null
+        val lyrics = if (json.has("lyrics") && !json.isNull("lyrics")) {
+            json.getString("lyrics").also(::validateLyrics)
+        } else {
+            null
+        }
+        val lyricsLineColorsJson = json.optJSONObject("lyricsLineColors")
+        val lyricsLineColors = lyricsLineColorsJson?.let { colorsJson ->
+            buildMap {
+                colorsJson.keys().forEach { key ->
+                    put(key, colorsJson.getInt(key))
+                }
+            }.also(::validateLyricsLineColors)
+        }
+        return VariantAssets(
+            lyrics = lyrics,
+            lyricsLineColors = lyricsLineColors
+        )
+    }
+
+    private fun validateLyrics(lyrics: String) {
+        require(lyrics.toByteArray(Charsets.UTF_8).size <= MAX_LYRICS_BYTES) {
+            "Arrangement variant lyrics are too large"
+        }
+    }
+
+    private fun validateLyricsLineColors(colors: Map<String, Int>) {
+        require(colors.size <= MAX_LYRICS_LINE_COLORS) {
+            "Too many Arrangement variant lyrics line colors"
+        }
+        require(colors.keys.none(String::isBlank)) {
+            "Invalid Arrangement variant lyrics line color key"
         }
     }
 }

@@ -12,6 +12,7 @@ object ArrangementVariantStore {
     private const val TRACKS_DIR_NAME = "tracks"
     private const val CONFIG_FILE_NAME = "config.json"
     private const val ARRANGEMENT_FILE_NAME = "arrangement.json"
+    private const val LYRICS_FILE_NAME = "lyrics.lrc"
 
     internal data class RestoreResult(
         val restoredVariantIds: List<String>,
@@ -206,12 +207,11 @@ object ArrangementVariantStore {
                             ArrangementJsonCodec.decode(JSONObject(file.readText(Charsets.UTF_8)))
                         }.getOrNull()
                     }
-                require(
-                    existingArrangement != null &&
-                        existingArrangement.sourceSongId.trim() != variant.id
-                ) {
-                    "Arrangement variant id conflicts with another runtime song: ${variant.id}"
-                }
+                validateExistingVariantParent(
+                    existingArrangement = existingArrangement,
+                    variantId = variant.id,
+                    expectedSourceSongId = sourceSong.id
+                )
             }
 
             val tempDir = File(tracksRoot, ".restore_${variant.id}_${UUID.randomUUID().toString().take(8)}")
@@ -227,7 +227,10 @@ object ArrangementVariantStore {
                     variantId = variant.id,
                     title = variant.title,
                     sourceSongId = sourceSong.id,
-                    arrangement = normalizedArrangement
+                    arrangement = normalizedArrangement,
+                    existingVariantDir = targetDir.takeIf(File::isDirectory),
+                    archivedLyrics = variant.lyrics,
+                    archivedLyricsLineColors = variant.lyricsLineColors
                 )
                 pending += PendingVariant(
                     id = variant.id,
@@ -273,13 +276,33 @@ object ArrangementVariantStore {
         )
     }
 
+    internal fun validateExistingVariantParent(
+        existingArrangement: ArrangementData?,
+        variantId: String,
+        expectedSourceSongId: String
+    ) {
+        val existingSourceSongId = existingArrangement
+            ?.sourceSongId
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?: throw IllegalArgumentException(
+                "Arrangement variant id conflicts with another runtime song: $variantId"
+            )
+        require(existingSourceSongId == expectedSourceSongId) {
+            "Arrangement variant parent conflict: variantId=$variantId " +
+                "existingParent=$existingSourceSongId incomingParent=$expectedSourceSongId"
+        }
+    }
+
     internal fun writeVariantFiles(
         targetDir: File,
         variantId: String,
         title: String,
         sourceSongId: String,
         arrangement: ArrangementData,
-        existingVariantDir: File? = null
+        existingVariantDir: File? = null,
+        archivedLyrics: String? = null,
+        archivedLyricsLineColors: Map<String, Int>? = null
     ) {
         existingVariantDir
             ?.takeIf(File::isDirectory)
@@ -315,6 +338,16 @@ object ArrangementVariantStore {
                 "arrangementVariant",
                 JSONObject().put("sourceSongId", sourceSongId)
             )
+        archivedLyricsLineColors?.let { colors ->
+            configJson.put(
+                "lyricsLineColors",
+                JSONObject().apply {
+                    colors.keys.sorted().forEach { key ->
+                        put(key, colors.getValue(key))
+                    }
+                }
+            )
+        }
         File(targetDir, CONFIG_FILE_NAME).writeText(
             configJson.toString(2),
             Charsets.UTF_8
@@ -323,5 +356,8 @@ object ArrangementVariantStore {
             ArrangementJsonCodec.encode(arrangement).toString(2),
             Charsets.UTF_8
         )
+        archivedLyrics?.let { lyrics ->
+            File(targetDir, LYRICS_FILE_NAME).writeText(lyrics, Charsets.UTF_8)
+        }
     }
 }

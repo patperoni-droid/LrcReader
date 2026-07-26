@@ -29,11 +29,16 @@ class ArrangementVariantsArchiveCodecTest {
         )
         val archive = ArrangementVariantsArchive(
             sourceSongId = "song_marina",
+            selectedVariantId = "arrangement_01",
             variants = listOf(
                 ArrangementVariantArchiveEntry(
                     id = "arrangement_01",
                     title = "Marina-AR01",
-                    arrangement = arrangement
+                    arrangement = arrangement,
+                    lyrics = "[00:01.00]Première ligne\n[00:03.00]Deuxième ligne",
+                    lyricsLineColors = mapOf(
+                        "1000|Première ligne" to 0x123456
+                    )
                 )
             )
         )
@@ -42,6 +47,7 @@ class ArrangementVariantsArchiveCodecTest {
         val decoded = ArrangementVariantsArchiveCodec.decode(encoded)
 
         assertEquals("song_marina", decoded.sourceSongId)
+        assertEquals("arrangement_01", decoded.selectedVariantId)
         assertEquals("arrangement_01", decoded.variants.single().id)
         assertEquals("Marina-AR01", decoded.variants.single().title)
         val decodedArrangement = decoded.variants.single().arrangement
@@ -50,6 +56,33 @@ class ArrangementVariantsArchiveCodecTest {
         assertEquals(arrangement.sourceSongId, decodedArrangement.sourceSongId)
         assertEquals(arrangement.updatedAt, decodedArrangement.updatedAt)
         assertEquals(arrangement.entries, decodedArrangement.entries)
+        assertEquals(
+            "[00:01.00]Première ligne\n[00:03.00]Deuxième ligne",
+            decoded.variants.single().lyrics
+        )
+        assertEquals(
+            mapOf("1000|Première ligne" to 0x123456),
+            decoded.variants.single().lyricsLineColors
+        )
+    }
+
+    @Test
+    fun decode_keepsLegacyManifestWithoutVariantAssetsCompatible() {
+        val decoded = ArrangementVariantsArchiveCodec.decode(validManifest())
+
+        assertEquals(null, decoded.variants.single().lyrics)
+        assertEquals(null, decoded.variants.single().lyricsLineColors)
+        assertEquals(null, decoded.selectedVariantId)
+    }
+
+    @Test
+    fun decode_rejectsSelectedVariantIdMissingFromArchive() {
+        val rawJson = validManifest()
+            .put("selectedVariantId", "arrangement_missing")
+
+        assertThrows(IllegalArgumentException::class.java) {
+            ArrangementVariantsArchiveCodec.decode(rawJson)
+        }
     }
 
     @Test

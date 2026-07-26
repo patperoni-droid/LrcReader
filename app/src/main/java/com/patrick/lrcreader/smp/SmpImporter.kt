@@ -31,13 +31,13 @@ class SmpImporter(private val context: Context) {
         private const val WAVEFORM_FILE_NAME = "waveform.json"
         private const val GRID_FILE_NAME = "grid.json"
         private const val ARRANGEMENT_FILE_NAME = "arrangement.json"
-        private const val MAX_ARRANGEMENT_VARIANTS_BYTES = 4 * 1024 * 1024
         private const val MIDI_TRACE_TAG = "SMP_MIDI_TRACE"
     }
 
     data class ArrangementVariantsRestoreOutcome(
         val manifestFound: Boolean,
-        val success: Boolean
+        val success: Boolean,
+        val selectedVariantId: String? = null
     )
 
     private data class PreservedSongTextFile(
@@ -48,7 +48,8 @@ class SmpImporter(private val context: Context) {
     fun restoreArrangementVariantsOnly(
         uri: Uri,
         sourceSong: SongUnit,
-        replaceExisting: Boolean = false
+        replaceExisting: Boolean = false,
+        selectedVariantOnly: Boolean = false
     ): ArrangementVariantsRestoreOutcome {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             Log.w(TAG, "Restauration des variantes refusée sur le thread principal uri=$uri")
@@ -69,11 +70,27 @@ class SmpImporter(private val context: Context) {
             )
             return ArrangementVariantsRestoreOutcome(manifestFound = true, success = false)
         }
+        val selectedVariantId = archive.selectedVariantId
+        if (selectedVariantOnly && selectedVariantId == null) {
+            return ArrangementVariantsRestoreOutcome(
+                manifestFound = true,
+                success = true
+            )
+        }
+        val archiveToRestore = if (selectedVariantOnly) {
+            archive.copy(
+                variants = archive.variants.filter { variant ->
+                    variant.id == selectedVariantId
+                }
+            )
+        } else {
+            archive
+        }
 
         val restored = ArrangementVariantStore.restoreFromArchive(
             context = context,
             sourceSong = sourceSong,
-            archive = archive,
+            archive = archiveToRestore,
             replaceExisting = replaceExisting
         )
         if (restored.isFailure) {
@@ -85,7 +102,8 @@ class SmpImporter(private val context: Context) {
         }
         return ArrangementVariantsRestoreOutcome(
             manifestFound = true,
-            success = restored.isSuccess
+            success = restored.isSuccess,
+            selectedVariantId = selectedVariantId.takeIf { selectedVariantOnly }
         )
     }
 
@@ -168,6 +186,7 @@ class SmpImporter(private val context: Context) {
             val stableConfigId = sanitizeSongId(rawConfigId)
             val songId = stableConfigId ?: "song_${UUID.randomUUID()}"
             val destinationDir = File(tracksRoot, songId)
+            val destinationExistedBeforeImport = destinationDir.exists()
             Log.i(
                 TRACE_TAG,
                 "step=import_resolved uri=$uri displayName=$displayName rawConfigId=${rawConfigId ?: "null"} stableSongId=${stableConfigId ?: "invalid_or_absent"} finalSongId=$songId destinationDir=${destinationDir.absolutePath}"
@@ -283,6 +302,17 @@ class SmpImporter(private val context: Context) {
                         "Import du parent terminé mais restauration de ses variantes impossible songId=$songId",
                         restoreResult.exceptionOrNull()
                     )
+                    if (!destinationExistedBeforeImport) {
+                        val rollbackSucceeded = deleteRecursivelyIfExists(destinationDir)
+                        if (rollbackSucceeded) {
+                            importedDir = null
+                        } else {
+                            Log.e(
+                                TAG,
+                                "Rollback du parent importé impossible après échec des variantes songId=$songId"
+                            )
+                        }
+                    }
                     return null
                 }
             }
@@ -359,7 +389,7 @@ class SmpImporter(private val context: Context) {
                                         } else if (canonicalName == ArrangementVariantsArchiveCodec.FILE_NAME) {
                                             val bytes = readEntryBytes(
                                                 zipInputStream = zipInputStream,
-                                                maximumBytes = MAX_ARRANGEMENT_VARIANTS_BYTES
+                                                maximumBytes = ArrangementVariantsArchiveCodec.MAX_ARCHIVE_BYTES
                                             )
                                             rawArrangementVariants = String(bytes, Charsets.UTF_8)
                                         } else {
@@ -461,7 +491,7 @@ class SmpImporter(private val context: Context) {
                             val rawJson = String(
                                 readEntryBytes(
                                     zipInputStream = zipInputStream,
-                                    maximumBytes = MAX_ARRANGEMENT_VARIANTS_BYTES
+                                    maximumBytes = ArrangementVariantsArchiveCodec.MAX_ARCHIVE_BYTES
                                 ),
                                 Charsets.UTF_8
                             )

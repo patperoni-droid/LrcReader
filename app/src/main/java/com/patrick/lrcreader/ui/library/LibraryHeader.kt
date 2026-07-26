@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -221,6 +222,21 @@ fun LibraryHeader(
                 )
             }
 
+            if (showActions && !isSelectionContext) {
+                TextButton(
+                    onClick = onImportSmp,
+                    enabled = hasRoot
+                ) {
+                    Icon(
+                        Icons.Default.UploadFile,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    Text(stringResource(R.string.library_header_import_smp_short))
+                }
+            }
+
             if (showActions) {
                 Box {
                     IconButton(onClick = { actionsExpanded = true }) {
@@ -278,6 +294,21 @@ fun LibraryHeader(
                 contentDescription = stringResource(R.string.library_header_cd_storage),
                 tint = Color.White
             )
+        }
+
+        if (showActions && !isSelectionContext) {
+            TextButton(
+                onClick = onImportSmp,
+                enabled = hasRoot
+            ) {
+                Icon(
+                    Icons.Default.UploadFile,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(stringResource(R.string.library_header_import_smp_short))
+            }
         }
 
         if (showActions) {

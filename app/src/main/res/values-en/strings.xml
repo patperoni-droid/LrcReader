@@ -244,6 +244,7 @@
     <string name="library_header_choose_folder">Choose a folder</string>
     <string name="library_header_rescan">Rescan library</string>
     <string name="library_header_import_music">Add tracks</string>
+    <string name="library_header_import_smp_short">Import SMP</string>
     <string name="library_header_forget_folder">Forget folder</string>
 
     <string name="library_assign_to_playlist_title">Add to a playlist</string>

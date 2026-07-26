@@ -628,15 +628,10 @@ fun LibrarySongsList(
                                 }
                             )
                             DropdownMenuItem(
-                                enabled = !song.isArrangementVariant,
                                 text = {
                                     Text(
                                         stringResource(R.string.backup_share),
-                                        color = if (song.isArrangementVariant) {
-                                            Color.White.copy(alpha = 0.35f)
-                                        } else {
-                                            Color.White
-                                        }
+                                        color = Color.White
                                     )
                                 },
                                 onClick = {

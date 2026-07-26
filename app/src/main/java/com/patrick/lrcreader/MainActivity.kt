@@ -107,6 +107,7 @@ import com.patrick.lrcreader.smp.SmpImportedSongDetail
 import com.patrick.lrcreader.smp.SmpImportedUiSignal
 import com.patrick.lrcreader.smp.SmpArchiveFinalizeScheduler
 import com.patrick.lrcreader.smp.SmpArchiveFinalizeStore
+import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SmpRuntimeSongCache
 import com.patrick.lrcreader.smp.SmpSecureImportPipeline
@@ -139,6 +140,11 @@ private fun sanitizeDisplayTrackTitle(value: String?): String? {
         ?.trim()
         ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
 }
+
+private data class TargetedVariantImportResult(
+    val song: com.patrick.lrcreader.smp.SongUnit? = null,
+    val failed: Boolean = false
+)
 
 class MainActivity : AppCompatActivity() {
     private data class ManualCrossfadeRequest(
@@ -768,6 +774,57 @@ class MainActivity : AppCompatActivity() {
                         "elapsedMs=$importStartMs step=main_importSmpIntoApp_start uri=$uri libraryRuntimeReadyFirst=$libraryRuntimeReadyFirst"
                     )
                     lastSmpImportFailureReason.set(null)
+                    val targetedVariantResult = withContext(Dispatchers.IO) {
+                        val packagedParentId = SmpArchiveSongIdResolver.readStableSongId(ctx, uri)
+                        val localParent = packagedParentId
+                            ?.let(smpLibraryScanner::findSongById)
+                            ?: return@withContext null
+                        val outcome = smpImporter.restoreArrangementVariantsOnly(
+                            uri = uri,
+                            sourceSong = localParent,
+                            replaceExisting = true,
+                            selectedVariantOnly = true
+                        )
+                        when {
+                            !outcome.success -> {
+                                lastSmpImportFailureReason.set(
+                                    smpImporter.lastFailureReason
+                                        ?: "restauration de la variante impossible"
+                                )
+                                TargetedVariantImportResult(failed = true)
+                            }
+
+                            outcome.selectedVariantId == null -> null
+                            else -> {
+                                val restoredVariant = smpLibraryScanner.findSongById(
+                                    outcome.selectedVariantId
+                                )
+                                if (restoredVariant != null) {
+                                    TargetedVariantImportResult(song = restoredVariant)
+                                } else {
+                                    lastSmpImportFailureReason.set(
+                                        "variante restaurée absente de la bibliothèque"
+                                    )
+                                    TargetedVariantImportResult(failed = true)
+                                }
+                            }
+                        }
+                    }
+                    if (targetedVariantResult?.failed == true) {
+                        return null
+                    }
+                    targetedVariantResult?.song?.let { importedVariant ->
+                        withContext(Dispatchers.Main) {
+                            smpSongsById = smpSongsById + (importedVariant.id to importedVariant)
+                            smpCacheRefreshTick++
+                            lastImportedSmpUiSignal = SmpImportedUiSignal(
+                                songId = importedVariant.id,
+                                title = importedVariant.title,
+                                requestVersion = smpCacheRefreshTick
+                            )
+                        }
+                        return importedVariant
+                    }
                     val blockingResult = if (!libraryRuntimeReadyFirst) {
                         withContext(Dispatchers.IO) {
                             smpSecureImportPipeline.import(uri, smpImporter)

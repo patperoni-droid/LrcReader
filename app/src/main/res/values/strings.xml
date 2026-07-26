@@ -237,6 +237,7 @@
     <string name="library_header_import_music">Ajouter des morceaux</string>
     <string name="library_header_convert_folder_to_smp">Convertir dossier en SMP</string>
     <string name="library_header_import_smp">Importer un fichier SMP</string>
+    <string name="library_header_import_smp_short">Importer SMP</string>
     <string name="library_header_forget_folder">Oublier le dossier</string>
 
     <string name="library_assign_to_playlist_title">Ajouter à une playlist</string>

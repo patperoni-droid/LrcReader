@@ -80,6 +80,9 @@ Règles de transport :
 - le morceau parent est d'abord validé, extrait et normalisé dans le runtime ;
 - le manifeste de variantes est ensuite recréé en SongUnits virtuelles distinctes dans la Bibliothèque ;
 - chaque Structure restaurée référence le `songId` local du parent importé ;
+- le `sourceSongId` d'une variante existante est immuable : un même `songId` déjà rattaché à un autre parent provoque un refus explicite de la restauration ;
+- une archive ne remplace que les données qu'elle transporte ; tout asset ou métadonnée locale absent de l'archive est conservé ;
+- une restauration échouée remet en place les variantes déjà publiées ; si le parent venait d'être créé par cet import, il est également supprimé lorsque ce retour arrière reste possible ;
 - la lecture utilise ensuite uniquement le stockage interne normalisé et ne relit jamais le `.smp` ;
 - l'absence du manifeste dans un ancien `.smp` est normale et reste entièrement rétrocompatible.
 
@@ -156,18 +159,34 @@ Suppression dans une playlist :
 - retirer une variante d'une playlist ne retire ni le parent ni les autres variantes ;
 - une playlist peut contenir uniquement la variante, sans occurrence visible du parent, tant que le parent reste présent dans la Bibliothèque.
 
-**État d'implémentation :** la suppression en cascade parent → variantes et la préservation des assets lors d'une mise à jour Arrangement sont implémentées. Le transport des futurs assets propres aux variantes reste à implémenter.
+**État d'implémentation :** la suppression en cascade parent → variantes, la préservation des assets lors d'une mise à jour Arrangement et le transport des paroles propres aux variantes sont implémentés. Le transport des futurs autres assets propres aux variantes reste à implémenter.
 
 ### Paroles propres à une variante
 
-**Étape locale en cours :**
+**Étape paroles mise en œuvre :**
 
 - une variante peut posséder un fichier `lyrics.lrc` dans son propre dossier runtime ;
 - le Player et l'éditeur résolvent ce fichier par le `songId` de la variante, jamais par l'audio du parent ;
 - écrire, importer, colorer ou synchroniser les paroles d'une variante ne modifie pas les paroles du parent ;
 - l'onglet Synchro utilise le temps cumulé de la Structure jouée, y compris l'ordre et les répétitions ;
 - les paroles locales doivent survivre à une mise à jour de la Structure et au redémarrage de l'application ;
-- cette première étape n'inclut pas encore le transport dans `arrangement_variants.json` ni les accords.
+- `arrangement_variants.json` transporte le contenu de `lyrics.lrc` et les couleurs de lignes avec l'identité stable de chaque variante ;
+- l'import du `.smp` parent recrée ces données dans le dossier runtime de la variante, sans écrire dans les paroles du parent ;
+- une ancienne sauvegarde sans assets de variante reste compatible et restaure simplement la Structure sans paroles propres ;
+- cette étape n'inclut pas encore les accords.
+
+### Partager une variante
+
+- l'action `Partager` est disponible directement sur une variante dans la Bibliothèque ;
+- la variante ne devient pas un `.smp` autonome sans audio : l'export résout son SongUnit parent et réutilise sa valise ;
+- le fichier partagé contient l'audio parent une seule fois et uniquement la variante sélectionnée dans `arrangement_variants.json` ;
+- le manifeste marque ce partage avec le `selectedVariantId`, fondé uniquement sur le `songId`, afin de le distinguer sans utiliser le nom du fichier ou le titre ;
+- le `songId` de la variante, son titre, sa Structure et ses assets propres transportés sont conservés ;
+- partager le parent conserve le comportement existant et transporte toutes ses variantes ;
+- l'export est une lecture du runtime normalisé et ne modifie ni le parent ni la variante.
+- à l'import, si le `songId` parent existe déjà, le parent local reste intact et seule la variante marquée est ajoutée ou remplacée ;
+- si le parent n'existe pas, le pipeline SMP complet normalise d'abord le parent transporté puis recrée la variante ;
+- les anciens `.smp` sans `selectedVariantId` conservent exactement leur comportement d'import complet.
 
 ---
 

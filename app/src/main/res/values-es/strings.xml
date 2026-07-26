@@ -242,6 +242,7 @@
     <string name="library_header_choose_folder">Elegir una carpeta</string>
     <string name="library_header_rescan">Volver a escanear biblioteca</string>
     <string name="library_header_import_music">Importar música</string>
+    <string name="library_header_import_smp_short">Importar SMP</string>
     <string name="library_header_forget_folder">Olvidar carpeta</string>
 
     <string name="library_assign_to_playlist_title">Agregar a una lista de reproducción</string>

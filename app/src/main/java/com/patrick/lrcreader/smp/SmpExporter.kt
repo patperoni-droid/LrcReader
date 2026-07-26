@@ -17,6 +17,11 @@ object SmpExporter {
     private const val WAVEFORM_ENTRY_NAME = "waveform.json"
     private const val ARRANGEMENT_ENTRY_NAME = "arrangement.json"
 
+    internal data class ExportRequest(
+        val packageSong: SongUnit,
+        val selectedVariantId: String?
+    )
+
     fun exportSongUnitToSmp(context: Context, songUnit: SongUnit): File? {
         val exportsRoot = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
         if (exportsRoot == null) {
@@ -43,17 +48,28 @@ object SmpExporter {
             return null
         }
 
-        val exportSong = refreshSongUnitForExport(context, songUnit)
-        if (exportSong.arrangementSourceSongId != null) {
+        val requestedSong = refreshSongUnitForExport(context, songUnit)
+        val exportRequest = runCatching {
+            resolveExportRequest(
+                requestedSong = requestedSong,
+                findSongById = SmpLibraryScanner(context)::findSongById
+            )
+        }.getOrElse { error ->
             Log.e(
                 TAG,
-                "Export SMP autonome refusé pour une variante Arrangement: songId=${exportSong.id} sourceSongId=${exportSong.arrangementSourceSongId}"
+                "Export SMP impossible: dépendance Arrangement introuvable pour ${requestedSong.id}",
+                error
             )
             return null
         }
+        val exportSong = refreshSongUnitForExport(context, exportRequest.packageSong)
         val config = SmpConfig.fromSongUnit(context, exportSong)
         val arrangementVariants = runCatching {
-            resolveArrangementVariantsForExport(context, exportSong)
+            resolveArrangementVariantsForExport(
+                context = context,
+                sourceSong = exportSong,
+                selectedVariantId = exportRequest.selectedVariantId
+            )
         }.getOrElse { error ->
             Log.e(
                 TAG,
@@ -62,7 +78,7 @@ object SmpExporter {
             )
             return null
         }
-        val targetFile = resolveAvailableExportFile(exportDir, exportSong)
+        val targetFile = resolveAvailableExportFile(exportDir, requestedSong)
         val partFile = File(exportDir, "${targetFile.name}.part")
         val ignoredFiles = mutableListOf<String>()
         var exportedFiles = 0
@@ -360,11 +376,15 @@ object SmpExporter {
 
     private fun resolveArrangementVariantsForExport(
         context: Context,
-        sourceSong: SongUnit
+        sourceSong: SongUnit,
+        selectedVariantId: String?
     ): ArrangementVariantsArchive {
         val variants = SmpLibraryScanner(context)
             .listSongs()
             .filter { candidate -> candidate.arrangementSourceSongId == sourceSong.id }
+            .filter { candidate ->
+                selectedVariantId == null || candidate.id == selectedVariantId
+            }
             .map { variant ->
                 val variantDir = variant.storageFolder
                     ?.takeIf { it.isNotBlank() }
@@ -385,13 +405,52 @@ object SmpExporter {
                 ArrangementVariantArchiveEntry(
                     id = variant.id,
                     title = variant.title,
-                    arrangement = arrangement
+                    arrangement = arrangement,
+                    lyrics = File(variantDir, "lyrics.lrc")
+                        .takeIf(File::isFile)
+                        ?.readText(Charsets.UTF_8),
+                    lyricsLineColors = File(variantDir, CONFIG_ENTRY_NAME)
+                        .takeIf(File::isFile)
+                        ?.let { configFile ->
+                            SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+                                ?.lyricsLineColors
+                        }
                 )
             }
+        if (selectedVariantId != null && variants.none { it.id == selectedVariantId }) {
+            throw IllegalStateException(
+                "Selected Arrangement variant is missing: $selectedVariantId"
+            )
+        }
 
         return ArrangementVariantsArchive(
             sourceSongId = sourceSong.id,
-            variants = variants
+            variants = variants,
+            selectedVariantId = selectedVariantId
+        )
+    }
+
+    internal fun resolveExportRequest(
+        requestedSong: SongUnit,
+        findSongById: (String) -> SongUnit?
+    ): ExportRequest {
+        val sourceSongId = requestedSong.arrangementSourceSongId
+            ?.trim()
+            ?.takeIf(String::isNotEmpty)
+            ?: return ExportRequest(
+                packageSong = requestedSong,
+                selectedVariantId = null
+            )
+        val sourceSong = findSongById(sourceSongId)
+            ?: throw IllegalStateException(
+                "Arrangement variant source song is missing: ${requestedSong.id}"
+            )
+        require(sourceSong.arrangementSourceSongId == null) {
+            "Arrangement variant source cannot be another variant"
+        }
+        return ExportRequest(
+            packageSong = sourceSong,
+            selectedVariantId = requestedSong.id
         )
     }
 }
