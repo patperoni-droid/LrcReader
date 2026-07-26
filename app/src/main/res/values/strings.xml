@@ -235,6 +235,12 @@
     <string name="library_header_choose_folder">Choisir un dossier</string>
     <string name="library_header_rescan">Rescan bibliothèque</string>
     <string name="library_header_import_music">Ajouter des morceaux</string>
+    <string name="library_header_import">Importer…</string>
+    <string name="library_import_type_title">Que souhaites-tu importer ?</string>
+    <string name="library_import_audio">Importer un morceau audio</string>
+    <string name="library_import_audio_subtitle">MP3, WAV et autres formats audio pris en charge</string>
+    <string name="library_import_smp">Importer un fichier SMP</string>
+    <string name="library_import_smp_subtitle">Sauvegarde ou morceau au format SMP</string>
     <string name="library_header_convert_folder_to_smp">Convertir dossier en SMP</string>
     <string name="library_header_import_smp">Importer un fichier SMP</string>
     <string name="library_header_import_smp_short">Importer SMP</string>

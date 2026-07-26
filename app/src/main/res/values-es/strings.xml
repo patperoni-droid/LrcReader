@@ -242,6 +242,12 @@
     <string name="library_header_choose_folder">Elegir una carpeta</string>
     <string name="library_header_rescan">Volver a escanear biblioteca</string>
     <string name="library_header_import_music">Importar música</string>
+    <string name="library_header_import">Importar…</string>
+    <string name="library_import_type_title">¿Qué quieres importar?</string>
+    <string name="library_import_audio">Importar una pista de audio</string>
+    <string name="library_import_audio_subtitle">MP3, WAV y otros formatos de audio compatibles</string>
+    <string name="library_import_smp">Importar un archivo SMP</string>
+    <string name="library_import_smp_subtitle">Una copia de seguridad o canción SMP</string>
     <string name="library_header_import_smp_short">Importar SMP</string>
     <string name="library_header_forget_folder">Olvidar carpeta</string>
 

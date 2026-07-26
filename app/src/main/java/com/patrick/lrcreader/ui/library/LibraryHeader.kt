@@ -24,6 +24,28 @@ import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.exo.R
 import java.io.File
 
+internal enum class LibraryImportKind {
+    Audio,
+    Smp
+}
+
+internal fun dispatchLibraryImport(
+    kind: LibraryImportKind,
+    onImportAudio: () -> Unit,
+    onImportSmp: () -> Unit
+) {
+    when (kind) {
+        LibraryImportKind.Audio -> onImportAudio()
+        LibraryImportKind.Smp -> onImportSmp()
+    }
+}
+
+private data class LibraryImportChoice(
+    val kind: LibraryImportKind,
+    val title: String,
+    val subtitle: String
+)
+
 private fun isLegacyBackingTracksFolderName(name: String): Boolean {
     val normalized = name.trim()
     return normalized.equals("BackingTracks", ignoreCase = true) ||
@@ -58,6 +80,7 @@ fun LibraryHeader(
 ) {
     val context = LocalContext.current
     var actionsExpanded by remember { mutableStateOf(false) }
+    var showImportTypeDialog by remember { mutableStateOf(false) }
     val sNoFolderSelected = stringResource(R.string.library_no_folder_selected)
     val sPrompter = stringResource(R.string.main_menu_prompter)
     val sSmpFolder = stringResource(R.string.library_smp_folder)
@@ -172,9 +195,12 @@ fun LibraryHeader(
                 )
 
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_header_import_music)) },
+                    text = { Text(stringResource(R.string.library_header_import)) },
                     enabled = hasRoot,
-                    onClick = { actionsExpanded = false; onImportBackingTracks() }
+                    onClick = {
+                        actionsExpanded = false
+                        showImportTypeDialog = true
+                    }
                 )
 
                 DropdownMenuItem(
@@ -184,18 +210,67 @@ fun LibraryHeader(
                 )
 
                 DropdownMenuItem(
-                    text = { Text(stringResource(R.string.library_header_import_smp)) },
-                    enabled = hasRoot,
-                    onClick = { actionsExpanded = false; onImportSmp() }
-                )
-
-                DropdownMenuItem(
                     text = { Text(stringResource(R.string.library_header_forget_folder)) },
                     enabled = hasRoot,
                     onClick = { actionsExpanded = false; onForget() }
                 )
             }
         }
+    }
+
+    if (showImportTypeDialog) {
+        val importChoices = listOf(
+            LibraryImportChoice(
+                kind = LibraryImportKind.Audio,
+                title = stringResource(R.string.library_import_audio),
+                subtitle = stringResource(R.string.library_import_audio_subtitle)
+            ),
+            LibraryImportChoice(
+                kind = LibraryImportKind.Smp,
+                title = stringResource(R.string.library_import_smp),
+                subtitle = stringResource(R.string.library_import_smp_subtitle)
+            )
+        )
+        AlertDialog(
+            onDismissRequest = { showImportTypeDialog = false },
+            title = {
+                Text(text = stringResource(R.string.library_import_type_title))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    importChoices.forEach { choice ->
+                        TextButton(
+                            onClick = {
+                                showImportTypeDialog = false
+                                dispatchLibraryImport(
+                                    kind = choice.kind,
+                                    onImportAudio = onImportBackingTracks,
+                                    onImportSmp = onImportSmp
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalAlignment = Alignment.Start
+                            ) {
+                                Text(text = choice.title)
+                                Text(
+                                    text = choice.subtitle,
+                                    color = subtitleColor,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showImportTypeDialog = false }) {
+                    Text(text = stringResource(R.string.common_cancel))
+                }
+            }
+        )
     }
 
     if (compactActionsOnly) {
@@ -224,7 +299,7 @@ fun LibraryHeader(
 
             if (showActions && !isSelectionContext) {
                 TextButton(
-                    onClick = onImportSmp,
+                    onClick = { showImportTypeDialog = true },
                     enabled = hasRoot
                 ) {
                     Icon(
@@ -233,7 +308,7 @@ fun LibraryHeader(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(Modifier.width(4.dp))
-                    Text(stringResource(R.string.library_header_import_smp_short))
+                    Text(stringResource(R.string.library_header_import))
                 }
             }
 
@@ -298,7 +373,7 @@ fun LibraryHeader(
 
         if (showActions && !isSelectionContext) {
             TextButton(
-                onClick = onImportSmp,
+                onClick = { showImportTypeDialog = true },
                 enabled = hasRoot
             ) {
                 Icon(
@@ -307,7 +382,7 @@ fun LibraryHeader(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(Modifier.width(4.dp))
-                Text(stringResource(R.string.library_header_import_smp_short))
+                Text(stringResource(R.string.library_header_import))
             }
         }
 
