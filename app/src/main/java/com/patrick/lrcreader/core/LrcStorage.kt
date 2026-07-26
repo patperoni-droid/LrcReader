@@ -1382,7 +1382,29 @@ object LrcStorage {
     private fun resolveSmpRuntimeSongDir(
         context: Context,
         trackUriString: String
+    ): File? = resolveSmpRuntimeSongDir(
+        filesDir = context.filesDir,
+        trackUriString = trackUriString
+    )
+
+    internal fun resolveSmpRuntimeSongDir(
+        filesDir: File,
+        trackUriString: String
     ): File? {
+        val tracksRoot = File(filesDir, "tracks").canonicalFile
+        getSmpSongId(trackUriString)?.let { songId ->
+            val songDir = runCatching {
+                File(tracksRoot, songId).canonicalFile
+            }.getOrNull() ?: return null
+            if (songDir.parentFile?.canonicalFile != tracksRoot) {
+                return null
+            }
+            if (!songDir.isDirectory || !File(songDir, "config.json").isFile) {
+                return null
+            }
+            return songDir
+        }
+
         val trackUri = runCatching { Uri.parse(trackUriString) }.getOrNull() ?: return null
         if (trackUri.scheme != "file") return null
 
@@ -1393,7 +1415,6 @@ object LrcStorage {
         }
 
         val songDir = audioFile.parentFile?.canonicalFile ?: return null
-        val tracksRoot = File(context.filesDir, "tracks").canonicalFile
         if (songDir.parentFile?.canonicalFile != tracksRoot) {
             return null
         }

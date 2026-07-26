@@ -1452,7 +1452,10 @@ fun PlayerScreen(
                         preferredLrcFileName = preferredAtSave
                     )
 
-                    if (!resolvedFileName.isNullOrBlank()) {
+                    if (
+                        !resolvedFileName.isNullOrBlank() &&
+                        currentArrangementSourceSongId.isNullOrBlank()
+                    ) {
                         ensureAccordsFileExistsForTrack(
                             context = context,
                             trackUriString = targetTrackUri,
@@ -2315,7 +2318,11 @@ fun PlayerScreen(
                 preferredLrcFileName = resolvedLyricsLrcFileName
             )
         }
-        if (raw == null && selectedViewMode == LyricsViewMode.CHORDS) {
+        if (
+            raw == null &&
+            selectedViewMode == LyricsViewMode.CHORDS &&
+            currentArrangementSourceSongId.isNullOrBlank()
+        ) {
             val created = withContext(Dispatchers.IO) {
                 ensureAccordsFileExistsForTrack(
                     context = context,

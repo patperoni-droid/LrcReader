@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.patrick.lrcreader.core.TrackEqSettings
 import com.patrick.lrcreader.smp.SmpConfig
+import org.json.JSONObject
 import java.io.File
 import java.security.MessageDigest
 import java.util.concurrent.locks.ReentrantLock
@@ -431,10 +432,10 @@ object TrackSettingsStore {
         val songDir = configFile.parentFile ?: return false
         val tmpFile = File(songDir, "$CONFIG_FILE_NAME.tmp")
         return runCatching {
-            val currentConfig = SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
-                ?: return false
-            val nextConfig = currentConfig.copy(lyricsLineColors = lyricsLineColors)
-            val rawJson = nextConfig.toJsonString()
+            val rawJson = mergeSmpLyricsLineColors(
+                rawJson = configFile.readText(Charsets.UTF_8),
+                lyricsLineColors = lyricsLineColors
+            ) ?: return false
             tmpFile.writeText(rawJson, Charsets.UTF_8)
             if (configFile.exists() && !configFile.delete()) {
                 Log.w(TAG, "writeSmpLyricsLineColors delete failed path=${configFile.absolutePath}")
@@ -449,6 +450,24 @@ object TrackSettingsStore {
             runCatching { tmpFile.delete() }
             false
         }
+    }
+
+    internal fun mergeSmpLyricsLineColors(
+        rawJson: String,
+        lyricsLineColors: Map<String, Int>
+    ): String? {
+        return runCatching {
+            val configJson = JSONObject(rawJson)
+            val colorsJson = JSONObject()
+            lyricsLineColors
+                .filterKeys(String::isNotBlank)
+                .toSortedMap()
+                .forEach { (key, colorArgb) ->
+                    colorsJson.put(key, colorArgb)
+                }
+            configJson.put("lyricsLineColors", colorsJson)
+            configJson.toString(2)
+        }.getOrNull()
     }
 
     private fun describeKeys(keys: ReadKeys): String {

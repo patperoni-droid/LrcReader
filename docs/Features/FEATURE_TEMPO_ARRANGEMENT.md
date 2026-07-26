@@ -156,7 +156,18 @@ Suppression dans une playlist :
 - retirer une variante d'une playlist ne retire ni le parent ni les autres variantes ;
 - une playlist peut contenir uniquement la variante, sans occurrence visible du parent, tant que le parent reste présent dans la Bibliothèque.
 
-**État d'implémentation :** le contrat est validé. La suppression en cascade parent → variantes et le transport de futurs assets propres aux variantes restent à implémenter avant d'autoriser leurs paroles ou accords.
+**État d'implémentation :** la suppression en cascade parent → variantes et la préservation des assets lors d'une mise à jour Arrangement sont implémentées. Le transport des futurs assets propres aux variantes reste à implémenter.
+
+### Paroles propres à une variante
+
+**Étape locale en cours :**
+
+- une variante peut posséder un fichier `lyrics.lrc` dans son propre dossier runtime ;
+- le Player et l'éditeur résolvent ce fichier par le `songId` de la variante, jamais par l'audio du parent ;
+- écrire, importer, colorer ou synchroniser les paroles d'une variante ne modifie pas les paroles du parent ;
+- l'onglet Synchro utilise le temps cumulé de la Structure jouée, y compris l'ordre et les répétitions ;
+- les paroles locales doivent survivre à une mise à jour de la Structure et au redémarrage de l'application ;
+- cette première étape n'inclut pas encore le transport dans `arrangement_variants.json` ni les accords.
 
 ---
 
