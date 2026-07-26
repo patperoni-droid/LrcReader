@@ -1189,6 +1189,8 @@
     <string name="more_show_light_indicator_help">Affiche un témoin visuel pour suivre l’activité lumière/DMX pendant l’utilisation live.</string>
     <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>
     <string name="more_live_songs_export_title">Sauvegarder ma bibliothèque</string>
+    <string name="more_live_songs_export_name_title">Nom de la sauvegarde</string>
+    <string name="more_live_songs_export_name_label">Nom du dossier</string>
     <string name="more_live_songs_export_progress">Sauvegarde en cours : %1$d / %2$d</string>
     <string name="more_live_songs_export_result">Sauvegarde terminée : %1$d réussi(s), %2$d échoué(s)\nDossier : %3$s</string>
     <string name="more_live_songs_export_no_songs">Aucun morceau à sauvegarder</string>

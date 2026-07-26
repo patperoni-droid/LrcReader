@@ -1183,6 +1183,8 @@
     <string name="more_show_light_indicator_help">Shows a visual indicator for light/DMX activity during live use.</string>
     <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>
     <string name="more_live_songs_export_title">Back up my library</string>
+    <string name="more_live_songs_export_name_title">Backup name</string>
+    <string name="more_live_songs_export_name_label">Folder name</string>
     <string name="more_live_songs_export_progress">Backup in progress: %1$d / %2$d</string>
     <string name="more_live_songs_export_result">Backup complete: %1$d succeeded, %2$d failed\nFolder: %3$s</string>
     <string name="more_live_songs_export_no_songs">No songs to back up</string>

@@ -1107,6 +1107,8 @@
     <string name="more_show_light_indicator_help">Muestra un indicador visual de la actividad de luces/DMX durante el uso en directo.</string>
     <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>
     <string name="more_live_songs_export_title">Guardar mi biblioteca</string>
+    <string name="more_live_songs_export_name_title">Nombre de la copia de seguridad</string>
+    <string name="more_live_songs_export_name_label">Nombre de la carpeta</string>
     <string name="more_live_songs_export_progress">Copia de seguridad en curso: %1$d / %2$d</string>
     <string name="more_live_songs_export_result">Copia de seguridad terminada: %1$d correctas, %2$d fallidas\nCarpeta: %3$s</string>
     <string name="more_live_songs_export_no_songs">No hay canciones para guardar</string>

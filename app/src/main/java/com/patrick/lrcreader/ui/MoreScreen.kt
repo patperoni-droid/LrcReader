@@ -529,6 +529,10 @@ private fun MoreRootScreen(
     var exportLiveSongsTotal by remember { mutableStateOf(0) }
     var exportLiveSongsCurrentTitle by remember { mutableStateOf<String?>(null) }
     var exportLiveSongsResultMessage by remember { mutableStateOf<String?>(null) }
+    var showExportLiveSongsNameDialog by remember { mutableStateOf(false) }
+    var exportLiveSongsDefaultName by remember { mutableStateOf("") }
+    var exportLiveSongsName by remember { mutableStateOf("") }
+    var pendingExportLiveSongsFolderName by remember { mutableStateOf<String?>(null) }
     var isRestoringLibrary by remember { mutableStateOf(false) }
     var restoreLibraryDone by remember { mutableStateOf(0) }
     var restoreLibraryTotal by remember { mutableStateOf(0) }
@@ -687,7 +691,13 @@ private fun MoreRootScreen(
     val exportLiveSongsFolderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { pickedUri ->
-        if (pickedUri == null) return@rememberLauncherForActivityResult
+        if (pickedUri == null) {
+            pendingExportLiveSongsFolderName = null
+            return@rememberLauncherForActivityResult
+        }
+        val requestedFolderName = pendingExportLiveSongsFolderName
+            ?: buildDefaultLiveSongsExportName()
+        pendingExportLiveSongsFolderName = null
         runCatching {
             context.contentResolver.takePersistableUriPermission(
                 pickedUri,
@@ -703,7 +713,11 @@ private fun MoreRootScreen(
             exportLiveSongsCurrentTitle = null
 
             val exportTarget = withContext(Dispatchers.IO) {
-                buildLiveSongsExportTarget(context.applicationContext, pickedUri)
+                buildLiveSongsExportTarget(
+                    context = context.applicationContext,
+                    treeUri = pickedUri,
+                    requestedFolderName = requestedFolderName
+                )
             }
             if (exportTarget == null) {
                 exportLiveSongsResultMessage = sLiveSongsExportFailed
@@ -1034,7 +1048,10 @@ private fun MoreRootScreen(
                                 showExportProDialog = true
                                 return@SettingsItem
                             }
-                            exportLiveSongsFolderLauncher.launch(exportLiveSongsTreeUri)
+                            val defaultName = buildDefaultLiveSongsExportName()
+                            exportLiveSongsDefaultName = defaultName
+                            exportLiveSongsName = defaultName
+                            showExportLiveSongsNameDialog = true
                         }
                     )
                     val restoreLibraryLabel = stringResource(R.string.more_item_restore_library)
@@ -1458,6 +1475,45 @@ private fun MoreRootScreen(
                 DisplayPrefs.setGuidedReadingColorB(context, color)
             },
             onDismiss = { showGuidedReadingColorsDialog = false }
+        )
+    }
+
+    if (showExportLiveSongsNameDialog) {
+        AlertDialog(
+            onDismissRequest = { showExportLiveSongsNameDialog = false },
+            title = {
+                Text(text = stringResource(R.string.more_live_songs_export_name_title))
+            },
+            text = {
+                OutlinedTextField(
+                    value = exportLiveSongsName,
+                    onValueChange = { exportLiveSongsName = it },
+                    label = {
+                        Text(text = stringResource(R.string.more_live_songs_export_name_label))
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            dismissButton = {
+                TextButton(onClick = { showExportLiveSongsNameDialog = false }) {
+                    Text(text = stringResource(R.string.common_cancel))
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingExportLiveSongsFolderName = normalizeLiveSongsExportName(
+                            requestedName = exportLiveSongsName,
+                            defaultName = exportLiveSongsDefaultName
+                        )
+                        showExportLiveSongsNameDialog = false
+                        exportLiveSongsFolderLauncher.launch(exportLiveSongsTreeUri)
+                    }
+                ) {
+                    Text(text = stringResource(R.string.common_save))
+                }
+            }
         )
     }
 
@@ -2021,14 +2077,34 @@ private fun SettingsInfoItem(
     HorizontalDivider(color = Color(0xFF1E1E1E))
 }
 
+internal fun buildDefaultLiveSongsExportName(at: Date = Date()): String {
+    val formatter = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US)
+    return "Export_${formatter.format(at)}"
+}
+
+internal fun normalizeLiveSongsExportName(
+    requestedName: String,
+    defaultName: String
+): String {
+    val normalized = requestedName
+        .trim()
+        .filterNot(Char::isISOControl)
+        .replace('/', '-')
+        .replace('\\', '-')
+    return normalized.ifBlank { defaultName }
+}
+
 private fun buildLiveSongsExportTarget(
     context: Context,
-    treeUri: android.net.Uri
+    treeUri: android.net.Uri,
+    requestedFolderName: String
 ): DocumentFile? {
     val root = DocumentFile.fromTreeUri(context, treeUri) ?: return null
     if (!root.isDirectory) return null
-    val formatter = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US)
-    val folderName = "Export_${formatter.format(Date())}"
+    val folderName = normalizeLiveSongsExportName(
+        requestedName = requestedFolderName,
+        defaultName = buildDefaultLiveSongsExportName()
+    )
     return root.findFile(folderName)?.takeIf { it.isDirectory }
         ?: root.createDirectory(folderName)
 }
