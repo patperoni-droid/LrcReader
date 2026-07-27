@@ -1457,6 +1457,7 @@ class MainActivity : AppCompatActivity() {
                 var trimStopJob by remember { mutableStateOf<Job?>(null) }
                 var trimAppliedForThisTrack by remember { mutableStateOf(false) }
                 val nextTrack by PlaybackCoordinator.nextTrack.collectAsState()
+                val activeAudioSource by PlaybackCoordinator.activeSource.collectAsState()
                 var manualCrossfadeTransitionTitle by remember { mutableStateOf<String?>(null) }
                 var manualCrossfadePlayer by remember { mutableStateOf<ExoPlayer?>(null) }
                 var manualCrossfadeJob by remember { mutableStateOf<Job?>(null) }
@@ -3978,6 +3979,7 @@ class MainActivity : AppCompatActivity() {
                                 selected = selectedTab,
                                 showMainBusTab = showMainBusTab,
                                 showDjTab = showDjTab,
+                                activeAudioSource = activeAudioSource,
                                 onSelected = { tab ->
 
                                     // ✅ fermer les overlays quand on change d'onglet
@@ -4457,7 +4459,13 @@ class MainActivity : AppCompatActivity() {
                                             Icon(
                                                 imageVector = Icons.Filled.MusicNote,
                                                 contentDescription = stringResource(R.string.tab_player),
-                                                tint = Color.White.copy(alpha = 0.78f)
+                                                tint = if (
+                                                    activeAudioSource == PlaybackCoordinator.Source.Player
+                                                ) {
+                                                    Color(0xFFFFC107)
+                                                } else {
+                                                    Color.White.copy(alpha = 0.78f)
+                                                }
                                             )
                                         }
                                         IconButton(
@@ -4467,7 +4475,13 @@ class MainActivity : AppCompatActivity() {
                                             Icon(
                                                 imageVector = Icons.Filled.Waves,
                                                 contentDescription = stringResource(R.string.tablet_split_menu_filler),
-                                                tint = Color.White.copy(alpha = 0.78f)
+                                                tint = if (
+                                                    activeAudioSource == PlaybackCoordinator.Source.Filler
+                                                ) {
+                                                    Color(0xFFFFC107)
+                                                } else {
+                                                    Color.White.copy(alpha = 0.78f)
+                                                }
                                             )
                                         }
                                         IconButton(
@@ -4478,7 +4492,14 @@ class MainActivity : AppCompatActivity() {
                                             Icon(
                                                 imageVector = Icons.Filled.Headset,
                                                 contentDescription = stringResource(R.string.tablet_split_menu_dj),
-                                                tint = Color.White.copy(alpha = if (showDjTab) 0.78f else 0.32f)
+                                                tint = if (
+                                                    showDjTab &&
+                                                    activeAudioSource == PlaybackCoordinator.Source.Dj
+                                                ) {
+                                                    Color(0xFFFFC107)
+                                                } else {
+                                                    Color.White.copy(alpha = if (showDjTab) 0.78f else 0.32f)
+                                                }
                                             )
                                         }
                                         IconButton(

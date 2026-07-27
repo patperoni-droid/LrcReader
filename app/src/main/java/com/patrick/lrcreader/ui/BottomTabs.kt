@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.ui
 
 import com.patrick.lrcreader.core.EditionConfig
+import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.exo.R
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -84,6 +85,7 @@ fun BottomTabsBar(
     selected: BottomTab,
     showMainBusTab: Boolean,
     showDjTab: Boolean,
+    activeAudioSource: PlaybackCoordinator.Source,
     onSelected: (BottomTab) -> Unit,
     onSearchClick: () -> Unit,
     onMoreClick: () -> Unit,
@@ -107,6 +109,12 @@ fun BottomTabsBar(
     NavigationBar(containerColor = Color.Black, contentColor = Color.White) {
         tabs.forEach { tab ->
             val isSelected = tab.id == selected.id
+            val isActiveAudioSource = when (tab) {
+                BottomTab.Player -> activeAudioSource == PlaybackCoordinator.Source.Player
+                BottomTab.Filler -> activeAudioSource == PlaybackCoordinator.Source.Filler
+                BottomTab.Dj -> activeAudioSource == PlaybackCoordinator.Source.Dj
+                else -> false
+            }
 
             NavigationBarItem(
                 selected = isSelected,
@@ -131,8 +139,10 @@ fun BottomTabsBar(
                     }
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = Color.White,
-                    unselectedIconColor = Color.White.copy(alpha = 0.4f),
+                    selectedIconColor =
+                        if (isActiveAudioSource) Color(0xFFFFC107) else Color.White,
+                    unselectedIconColor =
+                        if (isActiveAudioSource) Color(0xFFFFC107) else Color.White.copy(alpha = 0.4f),
                     indicatorColor = Color.Transparent
                 )
             )

@@ -177,12 +177,36 @@ PLAYBACK INTEGRATION
 
 The playlist interacts with the Player:
 
-- selecting a song starts playback
+- the Player always receives one real `songId`
 - next song depends on playlist order OR "Define Next"
 
 Rules:
 - playlist must not override Player logic
 - playlist provides structure only
+- on tablet live screens, selecting another song prepares it without interrupting the
+  current song; the yellow Play action starts the prepared song
+- phone and tablet may present selection differently, but playback identity and handoff
+  rules remain shared
+
+⸻
+
+VIRTUAL ARRANGEMENT VARIANTS
+
+A virtual Arrangement variant is a distinct Playlist target.
+
+Rules:
+- parent and variant have different stable `songId` values
+- a variant keeps its immutable `sourceSongId` link to the parent
+- playlist references use the variant `songId`, never its title or file path
+- playback resolves the variant structure and the parent audio without duplicating audio
+- parent and variant can be added, ordered, grouped, repeated, or removed independently
+- removing the parent occurrence from a playlist does not remove a variant occurrence
+- removing a variant occurrence does not remove the parent occurrence
+- deleting the parent SongUnit from the Library deletes its variants and must remove or
+  safely invalidate their playlist references after explicit confirmation
+
+The parent does not need to appear in the same playlist as its variant, but it must still
+exist in the Library because the variant depends on its audio.
 
 ⸻
 
@@ -371,10 +395,16 @@ Rules:
 DATA MODEL
 
 Playlist stores:
-- songId references
+- stable `songId` references for parents and variants
+- a stable occurrence/item identity independent from `songId`
 - order
 - group metadata
 - optional group color metadata
+
+The occurrence identity allows:
+- the same `songId` to appear several times
+- each occurrence to keep its exact position and group
+- parent and variant occurrences to remain independent
 
 Must NOT store:
 - audio files
@@ -404,6 +434,7 @@ Import must preserve:
 - group colors
 - ghost occurrences / repeated `songId` occurrences
 - raw song order
+- custom playlist titles and occurrence identity
 
 The Android file picker used for playlist import is based on SAF / DocumentsUI.
 
@@ -421,6 +452,8 @@ Restore rules:
 - restored playlists must reference SMP songs by `smp://songId`
 - virtual Arrangement variants restored from their parent archive must be registered as valid playlist targets before playlist state remapping
 - display resolution for `smp://songId` must use the current Library index
+- internal groups, their colors, their order, repeated occurrences, and custom titles must be reconstructed
+- a parent and its variants must return to their exact stored groups and positions
 - playback must never be required to hydrate playlist titles
 - restored playlists must survive restart, device transfer, and backup restore without manual repair
 
@@ -467,6 +500,10 @@ KNOWN PITFALLS
 - next title displayed as null
 - playlist UI state used as playback truth
 - group membership lost after reorder
+- playlist restored before parent and variant registration
+- internal groups flattened or lost during complete restore
+- valid variant displayed as “Titre manquant” although playback can resolve it
+- parent or variant resolved by title, filename, URI, or path instead of `songId`
 
 ⸻
 
@@ -526,6 +563,13 @@ Test at least:
 - modify a playlist, then put the app in background to trigger auto-backup
 - verify no `ConcurrentModificationException` during backup/export
 - verify played-state and backup export remain stable while playlist modifications are happening
+- add a parent and one of its variants as independent playlist occurrences
+- remove the parent occurrence and verify that the variant occurrence remains
+- create a group containing a parent and its variant
+- complete backup and restore that grouped playlist
+- verify group, color, order, repeated occurrences, and custom titles are restored
+- verify no valid parent or variant is displayed as “Titre manquant”
+- verify restored parent and variant occurrences survive app restart
 
 👉 Must be tested on real device
 

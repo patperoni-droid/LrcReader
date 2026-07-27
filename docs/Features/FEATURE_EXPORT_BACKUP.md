@@ -20,8 +20,8 @@ sécurité des données > simplicité > portabilité
 
 ### 📦 SMP = format de transport
 
-- `.smp` est une archive complète
-- contient toutes les données nécessaires au morceau
+- `.smp` est l'archive de transport d'une SongUnit
+- l'archive d'un parent contient son audio, ses données et ses variantes virtuelles
 - indépendant du téléphone d’origine
 
 ---
@@ -43,7 +43,31 @@ IMPORT → runtime → MODIFICATION → EXPORT
 
 ---
 
-## 📤 EXPORT INDIVIDUEL
+## 📤 PARTAGE SMP D'UN TITRE OU D'UNE VARIANTE
+
+Le partage réutilise le même format `.smp` et le même pipeline d'import.
+
+### Partage du parent
+
+- exporte la SongUnit parent
+- transporte l'audio une seule fois
+- inclut les variantes du parent et leurs données propres
+
+### Partage d'une variante
+
+- conserve le `songId` de la variante
+- conserve son `sourceSongId` immuable
+- transporte le parent nécessaire à son autonomie
+- inclut uniquement la variante ciblée grâce à `selectedVariantId`
+- transporte ses paroles, ses accords, ses couleurs de lignes et sa structure
+- ne crée pas un second fichier audio
+
+À l'import, l'archive ne doit jamais modifier un parent local qui possède déjà le même
+`songId`. Elle ajoute ou met à jour uniquement la variante transportée.
+
+---
+
+## 📤 EXPORT INDIVIDUEL — ASSEMBLAGE ARRANGEMENT
 
 ### Flux
 
@@ -90,8 +114,9 @@ Arrangement → WAV → SMP → runtime
 - tous les morceaux importés (version runtime), incluant leurs réglages LUFS dans `config.json`
 - le projet `arrangement.json` courant de chaque morceau lorsqu'il existe
 - les variantes Arrangement virtuelles dans `arrangement_variants.json` à l'intérieur du `.smp` de leur morceau parent
+- les paroles, accords et couleurs de lignes propres à chaque variante
 - tous les `.smp` présents dans le stockage
-- playlists
+- playlists, groupes internes, couleurs, ordre, occurrences répétées et titres personnalisés
 - état utilisateur (played, lastPlayed, etc.)
 
 ### Variantes Arrangement virtuelles
@@ -102,21 +127,25 @@ La sauvegarde complète applique donc les règles suivantes :
 
 - un seul `.smp` est créé pour le morceau parent ;
 - l'audio source n'est présent qu'une fois ;
-- les identifiants, titres et Structures de ses variantes sont embarqués dans ce même conteneur ;
+- les identifiants, titres, structures, paroles, accords et couleurs de lignes de ses variantes sont embarqués dans ce même conteneur ;
 - une variante orpheline dont le parent est absent provoque un échec signalé au lieu d'être ignorée silencieusement.
 
 Lors de la restauration, le parent est importé en premier puis ses variantes sont recréées comme données runtime normalisées. Les anciens `.smp` sans variantes restent compatibles.
 
-Diagnostic du premier essai du 22 juillet 2026 : la sauvegarde concernée avait été créée avec une application installée avant cette évolution et son `.smp` ne contenait ni `arrangement.json` ni `arrangement_variants.json`. Les variantes encore visibles avaient été conservées par la restauration non destructive. Une ancienne archive reste compatible, mais elle ne peut pas recréer des données Arrangement absentes de son contenu. La validation fonctionnelle doit donc utiliser une nouvelle sauvegarde produite après installation du build corrigé.
+Une ancienne archive reste compatible, mais elle ne peut pas recréer une donnée qui
+n'était pas transportée au moment de sa création.
 
 ---
 
 ### Destination
 
 - dossier choisi par l’utilisateur via SAF
-- sous-dossier automatique :
-
-Export_YYYY-MM-DD_HH-mm
+- un nom par défaut basé sur la date et l'heure est proposé :
+  `Export_YYYY-MM-DD_HH-mm`
+- ce nom est affiché dans un champ éditable avant la sauvegarde
+- si l'utilisateur ne le modifie pas, le comportement historique est conservé
+- si l'utilisateur le personnalise, le sous-dossier porte le nom choisi
+- un nom vide revient au nom proposé et les séparateurs de chemin invalides sont neutralisés
 
 ---
 
@@ -148,7 +177,11 @@ Export_YYYY-MM-DD_HH-mm
 - sélection d’un dossier via SAF
 - scan des `.smp`
 - lecture du `state.json`
-- import prioritaire des morceaux / `SongUnit`
+- import des SongUnit parents
+- restauration de leurs variantes
+- rafraîchissement de l'index de la Bibliothèque
+- remappage de l'état par `songId`
+- restauration des playlists et de leurs groupes
 - gestion des conflits
 
 ---
@@ -159,6 +192,7 @@ Export_YYYY-MM-DD_HH-mm
 
 - garde les morceaux déjà présents
 - ajoute uniquement les nouveaux
+- restaure les variantes manquantes sans remplacer leurs parents locaux
 
 ---
 
@@ -166,6 +200,7 @@ Export_YYYY-MM-DD_HH-mm
 
 - remplace uniquement les morceaux présents dans la sauvegarde
 - ne supprime jamais les autres
+- restaure ensuite les variantes transportées par chaque parent
 
 ---
 
@@ -175,19 +210,26 @@ Export_YYYY-MM-DD_HH-mm
 ✔ aucune suppression automatique  
 ✔ les morceaux restaurés sont disponibles comme runtime normalisé  
 ✔ les variantes virtuelles sont restaurées avec leur parent sans duplication audio
-✔ les playlists peuvent être réactivées par import JSON dédié  
+✔ `sourceSongId` reste immuable et un conflit de parent est refusé explicitement
+✔ une archive ne modifie que les données qu'elle transporte
+✔ les données locales absentes de l'archive sont conservées
+✔ les playlists et leurs groupes sont restaurés automatiquement après l'index Bibliothèque
 ✔ fonctionnement non destructif
 
-### Playlists et restauration bêta
+### Playlists et restauration complète
 
-En bêta publique, la restauration bibliothèque privilégie la reconstruction fiable des morceaux.
+Une sauvegarde complète doit reconstruire l'état utilisateur, pas seulement les morceaux.
 
 Règles :
 
-- les `SongUnit` restaurés redeviennent immédiatement exploitables
-- les playlists peuvent ensuite être importées individuellement depuis leur JSON
-- l'utilisateur choisit ainsi quelles playlists réactiver
-- l'import JSON playlist préserve groupes, couleurs, occurrences fantômes et ordre brut
+- les `SongUnit` parents sont disponibles avant leurs variantes
+- les variantes sont inscrites dans l'index Bibliothèque avant le remappage des playlists
+- les playlists sont restaurées automatiquement depuis `state.json`
+- groupes internes, couleurs, ordre brut, occurrences répétées et titres personnalisés sont préservés
+- le parent et sa variante retrouvent leur groupe et leur position
+- un `songId` valide ne doit jamais apparaître comme « Titre manquant »
+- la lecture ne doit jamais servir à réparer ou hydrater l'affichage d'une playlist
+- l'import JSON dédié reste disponible pour un import volontaire d'une playlist isolée
 - voir `FEATURE_PLAYLISTS.md`
 
 ---
@@ -233,8 +275,12 @@ Lors du premier choix du workspace :
 
 ### Cas d’usage
 
-- ouverture d’un fichier `.smp`
-- import automatique dans l’application
+- Bibliothèque → `Importer…` → `Importer un fichier SMP`
+- sélection du fichier avec le sélecteur Android
+- réutilisation du pipeline normal d'import SMP
+
+L'ouverture directe d'un `.smp` depuis Gmail ou Files via `ACTION_VIEW` ne fait pas
+partie du parcours actuellement documenté comme validé.
 
 ---
 
@@ -249,6 +295,15 @@ Lors du premier choix du workspace :
 - création d’un `SongUnit`
 - ajout à la bibliothèque
 - prêt à être utilisé immédiatement
+
+### Import d'une variante partagée
+
+- si le parent est absent, la SongUnit parent transportée est installée puis la variante est recréée
+- si le parent existe avec le même `songId`, il reste la référence locale et n'est jamais modifié
+- si la variante existe déjà avec le même parent, elle est mise à jour sans doublon
+- si le même `songId` de variante est déjà rattaché à un autre `sourceSongId`, l'import est refusé
+- une donnée présente dans l'archive est restaurée
+- une donnée absente de l'archive laisse la donnée locale existante inchangée
 
 ---
 
@@ -306,36 +361,46 @@ Voir aussi : `FEATURE_SMP_SYNC.md`
 
 - restauration non interactive (pas de “me demander” fichier par fichier)
 - dépendance à la présence correcte des `songId` dans les `.smp`
+- la sauvegarde complète reste un dossier contenant plusieurs fichiers, pas une archive unique
+- le choix Conserver / Remplacer s'applique au flux de restauration, pas fichier par fichier
 
 ---
 
 ### Cas limites
 
-- `.smp` sans `songId` lisible → duplication possible
+- ancien `.smp` sans `songId` lisible → traité comme une nouvelle identité, donc duplication possible
+- une archive ancienne ne peut pas recréer les données qu'elle ne transporte pas
+- une variante orpheline ne peut pas être sauvegardée sans son parent
 - sauvegardes multiples → gestion utilisateur nécessaire
 
 ---
 
-## 🔮 ROADMAP
+## 🔮 PISTES FUTURES NON IMPLÉMENTÉES
 
-### V2
-
-- mode avancé “me demander”
-- sélection fine des conflits
-
----
-
-### V3
-
-- nettoyage automatique des `.smp`
-- meilleure gestion du stockage
+- mode avancé “me demander” et sélection des conflits fichier par fichier
+- synchronisation ou mise à jour d'une sauvegarde existante
+- sauvegarde complète dans une archive unique
+- ouverture directe d'un fichier `.smp` par `ACTION_VIEW`
 
 ---
 
-### V4
+## ✅ VALIDATION FONCTIONNELLE
 
-- sauvegarde complète en un fichier unique
-- restauration en un clic
+Vérifier au minimum :
+
+- sauvegarde avec le nom automatique proposé
+- sauvegarde avec un nom personnalisé
+- restauration complète d'un parent et de ses variantes
+- restauration des paroles et accords propres aux variantes
+- restauration d'une playlist contenant un groupe avec parent et variante
+- conservation de l'ordre, des couleurs, des occurrences répétées et des titres personnalisés
+- absence de « Titre manquant » pour toute référence `songId` valide
+- parent déjà présent : parent conservé et variante restaurée
+- parent absent : parent recréé puis variante restaurée
+- variante déjà présente : mise à jour sans doublon
+- conflit de `sourceSongId` : refus explicite
+- compatibilité d'une archive ancienne
+- validation sur téléphone et tablette
 
 ---
 

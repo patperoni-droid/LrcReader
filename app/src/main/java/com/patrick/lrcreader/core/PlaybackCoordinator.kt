@@ -34,7 +34,13 @@ object PlaybackCoordinator {
     }
 
     // Source actuellement "maître"
-    private var currentSource: Source = Source.None
+    private val _activeSource = MutableStateFlow(Source.None)
+    val activeSource: StateFlow<Source> = _activeSource.asStateFlow()
+    private var currentSource: Source
+        get() = _activeSource.value
+        set(value) {
+            _activeSource.value = value
+        }
 
     // callbacks fournis par MainActivity / DjEngine / FillerSoundManager
     var stopPlayer: (() -> Unit)? = null

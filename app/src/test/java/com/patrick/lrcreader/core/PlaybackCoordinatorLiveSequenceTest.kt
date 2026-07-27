@@ -31,24 +31,28 @@ class PlaybackCoordinatorLiveSequenceTest {
 
         PlaybackCoordinator.requestStartPlayer()
         assertTrue(PlaybackCoordinator.isMainPlaying)
+        assertEquals(PlaybackCoordinator.Source.Player, PlaybackCoordinator.activeSource.value)
         assertEquals(0, stopPlayerCount)
         assertEquals(0, stopDjCount)
         assertEquals(0, stopFillerCount)
 
         PlaybackCoordinator.requestStartDj()
         assertTrue(PlaybackCoordinator.isMainPlaying)
+        assertEquals(PlaybackCoordinator.Source.Dj, PlaybackCoordinator.activeSource.value)
         assertEquals(1, stopPlayerCount)
         assertEquals(0, stopDjCount)
         assertEquals(0, stopFillerCount)
 
         PlaybackCoordinator.requestStartFiller()
         assertFalse(PlaybackCoordinator.isMainPlaying)
+        assertEquals(PlaybackCoordinator.Source.Filler, PlaybackCoordinator.activeSource.value)
         assertEquals(1, stopPlayerCount)
         assertEquals(1, stopDjCount)
         assertEquals(0, stopFillerCount)
 
         PlaybackCoordinator.requestStartPlayer()
         assertTrue(PlaybackCoordinator.isMainPlaying)
+        assertEquals(PlaybackCoordinator.Source.Player, PlaybackCoordinator.activeSource.value)
         assertEquals(1, stopPlayerCount)
         assertEquals(1, stopDjCount)
         assertEquals(1, stopFillerCount)
@@ -77,9 +81,25 @@ class PlaybackCoordinatorLiveSequenceTest {
         PlaybackCoordinator.requestStartFiller()
 
         assertFalse(PlaybackCoordinator.isMainPlaying)
+        assertEquals(PlaybackCoordinator.Source.Filler, PlaybackCoordinator.activeSource.value)
         assertEquals(1, stopPlayerCount)
         assertEquals(0, stopDjCount)
         assertEquals(0, stopFillerCount)
+    }
+
+    @Test
+    fun stoppingActiveSource_clearsVisualSourceState() {
+        PlaybackCoordinator.requestStartPlayer()
+        PlaybackCoordinator.onPlayerStop()
+        assertEquals(PlaybackCoordinator.Source.None, PlaybackCoordinator.activeSource.value)
+
+        PlaybackCoordinator.requestStartFiller()
+        PlaybackCoordinator.onFillerStop()
+        assertEquals(PlaybackCoordinator.Source.None, PlaybackCoordinator.activeSource.value)
+
+        PlaybackCoordinator.requestStartDj()
+        PlaybackCoordinator.onDjStop()
+        assertEquals(PlaybackCoordinator.Source.None, PlaybackCoordinator.activeSource.value)
     }
 
     private fun resetCoordinator() {

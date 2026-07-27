@@ -13,11 +13,12 @@ USER GOAL
 
 The user must be able to:
 - browse audio files
-- import songs into the app
+- import supported audio files or `.smp` SongUnits into the app
 - manage live songs
 - select multiple files
 - assign songs to playlists
 - rename display titles
+- share a parent song or one of its virtual Arrangement variants
 - keep original files safe
 
 👉 Library = entry point for song preparation
@@ -69,13 +70,19 @@ Internal song data may include:
 - audio
 - lyrics
 - chords
+- Arrangement structure and virtual variants
 - timeline data
 - metadata
 - track settings
 
-Each internal song must be linked by songId.
+Each internal parent or variant SongUnit must be linked by `songId`.
 
-👉 songId is the stable identity.
+For a virtual Arrangement variant:
+- it has its own `songId`, title, runtime folder, Structure, lyrics, and chords
+- its immutable `sourceSongId` identifies the parent SongUnit that owns the audio
+- it must never duplicate the parent audio
+
+👉 `songId` is the stable identity.
 
 ⸻
 
@@ -94,6 +101,31 @@ Import must follow this flow:
 
 ⸻
 
+VISIBLE IMPORT ENTRY
+
+The common Library action is:
+
+`Importer…`
+
+It is available on phone and tablet and opens a choice between:
+
+- `Importer un morceau audio`
+- `Importer un fichier SMP`
+
+Audio import:
+- accepts MP3, WAV, FLAC, M4A, AAC, OGG, and any format explicitly supported by the current import pipeline
+- converts and normalizes the selected audio through the existing audio-to-SMP pipeline
+- does not create a second import implementation
+
+SMP import:
+- opens the Android document picker
+- reuses the official SMP validation, extraction, and normalization pipeline
+- uses `songId`, never the selected file name, as identity
+
+The currently implemented user entry point is the visible Library action and its Android picker. Direct external opening through an Android `ACTION_VIEW` intent is not part of the current validated flow.
+
+⸻
+
 SMP FILES
 
 .smp files are transport packages.
@@ -102,8 +134,35 @@ Rules:
 - .smp can be imported
 - .smp must be extracted before use
 - .smp must never be read directly during live playback
+- importing a parent archive restores its valid virtual variants after the parent is ready
+- old archives without Arrangement or variant data remain compatible
 
 👉 Runtime uses extracted internal data only.
+
+⸻
+
+VIRTUAL ARRANGEMENT VARIANTS
+
+A virtual variant is displayed in the Library as an independent SongUnit even though its audio remains owned by its parent.
+
+User behavior:
+- it can be selected, played, edited, assigned to a playlist, and shared
+- its lyrics and chords are resolved by the variant `songId`
+- editing variant lyrics or chords never modifies the parent
+- the parent may exist in the Library without being visible in the same playlist
+
+Sharing:
+- the `Partager` action is enabled for a valid variant
+- SMP packages the parent audio once and includes only the selected variant
+- the selected variant keeps its `songId`, title, Structure, lyrics, chords, and line colors when present
+- sharing does not create a WAV and does not modify the parent
+
+Importing a shared variant:
+- if the parent exists locally, that parent remains unchanged and only the selected variant is restored
+- if the parent is absent, it is normalized first, then the selected variant is restored
+- an existing variant with the same `songId` is updated without duplication
+- the same variant `songId` attached to another `sourceSongId` is refused explicitly
+- optional local variant assets absent from the archive are preserved
 
 ⸻
 
@@ -133,12 +192,14 @@ SMP RESTORE CONSISTENCY
 A full SMP restore must rebuild the usable app state before any playback:
 
 1. import valid .smp files into the official runtime SongUnit storage
-2. refresh/rebuild the Library index from runtime
-3. validate restored songIds against that index
-4. restore and persist playlists only after validation
+2. restore virtual variants from their parent archives
+3. refresh/rebuild the Library index from runtime
+4. validate restored songIds against that index
+5. restore and persist playlists only after validation
 
 Rules:
 - restored .smp files must become runtime SongUnits directly
+- parents and variants must both be visible in the refreshed index before playlist remapping
 - playlist restore must never run against a stale Library index
 - playback must not be required to hydrate Library metadata
 - invalid transport noise files such as macOS `._*.smp` must be ignored
@@ -204,7 +265,8 @@ Official first-launch workflow:
 - the user either confirms that folder or navigates to another folder
 - Android asks for the SAF authorization
 - after returning to SMP, the Demo Library is installed automatically
-- SMP then starts directly in the application
+- SMP keeps the progress/loading state visible until the workspace is confirmed ready
+- SMP then opens the Demo Library / playlist directly
 
 Rules:
 - avoid duplicate permission prompts between SMP UI and Android system popups
@@ -212,6 +274,9 @@ Rules:
 - SMP may explain that Android will ask the user to confirm `Use this folder`, but it must not add another setup decision
 - Android media permissions must not be requested during first launch if the SAF workspace flow is enough
 - the demo library is installed automatically after the SAF workspace is authorized
+- once Demo installation starts, the welcome screen must never reappear during final workspace verification
+- the user must not see a transient Player or main-screen flash before the Demo destination
+- the orange development `Debug` action is not part of the normal first-launch UI
 - importing personal music is a normal Library action, not a first-launch installation step
 
 Removed first-launch decisions:
@@ -340,6 +405,9 @@ Rules:
 - app must clearly explain what will be deleted
 - deleting live songs from the Library removes active runtime SongUnits and playlist references only
 - external `.smp` backup/export archives must never be deleted automatically by Library runtime deletion
+- deleting a parent SongUnit also deletes all of its virtual variants and their playlist references after confirmation of the cascade
+- deleting one virtual variant never deletes its parent or sibling variants
+- removing a parent occurrence from a playlist does not delete or remove a variant occurrence
 
 ⸻
 
@@ -351,6 +419,9 @@ Rules:
 - playlist stores songId references only
 - no audio duplication inside playlists
 - assignment must preserve selected order
+- a virtual variant is assigned using its own `songId`
+- assigning a variant does not require assigning its parent to the same playlist
+- the parent must still exist in normalized Library storage
 
 ⸻
 
@@ -487,6 +558,11 @@ KNOWN PITFALLS
 - hiding valid files because of strict filters
 - showing empty folders because virtual folders are misunderstood
 - breaking playlists by changing songId
+- resolving a variant by title instead of `songId`
+- silently changing a variant `sourceSongId`
+- replacing a local parent during targeted variant import
+- deleting local variant lyrics or chords because an older archive does not contain them
+- restoring playlists before variants are registered in the Library index
 - modifying original files accidentally
 - doing heavy I/O on main thread
 
@@ -498,15 +574,25 @@ Test at least:
 
 - browse device audio files
 - import one MP3
+- import one WAV or another supported audio format
 - import MP3 with .lrc sidecar
-- import .smp
+- open `Importer…` and verify both Audio and SMP choices on phone and tablet
+- import a parent `.smp`
+- share and reimport a variant when its parent already exists
+- share and reimport a variant after deleting its parent
+- update an existing variant without duplication
+- refuse a variant `songId` already attached to another parent
+- preserve local variant lyrics/chords when absent from an older archive
 - rename display title
-- assign to playlist
+- assign a parent and a variant independently to a playlist
 - multi-select import
 - rescan library
 - missing permission case
 - source file moved/deleted after import
 - app restart after import
+- delete a parent and confirm the variant/playlist cascade
+- delete one variant and verify that its parent remains
+- validate first launch on phone and tablet with no welcome or Player flash after Demo installation
 
 👉 Must be tested on real device when possible.
 

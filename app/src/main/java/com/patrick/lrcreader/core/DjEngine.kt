@@ -523,6 +523,7 @@ object DjEngine {
                     activeSlot = 0
                     playingUri = null
                     currentDurationMs = 0
+                    PlaybackCoordinator.onDjStop()
                 }
             } else {
                 // 👉 Une platine joue : on charge l'autre deck en muet
@@ -599,7 +600,10 @@ object DjEngine {
         updateLiteDjAutoLimitIfNeeded()
 
         // ✅ mode auto OFF ou queue vide => on laisse finir (comportement actuel)
-        if (!queueAutoPlay || queueInternal.isEmpty()) return
+        if (!queueAutoPlay || queueInternal.isEmpty()) {
+            PlaybackCoordinator.onDjStop()
+            return
+        }
 
         val next = queueInternal.removeAt(0)
         val nextSlot = if (activeSlot == 1) 2 else 1
@@ -885,6 +889,7 @@ object DjEngine {
             if (localMpA == null && localMpB == null) {
                 releaseDjMeterTaps()
                 resetState(clearQueue = false)
+                PlaybackCoordinator.onDjStop()
                 return@launch
             }
 

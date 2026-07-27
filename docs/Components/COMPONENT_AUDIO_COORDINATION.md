@@ -7,7 +7,7 @@ Ce document décrit la coordination officielle entre :
 - le Playback principal ;
 - le lecteur Fond sonore.
 
-La source de vérité fonctionnelle du Fond sonore est `FEATURE — BACKGROUND SOUND`.
+La source de vérité fonctionnelle du Fond sonore est `docs/Features/FEATURE_BACKGROUND_SOUND.md`.
 
 SMP sépare strictement ces deux moteurs audio.
 

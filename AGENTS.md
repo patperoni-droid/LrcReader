@@ -33,20 +33,20 @@ Always read:
 Then load ONLY relevant documents depending on the task:
 
 For Player / audio:
-- /docs/features/FEATURE_PLAYER.md
+- /docs/Features/FEATURE_PLAYER.md
 
 For Playlist:
-- /docs/features/FEATURE_PLAYLISTS.md
+- /docs/Features/FEATURE_PLAYLISTS.md
 
 For Timeline / MIDI / DMX:
-- /docs/features/FEATURE_TIMELINE.md
+- /docs/Features/FEATURE_TIMELINE.md
 
 For Network / LocalLink / device pairing:
 - /docs/03_SMP_NETWORK_ARCHITECTURE.md
 - /docs/Features/FEATURE_SMP_SYNC.md
 
 For Library / import / files:
-- /docs/features/FEATURE_LIBRARY.md
+- /docs/Features/FEATURE_LIBRARY.md
 
 For SMP / architecture / storage:
 - /docs/01_SMP_ARCHITECTURE.md

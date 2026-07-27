@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.FillerSoundPrefs
+import com.patrick.lrcreader.core.PlaybackCoordinator
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import kotlinx.coroutines.Job
@@ -189,6 +190,7 @@ fun FillerSoundScreen(
         }
 
         if (!FillerSoundManager.isPlaying()) {
+            PlaybackCoordinator.requestStartFiller()
             isStarting = true
             startJob?.cancel()
             startJob = scope.launch {
@@ -197,6 +199,9 @@ fun FillerSoundScreen(
                     FillerSoundManager.setVolume(uiToRealVolume(uiFillerVolume))
                 }
                 isPlaying = FillerSoundManager.isPlaying()
+                if (!isPlaying) {
+                    PlaybackCoordinator.onFillerStop()
+                }
                 playbackDurationMs = FillerSoundManager.getDurationMs()
                 playbackPositionMs = FillerSoundManager.getCurrentPositionMs()
                 isStarting = false
@@ -206,6 +211,7 @@ fun FillerSoundScreen(
 
     fun stopFillerFromUi() {
         FillerSoundManager.fadeOutAndStop(200)
+        PlaybackCoordinator.onFillerStop()
         isPlaying = false
         isStarting = false
     }
@@ -341,6 +347,7 @@ fun FillerSoundScreen(
                             FillerSoundPrefs.setEnabled(context, checked)
                             if (!checked) {
                                 FillerSoundManager.fadeOutAndStop(0)
+                                PlaybackCoordinator.onFillerStop()
                                 isPlaying = false
                                 isStarting = false
                                 startJob?.cancel()
