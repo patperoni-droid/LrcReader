@@ -1298,7 +1298,6 @@ N’oubliez pas de sauvegarder.</string>
     <string name="arrangement_undo_action">Annuler</string>
 
     <!-- MainActivity -->
-    <string name="debug_reset_setup">DEBUG : reset setup</string>
     <string name="main_unknown_screen">Écran inconnu</string>
     <string name="main_menu_notes">Bloc Notes</string>
     <string name="main_menu_library">Bibliothèque</string>

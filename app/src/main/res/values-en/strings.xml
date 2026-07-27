@@ -1292,7 +1292,6 @@ Don’t forget to save.</string>
     <string name="arrangement_undo_action">Undo</string>
 
     <!-- MainActivity -->
-    <string name="debug_reset_setup">DEBUG: reset setup</string>
     <string name="main_unknown_screen">Unknown screen</string>
     <string name="main_menu_notes">Notepad</string>
     <string name="main_menu_library">Library</string>

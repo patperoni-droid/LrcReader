@@ -1204,7 +1204,6 @@ No olvides guardar.</string>
     <string name="arrangement_undo_action">Deshacer</string>
 
     <!-- MainActivity -->
-    <string name="debug_reset_setup">DEBUG: reiniciar configuración</string>
     <string name="main_unknown_screen">Pantalla desconocida</string>
     <string name="main_menu_notes">Bloc de notas</string>
     <string name="main_menu_library">Biblioteca</string>

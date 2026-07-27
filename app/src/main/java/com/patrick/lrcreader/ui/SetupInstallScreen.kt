@@ -43,6 +43,7 @@ fun SetupInstallScreen(
 
     var isInstallingDemo by remember { mutableStateOf(false) }
     var isPreparingWorkspace by remember { mutableStateOf(false) }
+    var isCompletingSetup by remember { mutableStateOf(false) }
 
     var showBadFolderDialog by remember { mutableStateOf(false) }
     var pendingBadUri by remember { mutableStateOf<Uri?>(null) }
@@ -104,6 +105,7 @@ fun SetupInstallScreen(
                 }
 
                 onImportLater?.invoke()
+                isCompletingSetup = true
                 onSetupDone()
             } finally {
                 isInstallingDemo = false
@@ -147,7 +149,7 @@ fun SetupInstallScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (isPreparingWorkspace || isInstallingDemo) {
+            if (isPreparingWorkspace || isInstallingDemo || isCompletingSetup) {
                 CircularProgressIndicator(
                     color = accent,
                     strokeWidth = 2.dp

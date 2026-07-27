@@ -1238,16 +1238,6 @@ class MainActivity : AppCompatActivity() {
                         }
                     )
 
-                    // ✅ DEBUG : reset setup (optionnel) — tu peux le garder
-                    if (BuildConfig.DEBUG) {
-                        Button(onClick = {
-                            BackupFolderPrefs.clearAll(ctx)
-                            BackupRestorePrefs.clear(ctx)
-                            forceSetup = true
-                            setupTick++
-                        }) { Text(stringResource(R.string.debug_reset_setup)) }
-                    }
-
                     return@MaterialTheme
                 }
 // -------------------- FIN SETUP SPL --------------------
@@ -1293,12 +1283,15 @@ class MainActivity : AppCompatActivity() {
                     !initialOpenedPlaylist.isNullOrBlank() ||
                     !initialLastSongId.isNullOrBlank() ||
                     !initialLastTrackUri.isNullOrBlank()
+                val initialDemoPlaylistName = pendingDemoPlaylistName?.takeIf { it.isNotBlank() }
                 val freshTabletInstall = adaptiveTokens.tabletMode &&
                     !TabletExperimentalModePrefs.hasSavedValue(ctx) &&
                     !hasInitialSessionToRestore
                 var selectedTab by remember {
                     mutableStateOf(
-                        if (freshTabletInstall) {
+                        if (initialDemoPlaylistName != null) {
+                            BottomTab.QuickPlaylists
+                        } else if (freshTabletInstall) {
                             BottomTab.Player
                         } else {
                             tabFromKey(
@@ -1355,8 +1348,12 @@ class MainActivity : AppCompatActivity() {
                 val hasSessionToRestore = hasInitialSessionToRestore
                 var isRestoringSession by remember { mutableStateOf(hasSessionToRestore) }
 
-                var selectedQuickPlaylist by rememberSaveable { mutableStateOf<String?>(initialQuickPlaylist) }
-                var openedPlaylist by rememberSaveable { mutableStateOf<String?>(initialOpenedPlaylist) }
+                var selectedQuickPlaylist by rememberSaveable {
+                    mutableStateOf<String?>(initialDemoPlaylistName ?: initialQuickPlaylist)
+                }
+                var openedPlaylist by rememberSaveable {
+                    mutableStateOf<String?>(initialDemoPlaylistName ?: initialOpenedPlaylist)
+                }
                 var quickPlaylistSequentialSelectionPendingPlay by remember { mutableStateOf(false) }
                 var quickPlaylistPreparedSelectionSongId by remember { mutableStateOf<String?>(null) }
                 var quickPlaylistPlaybackControlActivateToken by remember { mutableIntStateOf(0) }
