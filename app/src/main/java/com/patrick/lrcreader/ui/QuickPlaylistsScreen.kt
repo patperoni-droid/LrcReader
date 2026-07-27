@@ -2507,8 +2507,12 @@ fun QuickPlaylistsScreen(
                                 null
                             }
                             val smpLibraryTitle = if (smpSongId != null) {
-                                cleanQuickPlaylistTitle(smpTitleById[smpSongId])
-                                    ?: cleanQuickPlaylistTitle(smpSongsById[smpSongId]?.title)
+                                resolveQuickPlaylistSmpLibraryTitle(
+                                    songId = smpSongId,
+                                    indexedTitles = smpTitleById,
+                                    indexedSongs = smpSongsById,
+                                    runtimeSongs = smpSongsCache
+                                )
                             } else {
                                 null
                             }
@@ -4564,6 +4568,17 @@ private fun cleanQuickPlaylistTitle(value: String?): String? {
     return value
         ?.trim()
         ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+}
+
+internal fun resolveQuickPlaylistSmpLibraryTitle(
+    songId: String,
+    indexedTitles: Map<String, String>,
+    indexedSongs: Map<String, com.patrick.lrcreader.smp.SongUnit>,
+    runtimeSongs: Map<String, com.patrick.lrcreader.smp.SongUnit>
+): String? {
+    return cleanQuickPlaylistTitle(indexedTitles[songId])
+        ?: cleanQuickPlaylistTitle(indexedSongs[songId]?.title)
+        ?: cleanQuickPlaylistTitle(runtimeSongs[songId]?.title)
 }
 
 private fun isKeyboardSelectablePlaylistItem(item: String): Boolean {

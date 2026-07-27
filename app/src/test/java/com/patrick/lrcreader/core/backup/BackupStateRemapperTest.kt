@@ -1,5 +1,8 @@
 package com.patrick.lrcreader.core.backup
 
+import com.patrick.lrcreader.core.buildGroupEnd
+import com.patrick.lrcreader.core.buildGroupHeader
+import com.patrick.lrcreader.core.getGroupUuid
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -120,6 +123,62 @@ class BackupStateRemapperTest {
             )
         } finally {
             songDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun remapBundleStateJson_preservesGroupAroundParentAndVariantWithLegacyNullSongIds() {
+        val parentDir = createImportedSongDir("parent")
+        val variantDir = createImportedSongDir("variant")
+        val header = buildGroupHeader("Concert")
+        val end = buildGroupEnd(getGroupUuid(header)!!)
+        try {
+            val result = BackupStateRemapper.remapBundleStateJson(
+                stateJson = JSONObject().apply {
+                    put(
+                        "playlists",
+                        JSONObject().apply {
+                            put(
+                                "Live",
+                                org.json.JSONArray().apply {
+                                    put(JSONObject().put("uri", header).put("songId", "null"))
+                                    put(JSONObject().put("uri", "smp://parent").put("songId", "parent"))
+                                    put(JSONObject().put("uri", "smp://variant").put("songId", "variant"))
+                                    put(JSONObject().put("uri", end).put("songId", "null"))
+                                }
+                            )
+                        }
+                    )
+                }.toString(),
+                importedSongs = listOf(
+                    BackupBundleImportedSong(
+                        bundleSongId = "parent",
+                        importedSongId = "parent",
+                        storageFolder = parentDir.absolutePath
+                    ),
+                    BackupBundleImportedSong(
+                        bundleSongId = "variant",
+                        importedSongId = "variant",
+                        storageFolder = variantDir.absolutePath
+                    )
+                )
+            )
+
+            val success = result as BackupStateRemapResult.Success
+            val items = JSONObject(success.stateJson)
+                .getJSONObject("playlists")
+                .getJSONArray("Live")
+
+            assertEquals(4, items.length())
+            assertEquals(header, items.getJSONObject(0).getString("uri"))
+            assertFalse(items.getJSONObject(0).has("songId"))
+            assertEquals("smp://parent", items.getJSONObject(1).getString("uri"))
+            assertEquals("smp://variant", items.getJSONObject(2).getString("uri"))
+            assertEquals(end, items.getJSONObject(3).getString("uri"))
+            assertFalse(items.getJSONObject(3).has("songId"))
+        } finally {
+            parentDir.deleteRecursively()
+            variantDir.deleteRecursively()
         }
     }
 

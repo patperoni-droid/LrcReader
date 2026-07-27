@@ -135,6 +135,11 @@ object BackupStateRemapper {
                         put("uri", remappedUri)
                         if (remappedSongId != null) {
                             put("songId", remappedSongId)
+                        } else if (
+                            isNull("songId") ||
+                            optString("songId", "").trim().equals("null", ignoreCase = true)
+                        ) {
+                            remove("songId")
                         }
                     }
                 }

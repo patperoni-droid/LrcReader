@@ -709,7 +709,9 @@ object PlaylistRepository {
         uri?.trim()?.takeIf { it.isNotEmpty() }
 
     private fun normalizeSongId(songId: String?): String? =
-        songId?.trim()?.takeIf { it.isNotEmpty() }
+        songId
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
 
     private fun normalizeSmpPlaylistUri(uri: String, songId: String): String {
         val normalizedSongId = normalizeSongId(songId) ?: return uri

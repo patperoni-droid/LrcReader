@@ -344,8 +344,12 @@ internal object WorkspacePlaylistFilesStore {
             if (uri.isEmpty()) continue
             out += PlaylistStateItem(
                 uri = uri,
-                songId = obj.optString("songId", "").trim().ifBlank { null },
-                customTitle = obj.optString("customTitle", "").trim().ifBlank { null }
+                songId = obj.optString("songId", "")
+                    .trim()
+                    .takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) },
+                customTitle = obj.optString("customTitle", "")
+                    .trim()
+                    .takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
             )
         }
         return out

@@ -75,6 +75,22 @@ class PlaylistRepositorySongIdTest {
     }
 
     @Test
+    fun literal_null_songId_is_not_stored_as_an_identity() {
+        val playlistName = "Playlist"
+        val groupMarker = "__SPL_GROUP__|v1|group-id|Concert"
+
+        PlaylistRepository.addPlaylist(playlistName)
+        PlaylistRepository.assignSongToPlaylist(
+            playlistName = playlistName,
+            songUri = groupMarker,
+            songId = "null"
+        )
+
+        assertEquals(groupMarker, PlaylistRepository.getAllSongsRaw(playlistName).single())
+        assertNull(PlaylistRepository.getPlaylistItem(playlistName, groupMarker)?.songId)
+    }
+
+    @Test
     fun played_state_survives_songId_upgrade_from_legacy_item() {
         val playlistName = "Playlist"
         val smpUri = buildSmpItem("song_004")

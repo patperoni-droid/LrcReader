@@ -278,7 +278,9 @@ object BackupManager {
             val songs = PlaylistRepository.getAllItemsRaw(plName)
             val entries = JSONArray()
             songs.forEach { item ->
-                val cleanSongId = item.songId?.trim()?.takeIf { it.isNotEmpty() }
+                val cleanSongId = item.songId
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
                 if (cleanSongId != null) {
                     entries.put(
                         JSONObject().apply {
@@ -768,7 +770,9 @@ object BackupManager {
                             entry.optString("title", "").isNotBlank() -> entry.optString("title")
                             else -> null
                         }
-                        backupSongId = entry.optString("songId", "").trim().ifBlank { null }
+                        backupSongId = entry.optString("songId", "")
+                            .trim()
+                            .takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
                     } else {
                         oldUri = arr.optString(i, "")
                         backupName = null

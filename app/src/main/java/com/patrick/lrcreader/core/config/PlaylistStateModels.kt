@@ -116,8 +116,12 @@ internal data class PlaylistState(
                 val obj = arr.optJSONObject(i) ?: continue
                 val uri = obj.optString("uri", "").trim()
                 if (uri.isEmpty()) continue
-                val songId = obj.optString("songId", "").trim().ifBlank { null }
-                val customTitle = obj.optString("customTitle", "").trim().ifBlank { null }
+                val songId = obj.optString("songId", "")
+                    .trim()
+                    .takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
+                val customTitle = obj.optString("customTitle", "")
+                    .trim()
+                    .takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
                 out.add(PlaylistStateItem(uri = uri, songId = songId, customTitle = customTitle))
             }
             return out
