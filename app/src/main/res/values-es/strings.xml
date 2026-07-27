@@ -432,7 +432,6 @@
     <string name="player_note_preset_30s">30s</string>
     <string name="player_note_preset_60s">60s</string>
     <string name="player_auto_return_button">-10</string>
-    <string name="player_hq_tag">TS=HQ</string>
     <string name="player_add_note_icon">📝</string>
     <string name="player_accords_track_changed_blocked">Acción bloqueada: la pista activa cambió durante la edición de acordes.</string>
     <string name="player_accords_save_queue_closed">Acordes: error al guardar (cola cerrada).</string>
