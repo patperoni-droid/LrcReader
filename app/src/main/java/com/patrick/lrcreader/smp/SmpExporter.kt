@@ -409,6 +409,9 @@ object SmpExporter {
                     lyrics = File(variantDir, "lyrics.lrc")
                         .takeIf(File::isFile)
                         ?.readText(Charsets.UTF_8),
+                    chords = File(variantDir, "chords.lrc")
+                        .takeIf(File::isFile)
+                        ?.readText(Charsets.UTF_8),
                     lyricsLineColors = File(variantDir, CONFIG_ENTRY_NAME)
                         .takeIf(File::isFile)
                         ?.let { configFile ->

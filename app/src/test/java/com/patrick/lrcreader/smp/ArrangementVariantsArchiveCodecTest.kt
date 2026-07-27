@@ -36,6 +36,7 @@ class ArrangementVariantsArchiveCodecTest {
                     title = "Marina-AR01",
                     arrangement = arrangement,
                     lyrics = "[00:01.00]Première ligne\n[00:03.00]Deuxième ligne",
+                    chords = "[00:01.00]Am\n[00:03.00]G",
                     lyricsLineColors = mapOf(
                         "1000|Première ligne" to 0x123456
                     )
@@ -61,6 +62,10 @@ class ArrangementVariantsArchiveCodecTest {
             decoded.variants.single().lyrics
         )
         assertEquals(
+            "[00:01.00]Am\n[00:03.00]G",
+            decoded.variants.single().chords
+        )
+        assertEquals(
             mapOf("1000|Première ligne" to 0x123456),
             decoded.variants.single().lyricsLineColors
         )
@@ -71,6 +76,7 @@ class ArrangementVariantsArchiveCodecTest {
         val decoded = ArrangementVariantsArchiveCodec.decode(validManifest())
 
         assertEquals(null, decoded.variants.single().lyrics)
+        assertEquals(null, decoded.variants.single().chords)
         assertEquals(null, decoded.variants.single().lyricsLineColors)
         assertEquals(null, decoded.selectedVariantId)
     }

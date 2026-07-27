@@ -13,6 +13,7 @@ object ArrangementVariantStore {
     private const val CONFIG_FILE_NAME = "config.json"
     private const val ARRANGEMENT_FILE_NAME = "arrangement.json"
     private const val LYRICS_FILE_NAME = "lyrics.lrc"
+    private const val CHORDS_FILE_NAME = "chords.lrc"
 
     internal data class RestoreResult(
         val restoredVariantIds: List<String>,
@@ -230,6 +231,7 @@ object ArrangementVariantStore {
                     arrangement = normalizedArrangement,
                     existingVariantDir = targetDir.takeIf(File::isDirectory),
                     archivedLyrics = variant.lyrics,
+                    archivedChords = variant.chords,
                     archivedLyricsLineColors = variant.lyricsLineColors
                 )
                 pending += PendingVariant(
@@ -302,6 +304,7 @@ object ArrangementVariantStore {
         arrangement: ArrangementData,
         existingVariantDir: File? = null,
         archivedLyrics: String? = null,
+        archivedChords: String? = null,
         archivedLyricsLineColors: Map<String, Int>? = null
     ) {
         existingVariantDir
@@ -358,6 +361,9 @@ object ArrangementVariantStore {
         )
         archivedLyrics?.let { lyrics ->
             File(targetDir, LYRICS_FILE_NAME).writeText(lyrics, Charsets.UTF_8)
+        }
+        archivedChords?.let { chords ->
+            File(targetDir, CHORDS_FILE_NAME).writeText(chords, Charsets.UTF_8)
         }
     }
 }

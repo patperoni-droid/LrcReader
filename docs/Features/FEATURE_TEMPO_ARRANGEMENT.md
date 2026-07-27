@@ -159,7 +159,7 @@ Suppression dans une playlist :
 - retirer une variante d'une playlist ne retire ni le parent ni les autres variantes ;
 - une playlist peut contenir uniquement la variante, sans occurrence visible du parent, tant que le parent reste présent dans la Bibliothèque.
 
-**État d'implémentation :** la suppression en cascade parent → variantes, la préservation des assets lors d'une mise à jour Arrangement et le transport des paroles propres aux variantes sont implémentés. Le transport des futurs autres assets propres aux variantes reste à implémenter.
+**État d'implémentation :** la suppression en cascade parent → variantes, la préservation des assets lors d'une mise à jour Arrangement et le transport des paroles et accords propres aux variantes sont implémentés. Le transport des futurs autres assets propres aux variantes reste à implémenter.
 
 ### Paroles propres à une variante
 
@@ -173,7 +173,17 @@ Suppression dans une playlist :
 - `arrangement_variants.json` transporte le contenu de `lyrics.lrc` et les couleurs de lignes avec l'identité stable de chaque variante ;
 - l'import du `.smp` parent recrée ces données dans le dossier runtime de la variante, sans écrire dans les paroles du parent ;
 - une ancienne sauvegarde sans assets de variante reste compatible et restaure simplement la Structure sans paroles propres ;
-- cette étape n'inclut pas encore les accords.
+- les accords suivent désormais le même principe d'identité et de transport.
+
+### Accords propres à une variante
+
+- une variante peut posséder son propre fichier `chords.lrc` dans son dossier runtime ;
+- le Player et l'éditeur lisent et écrivent ce fichier par le `songId` de la variante, sans modifier les accords du parent ;
+- le fichier peut être créé, édité, synchronisé ou supprimé avec le flux Accords existant ;
+- `arrangement_variants.json` transporte son contenu dans les assets optionnels de la variante ;
+- l'import restaure les accords transportés dans le dossier de la variante et conserve les accords locaux lorsqu’une ancienne archive n'en transporte pas ;
+- les anciennes archives sans accords propres restent compatibles ;
+- le comportement est commun au téléphone et à la tablette.
 
 ### Partager une variante
 

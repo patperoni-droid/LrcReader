@@ -8,6 +8,7 @@ internal data class ArrangementVariantArchiveEntry(
     val title: String,
     val arrangement: ArrangementData,
     val lyrics: String? = null,
+    val chords: String? = null,
     val lyricsLineColors: Map<String, Int>? = null
 )
 
@@ -25,6 +26,7 @@ internal object ArrangementVariantsArchiveCodec {
     private const val VERSION = 1
     private const val MAX_VARIANTS = 250
     private const val MAX_LYRICS_BYTES = 1024 * 1024
+    private const val MAX_CHORDS_BYTES = 1024 * 1024
     private const val MAX_LYRICS_LINE_COLORS = 10_000
     private val SAFE_ID = Regex("[A-Za-z0-9._-]+")
 
@@ -105,6 +107,7 @@ internal object ArrangementVariantsArchiveCodec {
                         title = title,
                         arrangement = arrangement,
                         lyrics = assets?.lyrics,
+                        chords = assets?.chords,
                         lyricsLineColors = assets?.lyricsLineColors
                     )
                 )
@@ -145,17 +148,20 @@ internal object ArrangementVariantsArchiveCodec {
 
     private data class VariantAssets(
         val lyrics: String?,
+        val chords: String?,
         val lyricsLineColors: Map<String, Int>?
     )
 
     private fun encodeAssets(variant: ArrangementVariantArchiveEntry): JSONObject? {
         val lyrics = variant.lyrics?.also(::validateLyrics)
+        val chords = variant.chords?.also(::validateChords)
         val lyricsLineColors = variant.lyricsLineColors?.also(::validateLyricsLineColors)
-        if (lyrics == null && lyricsLineColors == null) {
+        if (lyrics == null && chords == null && lyricsLineColors == null) {
             return null
         }
         return JSONObject().apply {
             lyrics?.let { put("lyrics", it) }
+            chords?.let { put("chords", it) }
             lyricsLineColors?.let { colors ->
                 put(
                     "lyricsLineColors",
@@ -176,6 +182,11 @@ internal object ArrangementVariantsArchiveCodec {
         } else {
             null
         }
+        val chords = if (json.has("chords") && !json.isNull("chords")) {
+            json.getString("chords").also(::validateChords)
+        } else {
+            null
+        }
         val lyricsLineColorsJson = json.optJSONObject("lyricsLineColors")
         val lyricsLineColors = lyricsLineColorsJson?.let { colorsJson ->
             buildMap {
@@ -186,6 +197,7 @@ internal object ArrangementVariantsArchiveCodec {
         }
         return VariantAssets(
             lyrics = lyrics,
+            chords = chords,
             lyricsLineColors = lyricsLineColors
         )
     }
@@ -193,6 +205,12 @@ internal object ArrangementVariantsArchiveCodec {
     private fun validateLyrics(lyrics: String) {
         require(lyrics.toByteArray(Charsets.UTF_8).size <= MAX_LYRICS_BYTES) {
             "Arrangement variant lyrics are too large"
+        }
+    }
+
+    private fun validateChords(chords: String) {
+        require(chords.toByteArray(Charsets.UTF_8).size <= MAX_CHORDS_BYTES) {
+            "Arrangement variant chords are too large"
         }
     }
 

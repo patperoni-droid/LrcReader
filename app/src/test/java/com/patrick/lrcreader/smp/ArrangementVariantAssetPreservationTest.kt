@@ -56,7 +56,7 @@ class ArrangementVariantAssetPreservationTest {
     }
 
     @Test
-    fun writeVariantFilesRestoresArchivedLyricsAndColors() {
+    fun writeVariantFilesRestoresArchivedLyricsChordsAndColors() {
         val root = Files.createTempDirectory("arrangement_variant_restore_").toFile()
         try {
             val target = root.resolve("target").apply { mkdirs() }
@@ -72,12 +72,17 @@ class ArrangementVariantAssetPreservationTest {
                     structureSegmentIds = emptyList()
                 ),
                 archivedLyrics = "[00:02.00] Paroles restaurées",
+                archivedChords = "[00:02.00] Am",
                 archivedLyricsLineColors = mapOf("2000|Paroles restaurées" to 456)
             )
 
             assertEquals(
                 "[00:02.00] Paroles restaurées",
                 target.resolve("lyrics.lrc").readText(Charsets.UTF_8)
+            )
+            assertEquals(
+                "[00:02.00] Am",
+                target.resolve("chords.lrc").readText(Charsets.UTF_8)
             )
             val config = JSONObject(target.resolve("config.json").readText(Charsets.UTF_8))
             assertEquals(
@@ -122,11 +127,12 @@ class ArrangementVariantAssetPreservationTest {
                 ),
                 existingVariantDir = existing,
                 archivedLyrics = "Paroles importées",
+                archivedChords = "Accords importés",
                 archivedLyricsLineColors = mapOf("new" to 2)
             )
 
             assertEquals("Paroles importées", target.resolve("lyrics.lrc").readText(Charsets.UTF_8))
-            assertEquals("Accords locaux", target.resolve("chords.lrc").readText(Charsets.UTF_8))
+            assertEquals("Accords importés", target.resolve("chords.lrc").readText(Charsets.UTF_8))
             assertEquals(
                 """{"local":true}""",
                 target.resolve("annotations.json").readText(Charsets.UTF_8)
