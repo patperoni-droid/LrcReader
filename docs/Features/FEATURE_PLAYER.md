@@ -97,7 +97,8 @@ Waveform loading:
 - the first optimization step keeps the exact 20,000-point result but processes decoded PCM in blocks and records separate decode/aggregation timings;
 - MP3 waveform analysis prefers the platform software decoder (`c2.android` / `OMX.google`) when available, because some hardware decoders are optimized for economical real-time playback rather than fast offline analysis; this selection never modifies the main playback decoder;
 - the existing persistent cache contract remains compatible and a cache hit must stay immediate;
-- on Arrangement tablet, a cold opening uses a sampled 2,000-point overview cached separately instead of decoding the complete track; the phone and the dedicated Waveform screen keep their existing full-resolution contract;
+- Arrangement uses a separately cached sampled overview instead of decoding the complete track: 2,000 points in the tablet editor and 720 points in the phone editor;
+- the dedicated Waveform screen opens with a separately cached 2,000-point sampled overview on phone and tablet, then loads the full 20,000-point analysis only when a stopped playback session requests high zoom or precise automatic trim;
 - the overview does not quantize seeking or IN / OUT placement: those gestures continue to use the exact source time in milliseconds;
 - detailed decoding by visible editing range remains an optional future extension only if field use shows that the sampled overview is insufficient at high zoom;
 - a progressive implementation must never launch two complete decodes of the same track and must never perform heavy waveform preparation during live playback.

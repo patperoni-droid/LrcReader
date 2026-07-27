@@ -83,3 +83,12 @@ Concretement :
 - le bouton Play du PlaybackControl utilise toujours le pipeline Playback officiel ;
 - les paroles, accords, timeline, MIDI et DMX restent pilotes par ce meme Playback principal ;
 - aucun moteur audio propre a Waveform n'existe.
+
+## Chargement de la forme d'onde
+
+- téléphone et tablette utilisent le même `WaveformPreviewScreen`
+- l'ouverture utilise sur les deux appareils l'aperçu échantillonné persistant de 2 000 points
+- le décodage complet de 20 000 points est chargé à la demande pour le zoom poussé et le trim automatique, uniquement lorsque la lecture principale est arrêtée
+- le cache persistant évite de recalculer un aperçu ou une analyse complète déjà disponibles
+- l'analyse MP3 préfère le décodeur logiciel adapté au travail hors ligne lorsqu'il est disponible
+- la tête de lecture et les points IN/OUT restent calculés à partir de la durée en millisecondes, indépendamment de la résolution visuelle

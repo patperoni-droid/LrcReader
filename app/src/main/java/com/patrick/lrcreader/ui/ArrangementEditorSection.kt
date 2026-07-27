@@ -374,9 +374,10 @@ fun ArrangementEditorSection(
             WaveformPeaksCache.getOrCompute(
                 context = appContext,
                 uri = audioUri,
-                targetPoints = 720
+                targetPoints = 720,
+                cacheVariant = "sampled-overview-v1"
             ) {
-                WaveformExtractor.extractNormalizedPeaks(
+                WaveformExtractor.extractSampledOverview(
                     context = appContext,
                     uri = audioUri,
                     targetPoints = 720

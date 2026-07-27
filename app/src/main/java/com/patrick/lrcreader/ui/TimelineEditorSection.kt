@@ -2610,13 +2610,13 @@ private fun TimelineMeasuresPlaceholder(
                     WaveformPeaksCache.getOrCompute(
                         context = context,
                         uri = audioUri,
-                        targetPoints = 20_000,
-                        durationMs = durationMs
+                        targetPoints = 720,
+                        cacheVariant = "sampled-overview-v1"
                     ) {
-                        WaveformExtractor.extractNormalizedPeaks(
+                        WaveformExtractor.extractSampledOverview(
                             context = context,
                             uri = audioUri,
-                            targetPoints = 20_000
+                            targetPoints = 720
                         )
                     }
                 }

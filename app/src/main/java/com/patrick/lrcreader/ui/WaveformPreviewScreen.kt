@@ -90,6 +90,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -101,6 +103,10 @@ import kotlin.math.sqrt
 
 private const val ZOOM_MIN = 1f
 private const val ZOOM_MAX = 120f
+private const val WAVEFORM_OVERVIEW_POINTS = 2_000
+private const val WAVEFORM_FULL_PRECISION_POINTS = 20_000
+private const val WAVEFORM_FULL_PRECISION_ZOOM = 8f
+private const val WAVEFORM_OVERVIEW_CACHE_VARIANT = "sampled-overview-v1"
 private const val MATCH_VOLUME_TARGET_LUFS = -14f
 private const val MATCH_VOLUME_MIN_DB = -24
 private const val MATCH_VOLUME_MAX_DB = 6
@@ -142,6 +148,8 @@ fun WaveformPreviewScreen(
     var selectedUri by remember { mutableStateOf<Uri?>(null) }
     var selectedName by remember { mutableStateOf("") }
     var peaks by remember { mutableStateOf<List<Float>>(emptyList()) }
+    var fullPrecisionPeaks by remember { mutableStateOf<List<Float>?>(null) }
+    val fullPrecisionMutex = remember { Mutex() }
     var zoom by remember { mutableStateOf(1f) }
     var isLoading by remember { mutableStateOf(false) }
     var hasError by remember { mutableStateOf(false) }
@@ -213,6 +221,7 @@ fun WaveformPreviewScreen(
         WaveformSessionPrefs.saveZoom(context, zoom)
 
         peaks = emptyList()
+        fullPrecisionPeaks = null
         hasError = false
         isLoading = true
         durationMs = 0
@@ -230,13 +239,14 @@ fun WaveformPreviewScreen(
                 val waveformPeaks = WaveformPeaksCache.getOrCompute(
                     context = context,
                     uri = uri,
-                    targetPoints = 20_000,
-                    durationMs = localDurationMs
+                    targetPoints = WAVEFORM_OVERVIEW_POINTS,
+                    durationMs = localDurationMs,
+                    cacheVariant = WAVEFORM_OVERVIEW_CACHE_VARIANT
                 ) {
-                    WaveformExtractor.extractNormalizedPeaks(
+                    WaveformExtractor.extractSampledOverview(
                         context = context,
                         uri = uri,
-                        targetPoints = 20_000
+                        targetPoints = WAVEFORM_OVERVIEW_POINTS
                     )
                 }
                 waveformPeaks to localDurationMs
@@ -282,6 +292,7 @@ fun WaveformPreviewScreen(
                 hasError = false
             } else {
                 peaks = emptyList()
+                fullPrecisionPeaks = null
                 durationMs = 0
                 inMs = 0
                 outMs = 0
@@ -310,6 +321,37 @@ fun WaveformPreviewScreen(
         runtimeUri to song.title
     }
 
+    suspend fun ensureFullPrecisionPeaks(
+        expectedUri: Uri,
+        expectedDurationMs: Int
+    ): List<Float>? = fullPrecisionMutex.withLock {
+        if (selectedUri != expectedUri || expectedDurationMs <= 0) return@withLock null
+        fullPrecisionPeaks?.let { return@withLock it }
+
+        val precisePeaks = runCatching {
+            WaveformPeaksCache.getOrCompute(
+                context = context,
+                uri = expectedUri,
+                targetPoints = WAVEFORM_FULL_PRECISION_POINTS,
+                durationMs = expectedDurationMs
+            ) {
+                WaveformExtractor.extractNormalizedPeaks(
+                    context = context,
+                    uri = expectedUri,
+                    targetPoints = WAVEFORM_FULL_PRECISION_POINTS
+                )
+            }
+        }.getOrNull() ?: return@withLock null
+
+        if (selectedUri != expectedUri || durationMs != expectedDurationMs) {
+            return@withLock null
+        }
+        fullPrecisionPeaks = precisePeaks
+        peaks = precisePeaks
+        estimatedTrackLufs = estimateLufsFromPeaks(precisePeaks.toFloatArray())
+        precisePeaks
+    }
+
     LaunchedEffect(initialSongId) {
         val songId = initialSongId?.trim()?.takeIf { it.isNotBlank() }
         if (songId == null) {
@@ -317,6 +359,7 @@ fun WaveformPreviewScreen(
             selectedUri = null
             selectedName = ""
             peaks = emptyList()
+            fullPrecisionPeaks = null
             hasError = false
             isLoading = false
             durationMs = 0
@@ -336,6 +379,7 @@ fun WaveformPreviewScreen(
             selectedUri = null
             selectedName = ""
             peaks = emptyList()
+            fullPrecisionPeaks = null
             hasError = true
             isLoading = false
             durationMs = 0
@@ -349,6 +393,22 @@ fun WaveformPreviewScreen(
         }
         val (resolvedUri, resolvedTitle) = resolved
         loadAudioUri(songId = songId, uri = resolvedUri, displayNameHint = resolvedTitle)
+    }
+
+    LaunchedEffect(selectedUri, durationMs, zoom, isOfficialPlaybackPlaying) {
+        val precisionUri = selectedUri ?: return@LaunchedEffect
+        val precisionDurationMs = durationMs
+        if (
+            precisionDurationMs > 0 &&
+            zoom >= WAVEFORM_FULL_PRECISION_ZOOM &&
+            !isOfficialPlaybackPlaying &&
+            fullPrecisionPeaks == null
+        ) {
+            ensureFullPrecisionPeaks(
+                expectedUri = precisionUri,
+                expectedDurationMs = precisionDurationMs
+            )
+        }
     }
 
     LaunchedEffect(isOfficialPlaybackPlaying, officialPlaybackSelectionInSync, durationMs) {
@@ -698,7 +758,11 @@ fun WaveformPreviewScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 val controlsEnabled = selectedUri != null && durationMs > 0
-                val detectEnabled = controlsEnabled && peaks.isNotEmpty() && !isLoading && !isDetectingSilence
+                val detectEnabled = controlsEnabled &&
+                    peaks.isNotEmpty() &&
+                    !isLoading &&
+                    !isDetectingSilence &&
+                    !isOfficialPlaybackPlaying
                 val hasOutTrim = controlsEnabled && outMs in 1 until durationMs
 
                 Row(
@@ -708,13 +772,17 @@ fun WaveformPreviewScreen(
                     TextButton(
                         onClick = {
                             if (!detectEnabled) return@TextButton
-                            val snapshotPeaks = peaks.toList()
+                            val snapshotUri = selectedUri ?: return@TextButton
                             val snapshotDurationMs = durationMs
                             val currentInMs = inMs
                             val currentOutMs = outMs
                             isDetectingSilence = true
                             scope.launch {
                                 try {
+                                    val snapshotPeaks = ensureFullPrecisionPeaks(
+                                        expectedUri = snapshotUri,
+                                        expectedDurationMs = snapshotDurationMs
+                                    ) ?: return@launch
                                     val detection = withContext(Dispatchers.Default) {
                                         detectSilenceTrimFromPeaks(
                                             peaks = snapshotPeaks,
