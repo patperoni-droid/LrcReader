@@ -918,7 +918,8 @@ private fun MoreRootScreen(
 
     fun startLibraryRestore(
         scan: LibraryRestoreScanResult,
-        conflictMode: LibraryRestoreConflictMode
+        conflictMode: LibraryRestoreConflictMode,
+        mergePlaylists: Boolean
     ) {
         pendingRestoreScan = null
         scope.launch {
@@ -932,7 +933,8 @@ private fun MoreRootScreen(
                     restoreLibraryFromBackupFolder(
                         context = context.applicationContext,
                         scanResult = scan,
-                        conflictMode = conflictMode
+                        conflictMode = conflictMode,
+                        mergePlaylists = mergePlaylists
                     ) { done, total, currentTitle ->
                         restoreLibraryDone = done
                         restoreLibraryTotal = total
@@ -1644,6 +1646,11 @@ private fun MoreRootScreen(
     }
 
     pendingRestoreScan?.let { scan ->
+        var selectedSongConflictMode by remember(scan) {
+            mutableStateOf(LibraryRestoreConflictMode.Preserve)
+        }
+        var mergeExistingPlaylists by remember(scan) { mutableStateOf(true) }
+
         Dialog(
             onDismissRequest = { pendingRestoreScan = null }
         ) {
@@ -1667,8 +1674,9 @@ private fun MoreRootScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(max = 320.dp)
-                            .verticalScroll(rememberScrollState())
+                            .weight(1f, fill = false)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
                             text = context.getString(
@@ -1680,36 +1688,122 @@ private fun MoreRootScreen(
                             ),
                             color = Color(0xFFF5F5F5)
                         )
+
+                        Text(
+                            text = stringResource(R.string.more_library_restore_songs_choice),
+                            color = Color(0xFFFFC107),
+                            fontSize = 14.sp
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedSongConflictMode = LibraryRestoreConflictMode.Preserve
+                                },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedSongConflictMode == LibraryRestoreConflictMode.Preserve,
+                                onClick = {
+                                    selectedSongConflictMode = LibraryRestoreConflictMode.Preserve
+                                }
+                            )
+                            Text(
+                                text = stringResource(R.string.more_library_restore_keep_existing),
+                                color = Color(0xFFF5F5F5),
+                                fontSize = 14.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedSongConflictMode = LibraryRestoreConflictMode.Replace
+                                },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = selectedSongConflictMode == LibraryRestoreConflictMode.Replace,
+                                onClick = {
+                                    selectedSongConflictMode = LibraryRestoreConflictMode.Replace
+                                }
+                            )
+                            Text(
+                                text = stringResource(R.string.more_library_restore_replace_existing),
+                                color = Color(0xFFF5F5F5),
+                                fontSize = 14.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Text(
+                            text = stringResource(R.string.more_library_restore_playlists_choice),
+                            color = Color(0xFFFFC107),
+                            fontSize = 14.sp
+                        )
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { mergeExistingPlaylists = true },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = mergeExistingPlaylists,
+                                onClick = { mergeExistingPlaylists = true }
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.more_library_restore_keep_existing_playlists
+                                ),
+                                color = Color(0xFFF5F5F5),
+                                fontSize = 14.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { mergeExistingPlaylists = false },
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = !mergeExistingPlaylists,
+                                onClick = { mergeExistingPlaylists = false }
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.more_library_restore_replace_existing_playlists
+                                ),
+                                color = Color(0xFFF5F5F5),
+                                fontSize = 14.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
 
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    TextButton(
+                        onClick = {
+                            startLibraryRestore(
+                                scan = scan,
+                                conflictMode = selectedSongConflictMode,
+                                mergePlaylists = mergeExistingPlaylists
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        TextButton(
-                            onClick = {
-                                startLibraryRestore(scan, LibraryRestoreConflictMode.Preserve)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(text = stringResource(R.string.more_library_restore_keep_existing))
-                        }
+                        Text(text = stringResource(R.string.more_item_restore_library))
+                    }
 
-                        TextButton(
-                            onClick = {
-                                startLibraryRestore(scan, LibraryRestoreConflictMode.Replace)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(text = stringResource(R.string.more_library_restore_replace_existing))
-                        }
-
-                        TextButton(
-                            onClick = { pendingRestoreScan = null },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(text = stringResource(R.string.common_cancel))
-                        }
+                    TextButton(
+                        onClick = { pendingRestoreScan = null },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(text = stringResource(R.string.common_cancel))
                     }
                 }
             }
@@ -2482,6 +2576,7 @@ private fun restoreLibraryFromBackupFolder(
     context: Context,
     scanResult: LibraryRestoreScanResult,
     conflictMode: LibraryRestoreConflictMode,
+    mergePlaylists: Boolean,
     onProgress: (done: Int, total: Int, currentTitle: String?) -> Unit
 ): LibraryRestoreExecutionResult {
     val scanner = SmpLibraryScanner(context)
@@ -2670,9 +2765,12 @@ private fun restoreLibraryFromBackupFolder(
                 BackupManager.importState(
                     context = context,
                     json = remapResult.stateJson,
-                    mergePlaylists = true
+                    mergePlaylists = mergePlaylists
                 ) { lastPlayed = it }
-                val saved = PlaylistStateStore.savePlaylistsSnapshot(context)
+                val saved = PlaylistStateStore.savePlaylistsSnapshot(
+                    context = context,
+                    allowEmptyRepository = !mergePlaylists
+                )
                 val restored = if (saved) {
                     PlaylistStateStore.restorePlaylistsIntoRepository(
                         context = context,

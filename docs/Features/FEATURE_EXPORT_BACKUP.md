@@ -204,6 +204,24 @@ n'était pas transportée au moment de sa création.
 
 ---
 
+#### Conserver les playlists existantes
+
+- conserve les playlists locales
+- ajoute les playlists de la sauvegarde
+- renomme la playlist restaurée en cas de conflit de nom
+
+---
+
+#### Remplacer les playlists existantes
+
+- supprime les playlists locales avant l'import
+- restaure uniquement les playlists présentes dans la sauvegarde
+- ne crée aucun suffixe « restaurée » lorsque le remplacement est demandé
+
+Les choix Morceaux et Playlists sont indépendants et permettent les quatre combinaisons.
+
+---
+
 ### Règles
 
 ✔ aucun doublon (`songId`)  

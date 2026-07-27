@@ -1203,8 +1203,12 @@
     <string name="more_library_restore_rebuilding">Rebuilding library…</string>
     <string name="more_library_restore_playlists">Restoring playlists…</string>
     <string name="more_library_restore_summary">This backup contains:\n- %1$d songs\n- %2$d playlists\n- %3$d prompter(s)\n- %4$d conflicts detected</string>
+    <string name="more_library_restore_songs_choice">Songs</string>
     <string name="more_library_restore_keep_existing">Keep existing songs</string>
     <string name="more_library_restore_replace_existing">Replace existing songs</string>
+    <string name="more_library_restore_playlists_choice">Playlists</string>
+    <string name="more_library_restore_keep_existing_playlists">Keep existing playlists</string>
+    <string name="more_library_restore_replace_existing_playlists">Replace existing playlists</string>
     <string name="more_library_restore_scan_failed">Unable to read this backup folder</string>
     <string name="more_library_restore_empty">No usable backup files found in this folder</string>
     <string name="more_library_restore_result">Restore complete: %1$d song(s) imported, %2$d skipped, %3$d failed\nPrompters: %4$d imported, %5$d skipped\nState: %6$s</string>

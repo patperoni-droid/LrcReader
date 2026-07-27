@@ -28,6 +28,7 @@ internal object PlaylistStateStore {
     private var saveInFlight: Boolean = false
     private var savePending: Boolean = false
     private var pendingTransientGroupTitles: Set<String> = emptySet()
+    private var pendingAllowEmptyRepository: Boolean = false
 
     data class RestoreResult(
         val success: Boolean,
@@ -195,7 +196,8 @@ internal object PlaylistStateStore {
 
     fun savePlaylistsSnapshot(
         context: Context,
-        transientGroupTitles: Set<String> = emptySet()
+        transientGroupTitles: Set<String> = emptySet(),
+        allowEmptyRepository: Boolean = false
     ): Boolean {
         if (PlaylistRepository.isRestoring) {
             Log.w(PERSIST_LOG_TAG, "save.blocked reason=playlist_restore_in_progress")
@@ -208,6 +210,8 @@ internal object PlaylistStateStore {
             if (saveInFlight) {
                 savePending = true
                 pendingTransientGroupTitles = pendingTransientGroupTitles + transientGroupTitles
+                pendingAllowEmptyRepository =
+                    pendingAllowEmptyRepository || allowEmptyRepository
                 Log.e(
                     ANR_PLAYLIST_TAG,
                     "save:coalesced thread=$threadName pending=true"
@@ -218,23 +222,28 @@ internal object PlaylistStateStore {
         }
         var anySaved = false
         var activeTransientGroupTitles = transientGroupTitles
+        var activeAllowEmptyRepository = allowEmptyRepository
         try {
             while (true) {
                 anySaved = performSavePlaylistsSnapshot(
                     context = context,
                     startMs = startMs,
                     threadName = threadName,
-                    transientGroupTitles = activeTransientGroupTitles
+                    transientGroupTitles = activeTransientGroupTitles,
+                    allowEmptyRepository = activeAllowEmptyRepository
                 ) || anySaved
                 val rerun = synchronized(saveCoordinatorLock) {
                     if (savePending) {
                         savePending = false
                         activeTransientGroupTitles = pendingTransientGroupTitles
+                        activeAllowEmptyRepository = pendingAllowEmptyRepository
                         pendingTransientGroupTitles = emptySet()
+                        pendingAllowEmptyRepository = false
                         true
                     } else {
                         saveInFlight = false
                         pendingTransientGroupTitles = emptySet()
+                        pendingAllowEmptyRepository = false
                         false
                     }
                 }
@@ -250,6 +259,7 @@ internal object PlaylistStateStore {
             synchronized(saveCoordinatorLock) {
                 saveInFlight = false
                 pendingTransientGroupTitles = emptySet()
+                pendingAllowEmptyRepository = false
             }
             throw t
         }
@@ -259,7 +269,8 @@ internal object PlaylistStateStore {
         context: Context,
         startMs: Long,
         threadName: String,
-        transientGroupTitles: Set<String>
+        transientGroupTitles: Set<String>,
+        allowEmptyRepository: Boolean
     ): Boolean {
         return withLockBlocking {
             val current = readStateLocked(context)
@@ -270,7 +281,7 @@ internal object PlaylistStateStore {
                 "save:inside_lock thread=$threadName playlistCount=${repoPlaylists.size}"
             )
             val repoIsEmpty = repoPlaylists.isEmpty()
-            if (repoIsEmpty && workspaceState.hasPlaylistFiles) {
+            if (repoIsEmpty && workspaceState.hasPlaylistFiles && !allowEmptyRepository) {
                 Log.e(
                     PERSIST_LOG_TAG,
                     "save.blocked reason=suspect_empty_repo internal=${current.playlists.size} workspace=${workspaceState.playlists.size} workspaceHasFiles=${workspaceState.hasPlaylistFiles}"
