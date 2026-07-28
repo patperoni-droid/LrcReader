@@ -58,7 +58,6 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Headset
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -1433,7 +1432,6 @@ class MainActivity : AppCompatActivity() {
                 var isNotesOpen by remember { mutableStateOf(false) }
                 var isFillerSettingsOpen by remember { mutableStateOf(false) }
                 var libraryKeyboardNavigationEnabled by remember { mutableStateOf(false) }
-                var isTabletSplitMenuOpen by remember { mutableStateOf(false) }
                 var isTabletShortcutMoreOpen by remember { mutableStateOf(false) }
                 var isTabletCockpitDestinationOpen by rememberSaveable { mutableStateOf(false) }
                 var tabletRightPanel by rememberSaveable {
@@ -3956,7 +3954,6 @@ class MainActivity : AppCompatActivity() {
                         )
                 fun returnToTabletCockpit() {
                     isTabletCockpitDestinationOpen = false
-                    isTabletSplitMenuOpen = false
                     textPrompterId = null
                     isNotesOpen = false
                     isFillerSettingsOpen = false
@@ -4249,7 +4246,6 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 }
                                 fun prepareTabletSplitMenuNavigation() {
-                                    isTabletSplitMenuOpen = false
                                     isTabletShortcutMoreOpen = false
                                     textPrompterId = null
                                     isNotesOpen = false
@@ -4277,16 +4273,6 @@ class MainActivity : AppCompatActivity() {
                                     if (openSearch) {
                                         tabletLibrarySearchToggleSignal++
                                     }
-                                }
-
-                                fun openTabletSplitPlaylist() {
-                                    prepareTabletSplitMenuNavigation()
-                                    isTabletCockpitDestinationOpen = false
-                                    tabletRightPanel = TabletSplitRightPanel.LYRICS
-                                    setTabAndPersist(
-                                        BottomTab.QuickPlaylists,
-                                        reason = "tabletSplitShortcutPlaylist"
-                                    )
                                 }
 
                                 fun openTabletSplitFiller() {
@@ -4379,73 +4365,17 @@ class MainActivity : AppCompatActivity() {
                                 }
 
                                 @Composable
-                                fun TabletSplitCockpitMenuButton() {
-                                    Box {
-                                        IconButton(onClick = { isTabletSplitMenuOpen = true }) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Settings,
-                                                contentDescription = stringResource(R.string.common_cd_options),
-                                                tint = Color.White.copy(alpha = 0.72f)
-                                            )
-                                        }
-                                        DropdownMenu(
-                                            expanded = isTabletSplitMenuOpen,
-                                            onDismissRequest = { isTabletSplitMenuOpen = false }
-                                        ) {
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.player_view_lyrics)) },
-                                                onClick = ::openTabletSplitLyrics
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.tablet_split_menu_library)) },
-                                                onClick = { openTabletSplitLibrary(openSearch = false) }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.tablet_split_menu_main_bus)) },
-                                                enabled = EditionConfig.isPro && showMainBusTab,
-                                                onClick = {
-                                                    prepareTabletSplitMenuNavigation()
-                                                    isTabletCockpitDestinationOpen = false
-                                                    tabletRightPanel = TabletSplitRightPanel.MAIN_BUS
-                                                }
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.tablet_split_menu_playlist)) },
-                                                onClick = ::openTabletSplitPlaylist
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.tablet_split_menu_filler)) },
-                                                onClick = ::openTabletSplitFiller
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.tablet_split_menu_dj)) },
-                                                enabled = showDjTab,
-                                                onClick = ::openTabletSplitDj
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.tablet_split_menu_search)) },
-                                                onClick = ::openTabletSplitSearch
-                                            )
-                                            DropdownMenuItem(
-                                                text = { Text(stringResource(R.string.tablet_split_menu_settings)) },
-                                                onClick = ::openTabletSplitSettings
-                                            )
-                                        }
-                                    }
-                                }
-
-                                @Composable
                                 fun TabletSplitTopNavigationShortcuts() {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(
-                                            8.dp,
+                                            4.dp,
                                             Alignment.End
                                         ),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         IconButton(
-                                            modifier = Modifier.size(36.dp),
+                                            modifier = Modifier.size(48.dp),
                                             enabled = EditionConfig.isPro && showMainBusTab,
                                             onClick = {
                                                 prepareTabletSplitMenuNavigation()
@@ -4462,7 +4392,7 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         }
                                         IconButton(
-                                            modifier = Modifier.size(36.dp),
+                                            modifier = Modifier.size(48.dp),
                                             onClick = ::openTabletSplitLyrics
                                         ) {
                                             Icon(
@@ -4478,7 +4408,7 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         }
                                         IconButton(
-                                            modifier = Modifier.size(36.dp),
+                                            modifier = Modifier.size(48.dp),
                                             onClick = ::openTabletSplitFiller
                                         ) {
                                             Icon(
@@ -4494,7 +4424,7 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         }
                                         IconButton(
-                                            modifier = Modifier.size(36.dp),
+                                            modifier = Modifier.size(48.dp),
                                             enabled = showDjTab,
                                             onClick = ::openTabletSplitDj
                                         ) {
@@ -4512,7 +4442,7 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         }
                                         IconButton(
-                                            modifier = Modifier.size(36.dp),
+                                            modifier = Modifier.size(48.dp),
                                             onClick = { openTabletSplitLibrary(openSearch = false) }
                                         ) {
                                             Icon(
@@ -4522,7 +4452,7 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         }
                                         IconButton(
-                                            modifier = Modifier.size(36.dp),
+                                            modifier = Modifier.size(48.dp),
                                             onClick = ::openTabletSplitTuner
                                         ) {
                                             Icon(
@@ -4532,7 +4462,7 @@ class MainActivity : AppCompatActivity() {
                                             )
                                         }
                                         IconButton(
-                                            modifier = Modifier.size(36.dp),
+                                            modifier = Modifier.size(48.dp),
                                             onClick = ::openTabletSplitSearch
                                         ) {
                                             Icon(
@@ -4541,14 +4471,13 @@ class MainActivity : AppCompatActivity() {
                                                 tint = Color.White.copy(alpha = 0.78f)
                                             )
                                         }
-                                        TabletSplitCockpitMenuButton()
                                         Box {
                                             IconButton(
-                                                modifier = Modifier.size(36.dp),
+                                                modifier = Modifier.size(48.dp),
                                                 onClick = { isTabletShortcutMoreOpen = true }
                                             ) {
                                                 Icon(
-                                                    imageVector = Icons.Filled.MoreVert,
+                                                    imageVector = Icons.Filled.Settings,
                                                     contentDescription = stringResource(R.string.common_cd_options),
                                                     tint = Color.White.copy(alpha = 0.78f)
                                                 )
@@ -5500,9 +5429,6 @@ class MainActivity : AppCompatActivity() {
                                             "splitEligibleByTabletMode=$splitEligibleByTabletMode " +
                                             "splitEnabled=$useTabletSplitLiveLayout"
                                     )
-                                    if (!useTabletSplitLiveLayout) {
-                                        isTabletSplitMenuOpen = false
-                                    }
                                 }
 
                                 if (useTabletSplitLiveLayout) {
