@@ -5944,6 +5944,7 @@ class MainActivity : AppCompatActivity() {
                                         onManualCrossfadeToNext = { launchManualCrossfadeToNext() },
                                         onImportGeneratedSmp = autoImportGeneratedSmp,
                                         onSaveVirtualArrangement = saveVirtualArrangement,
+                                        onUpdateVirtualArrangement = updateVirtualArrangement,
                                         requestedNavigationTarget = playerNavigationTarget,
                                         requestedNavigationToken = playerNavigationToken,
                                         onOpenWaveform = {

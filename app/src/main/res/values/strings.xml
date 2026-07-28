@@ -109,6 +109,8 @@
     <string name="arrangement_occurrence_repeat_decrease">Diminuer les répétitions</string>
     <string name="arrangement_occurrence_repeat_increase">Augmenter les répétitions</string>
     <string name="arrangement_occurrence_drag">Déplacer l’occurrence</string>
+    <string name="arrangement_occurrence_move_left">Déplacer à gauche</string>
+    <string name="arrangement_occurrence_move_right">Déplacer à droite</string>
     <string name="arrangement_playhead_repeat_short">%1$d/%2$d</string>
     <string name="common_ellipsis">…</string>
     <string name="common_percent_value">%1$d %%</string>
@@ -851,6 +853,8 @@
     <string name="more_section_functions">Fonctions</string>
     <string name="more_section_audio_interface">Audio &amp; Interface</string>
     <string name="more_section_advanced">Avancé</string>
+    <string name="more_arrangement_compatibility_mode">Mode de compatibilité Arrangement</string>
+    <string name="more_arrangement_compatibility_mode_help">Désactivé : lecture directe recommandée des segments. Activez ce mode uniquement si les transitions sont instables sur ce téléphone ; SMP réutilisera alors la préparation WAV / Sampler historique.</string>
     <string name="more_item_filler">🎧  Fond sonore</string>
     <string name="more_item_backup_restore">💾  Sauvegarde / Restauration</string>
     <string name="more_item_history">🕘  Historique</string>

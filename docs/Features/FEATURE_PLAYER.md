@@ -72,18 +72,28 @@ Additional isolated players may exist for:
 BUT:
 - the live Player remains the main runtime authority
 
-Tablet Arrangement transport routing:
+Arrangement transport routing:
 
 - the official `Playback Control` remains the only visible transport bar;
 - by default it controls the complete active song;
-- selecting a block on the tablet Arrangement track temporarily targets that segment preview;
+- selecting a block on the phone or tablet Arrangement track temporarily targets that segment preview;
 - Pause fully stops the targeted segment preview and Play restarts it from the segment beginning;
-- touching the source waveform stops the targeted segment preview, releases the segment target, seeks the complete song to the touched position and keeps it paused until Play is pressed;
+- touching the source waveform on phone or tablet stops the targeted segment preview, releases the segment target, seeks the complete song to the touched position and keeps it paused until Play is pressed;
 - Return to beginning stops the secondary preview, restores the complete song as transport target and seeks it to `00:00`;
 - the main Player and an Arrangement segment preview must never play at the same time;
 - every Arrangement secondary playback claims the official Player audio source before it starts, so DJ and Background Sound are stopped through `PlaybackCoordinator`;
 - Background Sound must never remain audible under a segment, Structure, or loop preview;
-- this routing is tablet-only and does not change the phone Arrangement editor.
+- Play, Pause and Return to beginning use the same routing contract on phone and tablet.
+
+Arrangement Structure audio modes:
+
+- tablet keeps direct playback from the normalized source audio;
+- phone now uses the same direct playback by default;
+- an advanced phone-only compatibility switch may route Structure playback through the
+  existing WAV/PCM/Sampler pipeline;
+- the compatibility pipeline remains intact and selectable while direct playback is
+  validated across several phone models;
+- switching mode never changes Arrangement data and never creates a second visible transport.
 
 MediaTek decoder stability:
 

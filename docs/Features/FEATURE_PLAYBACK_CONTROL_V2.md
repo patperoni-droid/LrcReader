@@ -23,7 +23,7 @@ Le `Playback Control` devient progressivement le centre de contrôle compact et 
 - aucune ergonomie ne doit être généralisée avant validation terrain ;
 - aucun développement n'est prévu pour DJ dans cette roadmap ;
 - DJ conserve pour l'instant sa propre ergonomie ;
-- l'UX cible d'Arrangement est désormais documentée, mais son implémentation reste une étape future distincte.
+- Arrangement réutilise désormais le même composant officiel sur téléphone et tablette.
 
 ---
 
@@ -163,10 +163,15 @@ Déploiement tablette réalisé et validé dans :
 - Waveform, avec suppression du lecteur d'aperçu secondaire ;
 - Track Console, avec suppression de l'ancien raccourci bas `TOUCH HERE TO RETURN` ;
 - Timeline, avec suppression des commandes locales et maintien de l'écran ouvert lors du passage du titre actif A au titre sélectionné B.
+- Arrangement tablette et téléphone : le composant contrôle le titre complet par défaut,
+  prend temporairement la main sur la preview du segment sélectionné, puis revient au titre
+  complet dès que l'utilisateur touche la waveform source ou demande le retour au début.
 
 La Timeline utilise désormais le Playback Control officiel comme unique contrôle principal de lecture.
 
-Pour le futur écran Arrangement tablette, la règle validée est de conserver le Playback Control officiel fixé en bas et toujours visible. Cette conception est documentée dans `FEATURE_TEMPO_ARRANGEMENT.md` mais n'est pas encore implémentée. Elle ne doit produire aucun changement d'interface ou de comportement sur téléphone.
+Dans Arrangement, le Playback Control officiel reste fixé en bas et constitue l'unique
+transport visible sur les deux appareils. Une preview de segment et le titre complet ne
+peuvent jamais jouer simultanément.
 
 ---
 

@@ -78,6 +78,27 @@ class ArrangementTrackLayoutTest {
     }
 
     @Test
+    fun playheadOffset_usesMeasuredAdaptivePhoneWidths() {
+        val items = listOf(
+            ArrangementListItem(id = "a", title = "A", durationMs = 30_000L),
+            ArrangementListItem(id = "refrain", title = "Refrain", durationMs = 30_000L)
+        )
+
+        val offsetDp = arrangementTrackPlayheadOffsetDp(
+            items = items,
+            playhead = ArrangementTrackPlayhead(
+                itemId = "refrain",
+                repeatIndex = 0,
+                repeatCount = 1,
+                segmentProgressFraction = 0.5f
+            ),
+            itemWidthsDp = mapOf("a" to 48f, "refrain" to 80f)
+        )
+
+        assertEquals(104f, offsetDp ?: -1f, 0f)
+    }
+
+    @Test
     fun boundaryPlayhead_mapsTheEndOfTheTrack() {
         val items = listOf(
             ArrangementListItem(id = "intro", title = "Intro", durationMs = 2_000L),
@@ -100,5 +121,18 @@ class ArrangementTrackLayoutTest {
         assertEquals(0, arrangementTrackNearestBoundaryIndex(items, 20f))
         assertEquals(1, arrangementTrackNearestBoundaryIndex(items, 180f))
         assertEquals(2, arrangementTrackNearestBoundaryIndex(items, 340f))
+    }
+
+    @Test
+    fun nearestBoundary_usesMeasuredAdaptivePhoneWidths() {
+        val items = listOf(
+            ArrangementListItem(id = "a", title = "A", durationMs = 30_000L),
+            ArrangementListItem(id = "refrain", title = "Refrain", durationMs = 30_000L)
+        )
+        val widths = mapOf("a" to 48f, "refrain" to 80f)
+
+        assertEquals(0, arrangementTrackNearestBoundaryIndex(items, 20f, widths))
+        assertEquals(1, arrangementTrackNearestBoundaryIndex(items, 60f, widths))
+        assertEquals(2, arrangementTrackNearestBoundaryIndex(items, 140f, widths))
     }
 }

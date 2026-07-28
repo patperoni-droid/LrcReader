@@ -7,6 +7,28 @@ import org.junit.Test
 class TimelinePlaybackRoutingTest {
 
     @Test
+    fun arrangementTransportRouting_isSharedByPhoneAndTabletEditors() {
+        assertTrue(
+            shouldRouteArrangementPreviewToPlaybackControl(
+                tabletArrangementLayout = true,
+                startInGridSetup = false
+            )
+        )
+        assertTrue(
+            shouldRouteArrangementPreviewToPlaybackControl(
+                tabletArrangementLayout = false,
+                startInGridSetup = true
+            )
+        )
+        assertFalse(
+            shouldRouteArrangementPreviewToPlaybackControl(
+                tabletArrangementLayout = false,
+                startInGridSetup = false
+            )
+        )
+    }
+
+    @Test
     fun stoppingLoop_doesNotHideTransportWhileStructureStillPlays() {
         assertTrue(
             isTimelineSecondaryPlaybackActive(
@@ -40,6 +62,36 @@ class TimelinePlaybackRoutingTest {
             shouldUseTimelinePlaybackOverride(
                 segmentTargeted = true,
                 secondaryPlaybackActive = false
+            )
+        )
+    }
+
+    @Test
+    fun arrangementStructurePlayback_usesDirectModeByDefaultOnPhone() {
+        assertTrue(
+            shouldUseDirectArrangementStructurePlayback(
+                tabletArrangementLayout = false,
+                phoneCompatibilityModeEnabled = false
+            )
+        )
+    }
+
+    @Test
+    fun arrangementStructurePlayback_usesHistoricalPipelineInPhoneCompatibilityMode() {
+        assertFalse(
+            shouldUseDirectArrangementStructurePlayback(
+                tabletArrangementLayout = false,
+                phoneCompatibilityModeEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun arrangementStructurePlayback_keepsTabletDirect() {
+        assertTrue(
+            shouldUseDirectArrangementStructurePlayback(
+                tabletArrangementLayout = true,
+                phoneCompatibilityModeEnabled = true
             )
         )
     }

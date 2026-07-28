@@ -63,6 +63,7 @@ import androidx.core.os.LocaleListCompat
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.AppLanguagePrefs
 import com.patrick.lrcreader.core.AppEdition
+import com.patrick.lrcreader.core.ArrangementPlaybackModePrefs
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.DisplayPrefs
@@ -578,6 +579,9 @@ private fun MoreRootScreen(
     var showDjMode by remember { mutableStateOf(showDjTab) }
     var showMainBusMode by remember { mutableStateOf(showMainBusTab) }
     var tabletExperimentalMode by remember { mutableStateOf(tabletExperimentalModeEnabled) }
+    var arrangementCompatibilityModeEnabled by remember {
+        mutableStateOf(ArrangementPlaybackModePrefs.isCompatibilityModeEnabled(context))
+    }
     var betaCode by remember { mutableStateOf("") }
     var settingsHelpTitle by remember { mutableStateOf<String?>(null) }
     var settingsHelpText by remember { mutableStateOf<String?>(null) }
@@ -1195,6 +1199,29 @@ private fun MoreRootScreen(
                         onHelpClick = { help -> openSettingsHelp(manualCrossfadeLabel, help) },
                         onClick = { showManualCrossfadeDurationDialog = true }
                     )
+
+                    if (!adaptiveTokens.tabletMode) {
+                        SettingsHeader(stringResource(R.string.more_section_advanced))
+                        val arrangementCompatibilityModeLabel =
+                            stringResource(R.string.more_arrangement_compatibility_mode)
+                        SwitchSettingItem(
+                            label = arrangementCompatibilityModeLabel,
+                            checked = arrangementCompatibilityModeEnabled,
+                            helpText = stringResource(
+                                R.string.more_arrangement_compatibility_mode_help
+                            ),
+                            onHelpClick = { help ->
+                                openSettingsHelp(arrangementCompatibilityModeLabel, help)
+                            },
+                            onCheckedChange = { enabled ->
+                                arrangementCompatibilityModeEnabled = enabled
+                                ArrangementPlaybackModePrefs.setCompatibilityModeEnabled(
+                                    context,
+                                    enabled
+                                )
+                            }
+                        )
+                    }
 
                     val lightIndicatorLabel = stringResource(R.string.more_show_light_indicator)
                     SwitchSettingItem(

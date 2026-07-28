@@ -22,7 +22,7 @@ Permettre à l’utilisateur de :
 
 ## VARIANTES VIRTUELLES DANS LA BIBLIOTHÈQUE
 
-**Statut : enregistrement Bibliothèque et première lecture audio-only par le lecteur principal implémentés.**
+**Statut : workflow complet implémenté et validé sur téléphone et tablette.**
 
 Une variante virtuelle est un projet Arrangement léger, par exemple `Marina_AR01`, qui :
 
@@ -33,15 +33,15 @@ Une variante virtuelle est un projet Arrangement léger, par exemple `Marina_AR0
 - peut coexister avec plusieurs autres variantes du même morceau ;
 - ne produit un WAV que par une action d'assemblage explicite.
 
-Première étape :
+Création depuis l'éditeur :
 
-- l'action est proposée uniquement dans l'éditeur Arrangement tablette ;
+- l'action `Bibliothèque` est proposée dans l'éditeur Arrangement canonique sur téléphone et tablette ;
 - la variante est créée dans le stockage interne normalisé et apparaît dans la Bibliothèque ;
 - elle est clairement identifiée comme variante Arrangement ;
-- elle reste non assignable à une playlist pendant cette étape ;
+- elle peut être assignée à une playlist comme toute autre SongUnit ;
 - le titre source et son Arrangement courant restent inchangés.
 
-Deuxième étape — lecture Bibliothèque :
+Lecture depuis la Bibliothèque :
 
 - le Play de la Bibliothèque résout la variante vers son SongUnit source local ;
 - les occurrences actives et leurs répétitions sont transformées en une liste Media3 complète avant Play ;
@@ -49,19 +49,17 @@ Deuxième étape — lecture Bibliothèque :
 - cette liste est chargée dans le lecteur principal officiel, sans second lecteur et sans rendu WAV ;
 - Play, Pause, Stop et retour au début utilisent le `Playback Control` officiel ;
 - position et durée sont exprimées dans le temps cumulé de l'Arrangement ;
-- les paroles, accords, MIDI et DMX ne sont pas encore projetés dans ce nouvel espace temporel et restent hors de cette étape audio-only.
+- les paroles et accords propres à la variante utilisent son `songId` et le temps cumulé de sa Structure ;
+- Timeline, annotations, réglages avancés, MIDI et DMX propres à la variante restent des chantiers futurs.
 
-Évolutions ultérieures :
-
-- ajout aux playlists et aux familles de versions ;
-- projection temporelle des paroles, accords, MIDI et DMX ;
-- gestion explicite de la suppression d'une source possédant des variantes.
+La variante peut être ajoutée à une playlist, regroupée avec d'autres SongUnits, modifiée,
+partagée, sauvegardée et restaurée sans dupliquer l'audio parent.
 
 Une variante virtuelle ne doit jamais être confondue avec un export WAV. L'export crée un audio indépendant ; la variante reste un montage non destructif dépendant de sa source.
 
 ### Sauvegarde et restauration des variantes virtuelles
 
-**Statut : transport implémenté ; nouvelle sauvegarde et restauration avec le build corrigé à valider sur appareil avant stabilisation.**
+**Statut : transport, sauvegarde et restauration validés.**
 
 Une variante virtuelle ne possède pas son propre audio et ne constitue donc pas un `.smp` autonome complet.
 
@@ -88,7 +86,7 @@ Règles de transport :
 
 La variante voyage donc dans la « valise » de son titre parent, tout en restant un élément indépendant dans la Bibliothèque après restauration.
 
-### Diagnostic du premier essai de restauration
+### Historique du premier essai de restauration
 
 Validation terrain du 22 juillet 2026 :
 
@@ -97,15 +95,18 @@ Validation terrain du 22 juillet 2026 :
 - les variantes visibles après restauration étaient les variantes runtime déjà présentes, car la restauration Bibliothèque est non destructive ;
 - cet essai ne valide donc pas encore la recréation des variantes par le nouveau manifeste.
 
-Une ancienne sauvegarde ne peut pas reconstruire un projet Arrangement qu'elle n'a jamais transporté. Après installation du build corrigé, une nouvelle sauvegarde doit vérifier toute la chaîne :
+Une ancienne sauvegarde ne peut pas reconstruire un projet Arrangement qu'elle n'a jamais transporté.
+Les validations suivantes ont ensuite confirmé toute la chaîne :
 
 `arrangement.json runtime parent → export SMP → import SMP → chargement écran Arrangement`.
 
-La validation doit préserver exactement les occurrences, l'ordre, les points IN / OUT, les répétitions, les mutes, les noms et les couleurs, ainsi que recréer les variantes virtuelles à partir du manifeste.
+La sauvegarde/restauration actuelle préserve les occurrences, l'ordre, les points IN / OUT,
+les répétitions, les mutes, les noms et les couleurs, et recrée les variantes virtuelles
+à partir du manifeste.
 
 ### Réouvrir une variante comme projet éditable
 
-**Statut : mise en œuvre en cours sur tablette.**
+**Statut : mise en œuvre commune au téléphone et à la tablette.**
 
 - si plusieurs variantes d'un même morceau existent, l'utilisateur doit pouvoir choisir celle qu'il préfère dans la Bibliothèque ;
 - il doit pouvoir la rouvrir dans Arrangement avec sa Structure exacte ;
@@ -118,7 +119,7 @@ Contrat de stockage :
 - le `songId` de la variante reste le propriétaire de son `arrangement.json` ;
 - le `sourceSongId` désigne uniquement le SongUnit parent qui fournit l'audio et la waveform ;
 - l'ouverture d'une variante charge donc les données depuis son dossier normalisé, mais résout l'audio depuis le parent ;
-- sur tablette, une variante active conserve les accès `Timeline`, `Arrangement` et `Waveform` du lecteur ;
+- une variante active conserve les accès `Timeline`, `Arrangement` et `Waveform` du lecteur sur téléphone et tablette ;
 - `Arrangement` ouvre le projet appartenant à la variante, tandis que `Waveform` résout le morceau parent qui possède réellement l'audio ;
 - une mise à jour conserve le `songId` et le titre de la variante et remplace son projet de façon atomique ;
 - « Enregistrer comme nouvelle variante » crée un nouveau `songId` et ne modifie ni la variante ouverte ni le parent ;
@@ -201,6 +202,15 @@ Suppression dans une playlist :
 ---
 
 ## 🧩 CONCEPTS CLÉS
+
+### Lecture de la Structure sur téléphone
+
+- la lecture directe depuis l'audio source est le mode recommandé et le comportement par défaut ;
+- un mode de compatibilité avancé, visible uniquement sur téléphone dans
+  `Plus → Avancé`, permet de réutiliser intégralement la préparation historique
+  WAV / Sampler lorsque les transitions sont instables sur un appareil ;
+- changer ce réglage sélectionne l'un des deux pipelines existants sans modifier la Structure ni ses données ;
+- la tablette conserve exclusivement son comportement direct actuel.
 
 ### IN / OUT
 
@@ -286,7 +296,8 @@ Implémenté dans l'éditeur canonique partagé :
 - téléphone et tablette enregistrent le modèle V2 uniquement après une modification explicite dans l'éditeur canonique ;
 - les champs d'occurrence V2 participent au hash de synchronisation afin que répétition, mute et couleur soient transférés comme données de l'Arrangement.
 - la Structure est rendue comme une piste horizontale statique et défilable juste au-dessus du `Playback Control` ;
-- chaque bloc affiche son ordre, son nom et sa durée, avec une largeur liée à la durée et une largeur tactile minimale ;
+- sur tablette, chaque bloc affiche son ordre, son nom et sa durée, avec une largeur liée à la durée et une largeur tactile minimale ;
+- sur téléphone, seul le nom est affiché dans le bloc et détermine sa largeur, avec une sécurité tactile discrète de `48 dp` et une limite pour les noms très longs ;
 - la sélection active reste verte, la prochaine occurrence préparée reste jaune et la suppression conserve le comportement existant ;
 - le défilement horizontal est un état d'interface local : il ne modifie ni l'ordre, ni le stockage, ni la lecture audio ;
 - lors du chargement, chaque occurrence de la Structure reçoit son `entryId` V2 indépendant, y compris lorsque plusieurs occurrences provenaient du même segment V1 ;
@@ -296,6 +307,7 @@ Implémenté dans l'éditeur canonique partagé :
 - ouvrir l'Arrangement ou sélectionner un bloc ne réécrit pas le fichier : la migration V2 est enregistrée seulement lors d'une modification explicite ;
 - chaque bloc propose renommage, couleur, collage à la tête, mute, répétition et suppression explicite ;
 - la poignée de déplacement déplace une occurrence d'un voisin vers la gauche ou la droite sans changer son `entryId` ;
+- sur téléphone, la poignée et le bouton d'options sont retirés du bloc pour gagner de la place : l'appui long ouvre le menu, qui conserve notamment le déplacement d'un voisin vers la gauche ou la droite ;
 - un collage crée à la frontière choisie une occurrence avec un nouvel `entryId` indépendant et ne duplique jamais le fichier audio ;
 - la couleur, le mute et `repeatCount` sont sauvegardés dans l'entrée V2 ;
 - avant la preview ou l'export, les occurrences en mute sont exclues et les répétitions sont développées dans la liste audio préparée ;
@@ -331,7 +343,7 @@ La gestion des segments et la construction de la Structure utilisent désormais 
 - les données, les actions d'occurrence et le dialogue de renommage restent communs ;
 - toute évolution du stockage partagé doit rester transparente et rétrocompatible pour les projets existants.
 
-La future interface ne doit plus séparer :
+L'interface actuelle ne sépare plus :
 
 - une colonne contenant les segments disponibles ;
 - une seconde colonne contenant leur disposition dans la Structure.
@@ -371,11 +383,15 @@ Chaque bloc :
 
 - représente une occurrence indépendante de segment ;
 - possède un nom et une couleur modifiables ;
-- affiche au minimum son nom, sa durée, son état muet et son nombre de répétitions ;
-- peut être déplacé horizontalement pour modifier l'ordre final ;
-- conserve une largeur liée à sa durée et au niveau de zoom de la piste ;
-- dispose d'une largeur tactile minimale afin qu'un segment très court reste sélectionnable ;
+- peut être déplacé d'un voisin vers la gauche ou la droite pour modifier l'ordre final ;
 - ne contient ni ne duplique le fichier audio source.
+
+Présentation par appareil :
+
+- sur tablette, le bloc affiche l'ordre, le nom et la durée ; sa largeur est liée à la durée
+  et ses contrôles directs restent visibles ;
+- sur téléphone, seul le nom détermine la largeur, avec une sécurité tactile discrète ;
+  l'appui long ouvre le menu complet et aucun bouton d'options ou poignée n'occupe le bloc.
 
 La couleur est une information visuelle portable liée à l'occurrence. Elle n'a aucun effet audio et doit survivre à la sauvegarde, à l'export SMP et au transfert entre appareils.
 
@@ -419,23 +435,17 @@ Le nom proposé à la création est `Segment N` sur tablette et une lettre compa
 
 ### Actions sur une occurrence
 
-Chaque bloc de la piste unique doit pouvoir être :
+Chaque bloc de la piste unique peut être :
 
-- déplacé par glisser-déposer ;
+- déplacé d'un voisin vers la gauche ou la droite ;
 - copié puis collé ;
 - dupliqué ;
 - supprimé explicitement ;
 - mis en mute sans être supprimé ;
 - configuré pour être joué plusieurs fois consécutivement.
 
-Le bloc doit pouvoir afficher au minimum :
-
-- son nom ;
-- ses points IN et OUT ou sa durée ;
-- son nombre de répétitions ;
-- son état actif ou muet ;
-- une poignée de déplacement ;
-- un accès aux actions secondaires.
+Sur tablette, les contrôles directs restent dans le bloc. Sur téléphone, les mêmes actions
+sont accessibles par appui long dans le menu contextuel afin de conserver une piste compacte.
 
 ### Répétition et duplication
 
@@ -487,8 +497,15 @@ Avant toute lecture de Structure :
 
 1. ignorer les occurrences en mute ;
 2. développer chaque `repeatCount` en occurrences de lecture consécutives ;
-3. préparer la liste complète de segments clipés Media3 ;
+3. préparer la liste logique complète des segments avant Play ;
 4. seulement ensuite démarrer la preview Arrangement.
+
+Modes audio actuels :
+
+- tablette : lecture directe depuis l'audio source ;
+- téléphone par défaut : même lecture directe, avec segments Media3 clipés et file préparée ;
+- téléphone en mode de compatibilité : préparation historique WAV, extraction PCM puis
+  `SamplerEngine`, avec ses replis ExoPlayer existants.
 
 Cette UX à piste horizontale ne change pas la règle d'architecture audio : aucun réordonnancement, mute, collage ou changement de répétition ne doit reconstruire la Structure pendant sa lecture.
 
@@ -584,11 +601,10 @@ Bouton Ajouter :
 
 ### Suppression rapide
 
-- bouton suppression directement sur le bloc concerné
+- tablette : suppression accessible depuis les contrôles du bloc
+- téléphone : suppression accessible par appui long dans le menu contextuel
 - suppression explicite de l'occurrence concernée
 - aucune seconde Structure à nettoyer ou synchroniser
-
-👉 remplace l’ancien appui long
 
 ---
 
@@ -597,10 +613,13 @@ Bouton Ajouter :
 ### Principe
 
 - preview de travail rapide
-- player secondaire local
-- playlist de segments clipés (MediaItems)
-- lecture fluide basée sur ExoPlayer
-- sur tablette, le premier Play d'un segment utilise directement le fichier audio source et ne doit jamais attendre un transcodage WAV
+- transport visible unique via le `Playback Control` officiel
+- lecteur secondaire local en mode direct, avec segments clipés Media3
+- `SamplerEngine` préchargé uniquement en mode téléphone de compatibilité
+- sur tablette et en mode téléphone recommandé, le premier Play utilise directement le
+  fichier audio source et n'attend aucun transcodage WAV
+- sur téléphone, le mode avancé de compatibilité réutilise volontairement le pipeline
+  WAV/Sampler historique sans en modifier le comportement
 - structure basée sur segments préparés
 
 ---
@@ -616,9 +635,9 @@ Bouton Ajouter :
 
 ### Seek structure
 
-- déplacement libre dans la structure
-- accès direct aux transitions
-- pas de blocage par la lecture
+- après Stop, la tête conserve la position exacte atteinte, y compris au milieu d'un segment
+- un toucher ou glissement manuel quantifie ensuite la tête sur la frontière de segment la plus proche
+- les frontières donnent un accès direct aux transitions et servent de positions non ambiguës pour le collage
 
 👉 permet de travailler rapidement les enchaînements
 
@@ -654,29 +673,11 @@ Décision validée le 22 juillet 2026 :
 
 - l'écran utilisateur `Sampler Test` est supprimé ;
 - le bouton `Écouter` et sa pré-écoute WAV temporaire sont supprimés ;
-- la lecture directe de la Structure est le seul mode de contrôle du montage avant export ;
-- le moteur sampler interne peut rester utilisé comme détail technique de la lecture Structure : ce n'est pas une fonction utilisateur séparée ;
-- les limites constatées sur certains téléphones avec les fichiers compressés sont considérées comme matérielles et ne justifient pas un second parcours dans l'interface ;
+- la piste et le `Playback Control` restent l'unique parcours utilisateur de préécoute ;
+- la lecture directe est recommandée et activée par défaut sur téléphone ;
+- un réglage avancé téléphone permet de réutiliser intégralement le moteur WAV/Sampler
+  comme mode de compatibilité, sans réintroduire `Sampler Test` ni `Écouter` ;
 - `Assembler` reste la seule génération WAV, déclenchée volontairement pour créer le fichier final.
-
----
-
-### Seek dans le WAV
-
-- barre dédiée “Écoute du montage”
-- affichage temps courant / durée
-- seek libre dans le WAV
-
-👉 permet :
-
-- accès direct aux transitions (ex : 3:30)
-- validation rapide sans écouter depuis le début
-
----
-
-### Objectif
-
-Validation rapide + fidèle du rendu final
 
 ---
 
@@ -720,75 +721,25 @@ Pendant l’assemblage :
 
 ## 💾 SAUVEGARDE
 
-### Sauvegarder ma bibliothèque
-
-Accessible depuis l’écran Plus
-
-Fonction :
-
-- sauvegarde complète de la bibliothèque utilisateur
-- export des morceaux importés depuis leur état actuel
-- création d’un `.smp` à jour pour chaque morceau
-- copie des `.smp` non importés présents dans le stockage
-- ajout d’un `state.json` (playlists + état)
-- choix du dossier via SAF
-- dossier automatique horodaté
-
----
-
-### Objectif sauvegarde
-
-Sauvegarder tout le travail utilisateur et permettre le transfert vers un autre appareil
-
-👉 ex : téléphone → tablette
-
----
-
-### Principe
-
-- sauvegarde = création de fichiers `.smp`
-- restauration = réimport des `.smp`
-- indépendance totale du runtime Android
+- la sauvegarde complète reconstruit le `.smp` du parent depuis le runtime normalisé ;
+- ce `.smp` transporte l'audio une seule fois, le projet parent et ses variantes ;
+- les paroles, accords, couleurs et Structures propres aux variantes sont inclus ;
+- le nom de sauvegarde proposé est modifiable avant création ;
+- `state.json` transporte automatiquement les playlists, leurs groupes et leurs associations.
 
 ---
 
 ## 🔄 RESTAURATION
 
-### Restaurer ma bibliothèque
+- les choix `Conserver / Remplacer` sont indépendants pour les morceaux et les playlists ;
+- les parents sont restaurés avant leurs variantes ;
+- l'index Bibliothèque est rafraîchi avant la reconstruction des playlists ;
+- les groupes, l'ordre, les couleurs, les occurrences et les références parent/variante
+  sont restaurés automatiquement ;
+- aucun `songId` valide ne doit devenir « Titre manquant » ;
+- le Playback ne doit jamais servir à réparer une référence restaurée.
 
-Fonction :
-
-- sélection d’un dossier de sauvegarde
-- détection des fichiers `.smp`
-- détection du `state.json`
-- import des morceaux
-- gestion des conflits
-
----
-
-### Modes
-
-#### Conserver les morceaux existants
-
-- garde les morceaux déjà présents
-- ajoute uniquement les nouveaux
-
----
-
-#### Remplacer les morceaux existants
-
-- remplace uniquement les morceaux présents dans la sauvegarde
-- ne supprime jamais les autres
-
----
-
-### Règles
-
-✔ aucun doublon (`songId`)  
-✔ aucune suppression automatique  
-✔ morceaux restaurés comme runtime normalisé  
-✔ playlists réactivables par import JSON dédié  
-✔ fonctionnement non destructif
+Le contrat complet et les limites restent définis dans `FEATURE_EXPORT_BACKUP.md`.
 
 ---
 

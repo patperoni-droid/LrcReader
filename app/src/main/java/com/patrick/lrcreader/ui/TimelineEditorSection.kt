@@ -104,6 +104,7 @@ import androidx.compose.ui.window.PopupProperties
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
+import com.patrick.lrcreader.core.ArrangementPlaybackModePrefs
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.PlaybackCoordinator
@@ -252,6 +253,16 @@ internal fun shouldUseTimelinePlaybackOverride(
     secondaryPlaybackActive: Boolean
 ): Boolean = segmentTargeted || secondaryPlaybackActive
 
+internal fun shouldRouteArrangementPreviewToPlaybackControl(
+    tabletArrangementLayout: Boolean,
+    startInGridSetup: Boolean
+): Boolean = tabletArrangementLayout || startInGridSetup
+
+internal fun shouldUseDirectArrangementStructurePlayback(
+    tabletArrangementLayout: Boolean,
+    phoneCompatibilityModeEnabled: Boolean
+): Boolean = tabletArrangementLayout || !phoneCompatibilityModeEnabled
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TimelineEditorSection(
@@ -327,6 +338,11 @@ fun TimelineEditorSection(
             }
         )
     }
+    val routeArrangementPreviewToPlaybackControl =
+        shouldRouteArrangementPreviewToPlaybackControl(
+            tabletArrangementLayout = tabletArrangementLayout,
+            startInGridSetup = startInGridSetup
+        )
     val currentOnTabletFocusModeChange by rememberUpdatedState(onTabletFocusModeChange)
     LaunchedEffect(editorMode, tabletArrangementLayout) {
         currentOnTabletFocusModeChange(
@@ -938,6 +954,8 @@ fun TimelineEditorSection(
                     },
                     constrainToAvailableHeight = tabletArrangementLayout,
                     unifiedSegmentLayout = true,
+                    routeStructurePreviewToPlaybackControl =
+                        routeArrangementPreviewToPlaybackControl,
                     currentSongId = currentSongId,
                     fallbackTempoBpm = measuresTempoBpm,
                     measureAnchorMs = measureAnchorMs,
@@ -963,7 +981,7 @@ fun TimelineEditorSection(
         }
         Spacer(Modifier.height(8.dp))
         val playbackOverride = if (
-            tabletArrangementLayout &&
+            routeArrangementPreviewToPlaybackControl &&
             editorMode == TimelineEditorMode.GRID_SETUP &&
             shouldUseTimelinePlaybackOverride(
                 segmentTargeted = tempoStructurePreviewTargeted,
@@ -1709,6 +1727,7 @@ private fun GridSetupHost(
     modifier: Modifier = Modifier,
     constrainToAvailableHeight: Boolean = false,
     unifiedSegmentLayout: Boolean = false,
+    routeStructurePreviewToPlaybackControl: Boolean = false,
     currentSongId: String?,
     fallbackTempoBpm: Int?,
     measureAnchorMs: Long?,
@@ -1795,6 +1814,7 @@ private fun GridSetupHost(
         modifier = modifier,
         constrainToAvailableHeight = constrainToAvailableHeight,
         unifiedSegmentLayout = unifiedSegmentLayout,
+        routeStructurePreviewToPlaybackControl = routeStructurePreviewToPlaybackControl,
         currentSongId = currentSongId,
         tempoDraft = gridTempoDraft,
         isTempoInvalid = isTempoInvalid,
@@ -1859,6 +1879,7 @@ private fun TimelineMeasuresPlaceholder(
     modifier: Modifier = Modifier,
     constrainToAvailableHeight: Boolean = false,
     unifiedSegmentLayout: Boolean = false,
+    routeStructurePreviewToPlaybackControl: Boolean = false,
     currentSongId: String?,
     tempoDraft: String,
     isTempoInvalid: Boolean,
@@ -1925,6 +1946,10 @@ private fun TimelineMeasuresPlaceholder(
         )
     }
     val context = LocalContext.current
+    val phoneCompatibilityModeEnabled = remember(context, constrainToAvailableHeight) {
+        !constrainToAvailableHeight &&
+            ArrangementPlaybackModePrefs.isCompatibilityModeEnabled(context)
+    }
     val isLite = EditionConfig.isLite
     val sExportProDialogTitle = stringResource(R.string.arrangement_assemble_pro_dialog_title)
     val sExportProDialogMessage = stringResource(R.string.arrangement_assemble_pro_dialog_message)
@@ -3107,6 +3132,8 @@ private fun TimelineMeasuresPlaceholder(
         !structurePlaybackActive &&
             !isStructureAudioPreparing &&
             !isFinalExporting
+    val compactArrangementTrackControls =
+        unifiedSegmentLayout && !constrainToAvailableHeight
 
     fun startStructurePreviewAtLogicalIndex(logicalIndex: Int) {
         if (isStructureAudioPreparing || structurePlaybackActive) return
@@ -3126,12 +3153,18 @@ private fun TimelineMeasuresPlaceholder(
         loopEnabled = false
         preparedLoopStartMs = null
         onIsPlayingChange(false)
-        if (constrainToAvailableHeight) {
+        if (
+            shouldUseDirectArrangementStructurePlayback(
+                tabletArrangementLayout = constrainToAvailableHeight,
+                phoneCompatibilityModeEnabled = phoneCompatibilityModeEnabled
+            )
+        ) {
             structureSamplerReady = false
             structureUsingWavSource = false
             Log.d(
                 ARR_STRUCTURE_FLOW_TAG,
-                "DIRECT_SOURCE_START mode=tablet_arrangement source=${arrangementTimingSourceLabel(sourceAudioPath)}"
+                "DIRECT_SOURCE_START mode=${if (constrainToAvailableHeight) "tablet_arrangement" else "phone_arrangement"} " +
+                    "source=${arrangementTimingSourceLabel(sourceAudioPath)}"
             )
             playStructureSegmentPreview(
                 startIndex = startIndex,
@@ -3505,13 +3538,13 @@ private fun TimelineMeasuresPlaceholder(
         }
     }
     LaunchedEffect(
-        constrainToAvailableHeight,
+        routeStructurePreviewToPlaybackControl,
         selectedStructureEditIndex,
         preparedStructureOccurrences
     ) {
         val selectedLogicalIndex = selectedStructureEditIndex
         onStructurePreviewTargetChange(
-            constrainToAvailableHeight &&
+            routeStructurePreviewToPlaybackControl &&
                 selectedLogicalIndex != null &&
                 preparedStructureOccurrences.any { occurrence ->
                     occurrence.entryIndex == selectedLogicalIndex
@@ -3519,7 +3552,7 @@ private fun TimelineMeasuresPlaceholder(
         )
     }
     LaunchedEffect(structurePreviewPlayRequest) {
-        if (structurePreviewPlayRequest > 0 && constrainToAvailableHeight) {
+        if (structurePreviewPlayRequest > 0 && routeStructurePreviewToPlaybackControl) {
             selectedStructureEditIndex?.let { logicalIndex ->
                 startStructurePreviewAtLogicalIndex(logicalIndex)
             }
@@ -4083,7 +4116,7 @@ private fun TimelineMeasuresPlaceholder(
             revealAnchorRequest = revealSyncPointRequest,
             onToggleExpanded = { isWaveformExpanded = !isWaveformExpanded },
             onSeekRequested = { requestedPositionMs ->
-                val shouldReturnToMainPlayback = constrainToAvailableHeight &&
+                val shouldReturnToMainPlayback = routeStructurePreviewToPlaybackControl &&
                     (selectedStructureEditIndex != null ||
                         selectedSegmentLoopId != null ||
                         isTimelineSecondaryPlaybackActive(
@@ -4229,10 +4262,10 @@ private fun TimelineMeasuresPlaceholder(
                 }
             }
         )
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 text = stringResource(R.string.timeline_tempo_action_add),
@@ -4316,7 +4349,7 @@ private fun TimelineMeasuresPlaceholder(
                     }
                     .padding(horizontal = 10.dp, vertical = 8.dp)
             )
-            if (constrainToAvailableHeight) {
+            if (unifiedSegmentLayout) {
                 arrangementEditingTarget?.variantSongId?.let { variantSongId ->
                     Text(
                         text = stringResource(R.string.arrangement_virtual_update_action),
@@ -4336,7 +4369,7 @@ private fun TimelineMeasuresPlaceholder(
                                     ?.takeIf { it.isNotEmpty() }
                                     ?: arrangementName.ifBlank { "Arrangement 1" }
                                 val variantData = buildArrangementDataForPersistence(
-                                    useOccurrenceModel = constrainToAvailableHeight,
+                                    useOccurrenceModel = unifiedSegmentLayout,
                                     name = variantTitle,
                                     sourceSongId = editingTarget.sourceSongId,
                                     segments = arrangementSegments,
@@ -4531,7 +4564,11 @@ private fun TimelineMeasuresPlaceholder(
                 val entry = arrangementEntries.firstOrNull { it.entryId == segmentId }
                 ArrangementListItem(
                     id = index.toString(),
-                    title = "${index + 1}. ${segment.name}",
+                    title = if (compactArrangementTrackControls) {
+                        segment.name
+                    } else {
+                        "${index + 1}. ${segment.name}"
+                    },
                     durationMs = (segment.endMs - segment.startMs).coerceAtLeast(0L),
                     repeatCount = entry?.repeatCount ?: 1,
                     isMuted = entry?.muted ?: false,
@@ -4672,6 +4709,8 @@ private fun TimelineMeasuresPlaceholder(
                     null
                 },
                 itemActionsEnabled = !unifiedSegmentLayout || arrangementStructuralActionsEnabled,
+                showHorizontalItemControls = !compactArrangementTrackControls,
+                adaptiveHorizontalItemWidth = compactArrangementTrackControls,
                 playhead = arrangementTrackPlayhead,
                 onPlayheadBoundaryChange = if (unifiedSegmentLayout) {
                     { boundaryIndex ->
@@ -5056,6 +5095,9 @@ private fun TimelineMeasuresPlaceholder(
                     endMs = segment.endMs
                 )
             }
+        val targetStructureIndex = targetId
+            ?.let(structureSegmentIds::indexOf)
+            ?.takeIf { it >= 0 }
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { segmentOptionsTargetId = null },
             title = {
@@ -5080,6 +5122,28 @@ private fun TimelineMeasuresPlaceholder(
                         }
                     )
                     if (unifiedSegmentLayout && targetEntry != null) {
+                        if (compactArrangementTrackControls && targetStructureIndex != null) {
+                            val canMoveLeft = arrangementStructuralActionsEnabled &&
+                                targetStructureIndex > 0
+                            val canMoveRight = arrangementStructuralActionsEnabled &&
+                                targetStructureIndex < structureSegmentIds.lastIndex
+                            Text(
+                                text = stringResource(R.string.arrangement_occurrence_move_left),
+                                color = if (canMoveLeft) Color.White else Color(0xFF546E7A),
+                                modifier = Modifier.clickable(enabled = canMoveLeft) {
+                                    moveArrangementOccurrence(targetStructureIndex, -1)
+                                    segmentOptionsTargetId = null
+                                }
+                            )
+                            Text(
+                                text = stringResource(R.string.arrangement_occurrence_move_right),
+                                color = if (canMoveRight) Color.White else Color(0xFF546E7A),
+                                modifier = Modifier.clickable(enabled = canMoveRight) {
+                                    moveArrangementOccurrence(targetStructureIndex, 1)
+                                    segmentOptionsTargetId = null
+                                }
+                            )
+                        }
                         Text(
                             text = stringResource(R.string.timeline_paste_here),
                             color = if (arrangementInsertionBoundaryIndex != null) {

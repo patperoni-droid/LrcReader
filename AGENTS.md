@@ -58,6 +58,13 @@ For SMP / architecture / storage:
 Rule:
 👉 Never load unrelated documents unless strictly necessary
 
+For project orientation before opening a new chantier:
+- /PROJECT_STATUS.md = current implemented/validated state
+- /docs/BACKLOG.md = single prioritized reference for pending work
+
+Feature documents and roadmap documents may provide detailed designs, but they do not
+override the priority recorded in `docs/BACKLOG.md`.
+
 ---
 
 ## IMPORTANT — PROMPTING RULES

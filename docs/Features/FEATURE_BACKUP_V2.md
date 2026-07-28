@@ -4,6 +4,26 @@
 
 ---
 
+## Statut au 28 juillet 2026
+
+Ce document décrit une évolution future. Le comportement actuellement implémenté et
+validé reste défini dans `FEATURE_EXPORT_BACKUP.md`.
+
+Déjà livré, sous une forme plus simple que la première hypothèse de ce document :
+
+- le nom du dossier de sauvegarde est proposé automatiquement et reste modifiable ;
+- `state.json` conserve l'état applicatif et les playlists ;
+- les modes Morceaux et Playlists `Conserver / Remplacer` sont indépendants.
+
+Toujours non implémenté :
+
+- mémoriser une sauvegarde comme sauvegarde de travail ;
+- synchroniser/reconstruire un dossier de sauvegarde existant ;
+- appliquer la structure cible `SMP/` ou `DATA/`.
+
+Les hypothèses de nommage du JSON et de sous-dossiers ci-dessous doivent donc être
+rediagnostiquées avant développement. Elles ne décrivent pas le format courant.
+
 # Objectif
 
 Transformer le système actuel de sauvegarde en un véritable outil de travail.
@@ -339,13 +359,13 @@ Toute future implémentation devra garantir qu'aucune suppression ne puisse sort
 
 La sécurité des données est prioritaire sur les performances.
 
-## Plan de développement retenu
+## Plan historique à réévaluer
 
 Découper BACKUP V2 en plusieurs étapes indépendantes.
 
 ### V2.1
 
-- nom personnalisable du JSON ;
+- nom personnalisable : livré pour le dossier de sauvegarde, pas pour le JSON ;
 - organisation des .smp dans un dossier dédié ;
 - restauration compatible ancien et nouveau format.
 

@@ -1,6 +1,6 @@
 RÔLE
 
-Ce document décrit une décision technique critique pour la future feature "Arrangement".
+Ce document décrit la décision technique critique de la feature "Arrangement".
 
 Il doit être lu AVANT toute implémentation liée à :
 - segments
@@ -56,10 +56,12 @@ NE JAMAIS FAIRE :
 
 TOUJOURS FAIRE :
 - préparer une liste de segments AVANT la lecture
-- utiliser Media3 / ExoPlayer avec :
+- en mode direct, utiliser Media3 / ExoPlayer avec :
     - MediaItem
     - clipping (startMs / endMs)
     - playlist de segments
+- en mode de compatibilité téléphone, préparer le WAV et les segments PCM avant lecture,
+  puis utiliser le `SamplerEngine` historique sans seek structurel
 
 Exemple :
 
@@ -100,26 +102,32 @@ Variante virtuelle :
 - conserve la Structure dans son propre stockage normalisé
 - référence l'audio du SongUnit source sans le copier
 - peut être enregistrée et nommée avant tout rendu WAV
-- reste non assignable à une playlist pendant la première étape d'intégration du lecteur
-- devient jouable depuis la Bibliothèque uniquement par une résolution explicite dans le lecteur principal, avec préparation complète de la liste Media3 avant Play
+- peut être assignée à une playlist avec son propre `songId`
+- devient jouable depuis la Bibliothèque par une résolution explicite dans le lecteur principal,
+  avec préparation de la Structure avant Play
 - conserve une position et une durée cumulées calculées depuis les occurrences préparées, tandis que chaque MediaItem reste un clip du fichier source
-- ne projette pas encore paroles, accords, MIDI ou DMX pendant l'étape audio-only
+- possède désormais ses propres paroles et accords dans son espace temporel cumulé
+- ne projette pas encore Timeline, annotations, réglages avancés, MIDI ou DMX propres
 
 Évolution UX validée :
-- cette évolution d'interface est réservée à la tablette et ne modifie pas l'interface Arrangement du téléphone
-- l'interface tablette cible présente directement cette Structure sous la forme d'une piste horizontale unique de conteneurs audio ordonnés
+- téléphone et tablette présentent désormais la Structure sous la forme d'une piste
+  horizontale unique de conteneurs audio ordonnés
+- le téléphone adapte la largeur des blocs au nom et place les actions dans l'appui long ;
+  la tablette conserve ses contrôles directs et ses largeurs liées à la durée
 - chaque bloc est une occurrence indépendante avec une identité stable, un nom, une couleur, ses propres `startMs` / `endMs`, un `repeatCount` et un état `muted`
 - la waveform supérieure reste exprimée dans le temps du morceau source, tandis que la piste horizontale est exprimée dans le temps cumulé de l'Arrangement préparé
 - la tête de lecture dessinée au-dessus des blocs suit la position réelle de la preview Structure et ne constitue jamais une horloge autonome
 - la playlist peut être ouverte ou fermée dans un panneau latéral gauche interne à l'écran Arrangement ; ce redimensionnement ne modifie ni la Structure, ni le zoom, ni le titre actif
 - sélectionner un titre B dans cette playlist conserve l'Arrangement A tant que le Play jaune n'a pas lancé B via le pipeline Playback officiel
 - `repeatCount` est développé en segments de lecture avant le démarrage
-- les occurrences muettes sont exclues de la liste Media3 préparée sans être supprimées du projet
-- cette évolution supprime les deux colonnes visibles, mais ne change pas l'obligation de préparer toute la playlist Media3 avant lecture
-- toute évolution du modèle partagé doit rester rétrocompatible et ne provoquer aucun changement fonctionnel sur téléphone
+- les occurrences muettes sont exclues de la liste de lecture préparée sans être supprimées du projet
+- cette évolution supprime les deux colonnes visibles, mais ne change pas l'obligation de
+  préparer toute la Structure logique avant lecture
+- toute évolution du modèle partagé doit rester rétrocompatible sur les deux appareils
 - le stockage V2 porte les occurrences indépendantes dans `entries` et maintient une projection `segments` / `structureSegmentIds` pour les lecteurs V1
 - la lecture d'un stockage V1 dérive des `entryId` déterministes en mémoire sans migration destructive ni réécriture automatique
-- si l'ancien écran téléphone sauvegarde un Arrangement déjà en V2, les métadonnées `repeatCount`, `muted` et `color` existantes sont préservées par identité d'occurrence
+- l'ancien éditeur de repli doit préserver les métadonnées `repeatCount`, `muted` et `color`
+  d'un Arrangement V2 tant qu'il reste accessible
 
 ⸻
 
@@ -138,10 +146,9 @@ Respecter absolument :
 LIMITES CONNUES
 
 - certains formats (MP3) peuvent produire un léger délai si segment non aligné sur keyframe
-- une V2 pourra améliorer cela (PCM, pré-render, cache)
-
-Mais pour la V1 :
-- cette approche est validée et acceptable
+- la lecture directe est validée sur tablette et devient le mode recommandé sur téléphone
+- sa validation finale doit encore couvrir plusieurs modèles de téléphones
+- le mode avancé WAV/PCM/Sampler reste disponible sur téléphone comme compatibilité
 
 ⸻
 

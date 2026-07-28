@@ -11,6 +11,37 @@ Chaque nouvelle décision importante doit être ajoutée avec :
 
 ---
 
+# 28/07/2026
+
+## Contexte
+
+L'éditeur Arrangement tablette a servi de référence pour harmoniser progressivement le
+téléphone : workflow des variantes, Playback Control, retour à la waveform source, piste
+horizontale compacte, blocs à largeur adaptative et chargement Waveform échantillonné.
+
+Le pipeline téléphone WAV/PCM/Sampler restait plus lent au premier lancement que la lecture
+directe déjà validée sur tablette.
+
+## Décisions
+
+- téléphone et tablette partagent désormais le même workflow fonctionnel Arrangement ;
+- le téléphone adapte uniquement la présentation à sa largeur : noms compacts, blocs ajustés
+  au texte et actions complètes par appui long ;
+- la lecture directe devient le mode recommandé et le comportement par défaut sur téléphone ;
+- le pipeline WAV/Sampler historique reste intact derrière un mode avancé de compatibilité ;
+- l'ancien éditeur Arrangement n'est pas supprimé tant qu'un parcours de repli l'utilise ;
+- `docs/BACKLOG.md` devient l'unique liste priorisée des travaux futurs.
+
+## Conséquences pratiques
+
+- la validation multi-téléphones de la lecture directe reste obligatoire avant de retirer
+  toute compatibilité historique ;
+- la tablette conserve son comportement direct actuel ;
+- aucune Structure, variante ou donnée persistante ne dépend du mode audio choisi ;
+- les documents Feature et roadmap décrivent les détails, mais la priorité vient du backlog.
+
+---
+
 # 19/07/2026
 
 ## Contexte

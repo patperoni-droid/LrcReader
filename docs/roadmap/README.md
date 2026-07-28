@@ -2,6 +2,16 @@
 
 Ce dossier contient uniquement les évolutions futures du projet Stage Music Player.
 
+La liste priorisée et la décision de ce qui constitue réellement un chantier futur sont
+centralisées dans :
+
+```text
+docs/BACKLOG.md
+```
+
+Les fichiers de ce dossier servent uniquement à détailler un chantier important déjà
+référencé dans le backlog.
+
 Il ne remplace pas :
 
 - la documentation d'architecture ;
@@ -63,3 +73,5 @@ Chaque fichier roadmap doit contenir au minimum :
 Une roadmap décrit une intention future.
 
 Elle ne doit pas documenter comme existant un comportement qui n'est pas encore implémenté ou publié.
+
+Elle ne doit pas créer une seconde liste de priorités concurrente avec `docs/BACKLOG.md`.

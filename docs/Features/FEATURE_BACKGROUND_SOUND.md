@@ -237,9 +237,12 @@ piloter exclusivement le Fond sonore.
 
 # Statut
 
-**Statut : ARCHITECTURE EN COURS DE VALIDATION**
+**Statut : ARCHITECTURE IMPLÉMENTÉE ET COMPORTEMENT AUDIO PRINCIPAL VALIDÉ**
 
 Cette architecture constitue la référence pour toutes les évolutions futures du Fond sonore.
+
+La validation visuelle finale de l'indicateur désignant la source audio active reste
+référencée dans `docs/BACKLOG.md`; elle ne remet pas en cause la priorité audio déjà validée.
 
 Les développements devront respecter :
 

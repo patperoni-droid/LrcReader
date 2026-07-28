@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +36,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -42,6 +45,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -83,6 +87,8 @@ fun ArrangementListCard(
     horizontalTrack: Boolean = false,
     onItemMove: ((String, Int) -> Unit)? = null,
     itemActionsEnabled: Boolean = true,
+    showHorizontalItemControls: Boolean = true,
+    adaptiveHorizontalItemWidth: Boolean = false,
     playhead: ArrangementTrackPlayhead? = null,
     onPlayheadBoundaryChange: ((Int) -> Unit)? = null
 ) {
@@ -128,6 +134,8 @@ fun ArrangementListCard(
                     onItemLongClick = onItemLongClick,
                     onItemMove = onItemMove,
                     itemActionsEnabled = itemActionsEnabled,
+                    showItemControls = showHorizontalItemControls,
+                    adaptiveItemWidth = adaptiveHorizontalItemWidth,
                     playhead = playhead,
                     onPlayheadBoundaryChange = onPlayheadBoundaryChange
                 )
@@ -216,12 +224,26 @@ private fun ArrangementHorizontalTrack(
     onItemLongClick: ((String) -> Unit)?,
     onItemMove: ((String, Int) -> Unit)?,
     itemActionsEnabled: Boolean,
+    showItemControls: Boolean,
+    adaptiveItemWidth: Boolean,
     playhead: ArrangementTrackPlayhead?,
     onPlayheadBoundaryChange: ((Int) -> Unit)?
 ) {
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
-    val playheadOffsetDp = arrangementTrackPlayheadOffsetDp(items, playhead)
+    val measuredItemWidthsDp = remember(items.map { it.id }) {
+        mutableStateMapOf<String, Float>()
+    }
+    val adaptiveItemWidthsDp = if (adaptiveItemWidth) {
+        measuredItemWidthsDp
+    } else {
+        emptyMap()
+    }
+    val playheadOffsetDp = arrangementTrackPlayheadOffsetDp(
+        items = items,
+        playhead = playhead,
+        itemWidthsDp = adaptiveItemWidthsDp
+    )
     val scrollOffsetDp = with(density) { scrollState.value.toDp().value }
     Box(
         modifier = Modifier
@@ -262,8 +284,24 @@ private fun ArrangementHorizontalTrack(
             }
             Column(
                 modifier = Modifier
-                    .width(arrangementTrackBlockWidthDp(item.durationMs).dp)
+                    .then(
+                        if (adaptiveItemWidth) {
+                            Modifier.widthIn(
+                                min = ARRANGEMENT_TRACK_COMPACT_MIN_BLOCK_WIDTH_DP.dp,
+                                max = ARRANGEMENT_TRACK_COMPACT_MAX_BLOCK_WIDTH_DP.dp
+                            )
+                        } else {
+                            Modifier.width(arrangementTrackBlockWidthDp(item.durationMs).dp)
+                        }
+                    )
                     .height(92.dp)
+                    .onSizeChanged { size ->
+                        if (adaptiveItemWidth) {
+                            measuredItemWidthsDp[item.id] = with(density) {
+                                size.width.toDp().value
+                            }
+                        }
+                    }
                     .background(containerColor, RoundedCornerShape(10.dp))
                     .border(1.dp, borderColor, RoundedCornerShape(10.dp))
                     .combinedClickable(
@@ -275,7 +313,11 @@ private fun ArrangementHorizontalTrack(
                         }
                     )
                     .padding(start = 10.dp, top = 9.dp, end = 6.dp, bottom = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                verticalArrangement = if (adaptiveItemWidth) {
+                    Arrangement.Center
+                } else {
+                    Arrangement.spacedBy(4.dp)
+                }
             ) {
                 Text(
                     text = item.title,
@@ -286,11 +328,11 @@ private fun ArrangementHorizontalTrack(
                     } else {
                         FontWeight.Medium
                     },
-                    maxLines = 2,
+                    maxLines = if (adaptiveItemWidth) 1 else 2,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
+                    modifier = if (adaptiveItemWidth) Modifier else Modifier.weight(1f)
                 )
-                Row(
+                if (!adaptiveItemWidth) Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -335,7 +377,7 @@ private fun ArrangementHorizontalTrack(
                             )
                         }
                     }
-                    if (onItemMove != null) {
+                    if (showItemControls && onItemMove != null) {
                         var dragAmount = 0f
                         Icon(
                             imageVector = Icons.Filled.DragHandle,
@@ -362,7 +404,7 @@ private fun ArrangementHorizontalTrack(
                                 .padding(4.dp)
                         )
                     }
-                    if (onItemLongClick != null) {
+                    if (showItemControls && onItemLongClick != null) {
                         IconButton(
                             onClick = { onItemLongClick(item.id) },
                             enabled = itemActionsEnabled,
@@ -375,7 +417,7 @@ private fun ArrangementHorizontalTrack(
                                 modifier = Modifier.size(18.dp)
                             )
                         }
-                    } else if (onItemDelete != null) {
+                    } else if (showItemControls && onItemDelete != null) {
                         IconButton(
                             onClick = { onItemDelete(item.id) },
                             enabled = itemActionsEnabled,
@@ -443,7 +485,11 @@ private fun ArrangementHorizontalTrack(
                                 (position.x + scrollState.value).toDp().value
                             }
                             onPlayheadBoundaryChange(
-                                arrangementTrackNearestBoundaryIndex(items, contentOffsetDp)
+                                arrangementTrackNearestBoundaryIndex(
+                                    items = items,
+                                    contentOffsetDp = contentOffsetDp,
+                                    itemWidthsDp = adaptiveItemWidthsDp
+                                )
                             )
                         }
                     }
@@ -454,7 +500,11 @@ private fun ArrangementHorizontalTrack(
                                     (position.x + scrollState.value).toDp().value
                                 }
                                 onPlayheadBoundaryChange(
-                                    arrangementTrackNearestBoundaryIndex(items, contentOffsetDp)
+                                    arrangementTrackNearestBoundaryIndex(
+                                        items = items,
+                                        contentOffsetDp = contentOffsetDp,
+                                        itemWidthsDp = adaptiveItemWidthsDp
+                                    )
                                 )
                             },
                             onDrag = { change, _ ->
@@ -463,7 +513,11 @@ private fun ArrangementHorizontalTrack(
                                     (change.position.x + scrollState.value).toDp().value
                                 }
                                 onPlayheadBoundaryChange(
-                                    arrangementTrackNearestBoundaryIndex(items, contentOffsetDp)
+                                    arrangementTrackNearestBoundaryIndex(
+                                        items = items,
+                                        contentOffsetDp = contentOffsetDp,
+                                        itemWidthsDp = adaptiveItemWidthsDp
+                                    )
                                 )
                             }
                         )
@@ -492,15 +546,18 @@ internal fun arrangementTrackBlockWidthDp(durationMs: Long?): Float {
 
 internal fun arrangementTrackPlayheadOffsetDp(
     items: List<ArrangementListItem>,
-    playhead: ArrangementTrackPlayhead?
+    playhead: ArrangementTrackPlayhead?,
+    itemWidthsDp: Map<String, Float> = emptyMap()
 ): Float? {
     val target = playhead ?: return null
     val itemIndex = items.indexOfFirst { item -> item.id == target.itemId }
     if (itemIndex < 0) return null
-    val targetWidthDp = arrangementTrackBlockWidthDp(items[itemIndex].durationMs)
+    val targetWidthDp = itemWidthsDp[items[itemIndex].id]
+        ?: arrangementTrackBlockWidthDp(items[itemIndex].durationMs)
     var previousWidthDp = 0f
     for (index in 0 until itemIndex) {
-        previousWidthDp += arrangementTrackBlockWidthDp(items[index].durationMs)
+        previousWidthDp += itemWidthsDp[items[index].id]
+            ?: arrangementTrackBlockWidthDp(items[index].durationMs)
     }
     val repeatCount = target.repeatCount.coerceAtLeast(1)
     val repeatIndex = target.repeatIndex.coerceIn(0, repeatCount - 1)
@@ -539,14 +596,16 @@ internal fun arrangementTrackPlayheadAtBoundary(
 
 internal fun arrangementTrackNearestBoundaryIndex(
     items: List<ArrangementListItem>,
-    contentOffsetDp: Float
+    contentOffsetDp: Float,
+    itemWidthsDp: Map<String, Float> = emptyMap()
 ): Int {
     if (items.isEmpty()) return 0
     val boundaryOffsets = buildList {
         var nextOffsetDp = ARRANGEMENT_TRACK_CONTENT_PADDING_DP
         add(nextOffsetDp)
         items.forEachIndexed { index, item ->
-            nextOffsetDp += arrangementTrackBlockWidthDp(item.durationMs)
+            nextOffsetDp += itemWidthsDp[item.id]
+                ?: arrangementTrackBlockWidthDp(item.durationMs)
             if (index < items.lastIndex) {
                 nextOffsetDp += ARRANGEMENT_TRACK_SPACING_DP
             }
@@ -568,5 +627,7 @@ private fun formatArrangementTrackDuration(durationMs: Long): String {
 private const val ARRANGEMENT_TRACK_DP_PER_SECOND = 5f
 private const val ARRANGEMENT_TRACK_MIN_BLOCK_WIDTH_DP = 168f
 private const val ARRANGEMENT_TRACK_MAX_BLOCK_WIDTH_DP = 600f
+private const val ARRANGEMENT_TRACK_COMPACT_MIN_BLOCK_WIDTH_DP = 48f
+private const val ARRANGEMENT_TRACK_COMPACT_MAX_BLOCK_WIDTH_DP = 240f
 private const val ARRANGEMENT_TRACK_CONTENT_PADDING_DP = 8f
 private const val ARRANGEMENT_TRACK_SPACING_DP = 8f
