@@ -4318,6 +4318,15 @@ class MainActivity : AppCompatActivity() {
                                     )
                                 }
 
+                                fun openPhoneCanonicalArrangement() {
+                                    playerNavigationTarget = "grid_setup"
+                                    playerNavigationToken += 1
+                                    setTabAndPersist(
+                                        BottomTab.Player,
+                                        reason = "phoneOpenCanonicalArrangement"
+                                    )
+                                }
+
                                 fun openTabletSplitTuner() {
                                     prepareTabletSplitMenuNavigation()
                                     isTabletCockpitDestinationOpen = false
@@ -4722,9 +4731,16 @@ class MainActivity : AppCompatActivity() {
                                             ?.let(smpSongsById::get)
                                             ?.arrangementSourceSongId,
                                         onOpenArrangementHub = {
-                                            moreNavigationTarget = "arrangement_from_tempo"
-                                            moreNavigationToken += 1
-                                            setTabAndPersist(BottomTab.More, reason = "playerOpenArrangementHub")
+                                            if (adaptiveTokens.tabletMode) {
+                                                moreNavigationTarget = "arrangement_from_tempo"
+                                                moreNavigationToken += 1
+                                                setTabAndPersist(
+                                                    BottomTab.More,
+                                                    reason = "playerOpenArrangementHub"
+                                                )
+                                            } else {
+                                                openPhoneCanonicalArrangement()
+                                            }
                                         },
                                         manualTransitionTargetTitle = manualCrossfadeTransitionTitle,
                                         onManualCrossfadeToNext = { launchManualCrossfadeToNext() },
@@ -5084,15 +5100,18 @@ class MainActivity : AppCompatActivity() {
                                                 )
                                             }
                                         },
-                                        onOpenCanonicalArrangement = if (
-                                            adaptiveTokens.tabletMode &&
-                                            tabletExperimentalModeEnabled &&
-                                            !currentPlayingSongId.isNullOrBlank()
-                                        ) {
-                                            ::openTabletCanonicalArrangement
-                                        } else {
-                                            null
-                                        },
+                                        onOpenCanonicalArrangement =
+                                            if (!currentPlayingSongId.isNullOrBlank()) {
+                                                if (!adaptiveTokens.tabletMode) {
+                                                    ::openPhoneCanonicalArrangement
+                                                } else if (tabletExperimentalModeEnabled) {
+                                                    ::openTabletCanonicalArrangement
+                                                } else {
+                                                    null
+                                                }
+                                            } else {
+                                                null
+                                            },
                                         onOpenTempoFromArrangement = {
                                             playerNavigationTarget = "grid_setup"
                                             playerNavigationToken += 1
@@ -5910,9 +5929,16 @@ class MainActivity : AppCompatActivity() {
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
                                         currentSongId = currentPlayingSongId,
                                         onOpenArrangementHub = {
-                                            moreNavigationTarget = "arrangement_from_tempo"
-                                            moreNavigationToken += 1
-                                            setTabAndPersist(BottomTab.More, reason = "playerOpenArrangementHub")
+                                            if (adaptiveTokens.tabletMode) {
+                                                moreNavigationTarget = "arrangement_from_tempo"
+                                                moreNavigationToken += 1
+                                                setTabAndPersist(
+                                                    BottomTab.More,
+                                                    reason = "playerOpenArrangementHub"
+                                                )
+                                            } else {
+                                                openPhoneCanonicalArrangement()
+                                            }
                                         },
                                         manualTransitionTargetTitle = manualCrossfadeTransitionTitle,
                                         onManualCrossfadeToNext = { launchManualCrossfadeToNext() },
@@ -6424,15 +6450,18 @@ class MainActivity : AppCompatActivity() {
                                                 )
                                             }
                                         },
-                                        onOpenCanonicalArrangement = if (
-                                            adaptiveTokens.tabletMode &&
-                                            tabletExperimentalModeEnabled &&
-                                            !currentPlayingSongId.isNullOrBlank()
-                                        ) {
-                                            ::openTabletCanonicalArrangement
-                                        } else {
-                                            null
-                                        },
+                                        onOpenCanonicalArrangement =
+                                            if (!currentPlayingSongId.isNullOrBlank()) {
+                                                if (!adaptiveTokens.tabletMode) {
+                                                    ::openPhoneCanonicalArrangement
+                                                } else if (tabletExperimentalModeEnabled) {
+                                                    ::openTabletCanonicalArrangement
+                                                } else {
+                                                    null
+                                                }
+                                            } else {
+                                                null
+                                            },
                                         onOpenTempoFromArrangement = {
                                             playerNavigationTarget = "grid_setup"
                                             playerNavigationToken += 1

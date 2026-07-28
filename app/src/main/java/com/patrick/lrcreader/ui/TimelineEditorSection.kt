@@ -937,6 +937,7 @@ fun TimelineEditorSection(
                         Modifier
                     },
                     constrainToAvailableHeight = tabletArrangementLayout,
+                    unifiedSegmentLayout = true,
                     currentSongId = currentSongId,
                     fallbackTempoBpm = measuresTempoBpm,
                     measureAnchorMs = measureAnchorMs,
@@ -1707,6 +1708,7 @@ private fun timelineMarkerKindLabel(kind: TimelineMarkerKind): String {
 private fun GridSetupHost(
     modifier: Modifier = Modifier,
     constrainToAvailableHeight: Boolean = false,
+    unifiedSegmentLayout: Boolean = false,
     currentSongId: String?,
     fallbackTempoBpm: Int?,
     measureAnchorMs: Long?,
@@ -1792,6 +1794,7 @@ private fun GridSetupHost(
     TimelineMeasuresPlaceholder(
         modifier = modifier,
         constrainToAvailableHeight = constrainToAvailableHeight,
+        unifiedSegmentLayout = unifiedSegmentLayout,
         currentSongId = currentSongId,
         tempoDraft = gridTempoDraft,
         isTempoInvalid = isTempoInvalid,
@@ -1855,6 +1858,7 @@ private fun GridSetupHost(
 private fun TimelineMeasuresPlaceholder(
     modifier: Modifier = Modifier,
     constrainToAvailableHeight: Boolean = false,
+    unifiedSegmentLayout: Boolean = false,
     currentSongId: String?,
     tempoDraft: String,
     isTempoInvalid: Boolean,
@@ -2331,7 +2335,7 @@ private fun TimelineMeasuresPlaceholder(
         val snapshotEntries = nextEntries.toList()
         val snapshotLegacySegments = preservedLegacyArrangementSegments.toList()
         val dataToPersist = buildArrangementDataForPersistence(
-            useOccurrenceModel = constrainToAvailableHeight,
+            useOccurrenceModel = unifiedSegmentLayout,
             name = snapshotName,
             sourceSongId = sourceSongId,
             segments = snapshotSegments,
@@ -2451,7 +2455,7 @@ private fun TimelineMeasuresPlaceholder(
         pushArrangementUndoSnapshot()
         val nextStructureSegmentIds = structureSegmentIds.filterNot { it == targetId }
         val structureChanged = nextStructureSegmentIds.size != structureSegmentIds.size
-        val nextEntries = if (constrainToAvailableHeight) {
+        val nextEntries = if (unifiedSegmentLayout) {
             reconcileArrangementEntries(
                 segments = nextSegments,
                 structureSegmentIds = nextStructureSegmentIds,
@@ -2659,7 +2663,7 @@ private fun TimelineMeasuresPlaceholder(
                 val arrangementData = loadResult.arrangement
                 arrangementName = arrangementData?.name?.ifBlank { "Arrangement 1" }
                     ?: "Arrangement 1"
-                if (constrainToAvailableHeight && arrangementData != null) {
+                if (unifiedSegmentLayout && arrangementData != null) {
                     val occurrenceProjection = arrangementData.toOccurrenceProjection()
                     arrangementSegments = occurrenceProjection.segments
                     structureSegmentIds = occurrenceProjection.structureSegmentIds
@@ -2731,13 +2735,13 @@ private fun TimelineMeasuresPlaceholder(
         arrangementSegments,
         structureSegmentIds,
         arrangementEntries,
-        constrainToAvailableHeight
+        unifiedSegmentLayout
     ) {
         prepareArrangementOccurrences(
             segments = arrangementSegments,
             structureSegmentIds = structureSegmentIds,
             entries = arrangementEntries,
-            useOccurrenceModel = constrainToAvailableHeight
+            useOccurrenceModel = unifiedSegmentLayout
         )
     }
     val structurePlaybackSegments = remember(preparedStructureOccurrences) {
@@ -2751,7 +2755,7 @@ private fun TimelineMeasuresPlaceholder(
 	    ?.entryIndex
 	val queuedStructureEntryIndex = queuedStructureSegmentIndex
 	    ?.let { index -> preparedStructureOccurrences.getOrNull(index)?.entryIndex }
-	val preparedArrangementPlayhead = if (!constrainToAvailableHeight) {
+	val preparedArrangementPlayhead = if (!unifiedSegmentLayout) {
 	    null
 	} else if (structurePlaybackActive) {
 	    resolvePreparedArrangementPlayheadFromSource(
@@ -3007,7 +3011,7 @@ private fun TimelineMeasuresPlaceholder(
                 segment
             }
         }
-        val nextEntries = if (constrainToAvailableHeight) {
+        val nextEntries = if (unifiedSegmentLayout) {
             reconcileArrangementEntries(
                 segments = nextSegments,
                 structureSegmentIds = latestStructureSegmentIds,
@@ -3295,7 +3299,7 @@ private fun TimelineMeasuresPlaceholder(
         insertionIndex: Int,
         template: ArrangementEntryData
     ) {
-        if (!constrainToAvailableHeight || !arrangementStructuralActionsEnabled) return
+        if (!unifiedSegmentLayout || !arrangementStructuralActionsEnabled) return
         val insertIndex = insertionIndex.coerceIn(0, structureSegmentIds.size)
         var candidateIndex = nextSegmentIndex
         val usedIds = (arrangementSegments.map { segment -> segment.id } +
@@ -3341,7 +3345,7 @@ private fun TimelineMeasuresPlaceholder(
     }
 
     fun moveArrangementOccurrence(sourceIndex: Int, direction: Int) {
-        if (!constrainToAvailableHeight || !arrangementStructuralActionsEnabled) return
+        if (!unifiedSegmentLayout || !arrangementStructuralActionsEnabled) return
         if (sourceIndex !in structureSegmentIds.indices) return
         val targetIndex = (sourceIndex + direction).coerceIn(0, structureSegmentIds.lastIndex)
         if (targetIndex == sourceIndex) return
@@ -4232,7 +4236,7 @@ private fun TimelineMeasuresPlaceholder(
         ) {
             Text(
                 text = stringResource(R.string.timeline_tempo_action_add),
-                color = if (!constrainToAvailableHeight || arrangementStructuralActionsEnabled) {
+                color = if (!unifiedSegmentLayout || arrangementStructuralActionsEnabled) {
                     Color.White
                 } else {
                     Color(0xFF546E7A)
@@ -4240,7 +4244,7 @@ private fun TimelineMeasuresPlaceholder(
                 fontSize = 14.sp,
                 modifier = Modifier
                     .clickable(
-                        enabled = !constrainToAvailableHeight || arrangementStructuralActionsEnabled
+                        enabled = !unifiedSegmentLayout || arrangementStructuralActionsEnabled
                     ) {
                         val rawStartMs = segmentInMs ?: return@clickable
                         val rawEndMs = segmentOutMs ?: return@clickable
@@ -4270,24 +4274,28 @@ private fun TimelineMeasuresPlaceholder(
                         val createdSegments = validSegmentRanges.map { (segmentStartMs, segmentEndMs) ->
                             ArrangementSegmentData(
                                 id = "segment_$nextIndex",
-                                name = "$defaultSegmentNameBase $nextIndex",
+                                name = if (constrainToAvailableHeight) {
+                                    "$defaultSegmentNameBase $nextIndex"
+                                } else {
+                                    arrangementPhoneDefaultSegmentName(nextIndex)
+                                },
                                 startMs = segmentStartMs,
                                 endMs = segmentEndMs
                             ).also {
                                 nextIndex += 1L
                             }
                         }
-                        val nextSegments = if (constrainToAvailableHeight) {
+                        val nextSegments = if (unifiedSegmentLayout) {
                             createdSegments + arrangementSegments
                         } else {
                             arrangementSegments + createdSegments
                         }
-                        val nextStructureSegmentIds = if (constrainToAvailableHeight) {
+                        val nextStructureSegmentIds = if (unifiedSegmentLayout) {
                             createdSegments.map { segment -> segment.id } + structureSegmentIds
                         } else {
                             structureSegmentIds
                         }
-                        val nextEntries = if (constrainToAvailableHeight) {
+                        val nextEntries = if (unifiedSegmentLayout) {
                             reconcileArrangementEntries(
                                 segments = nextSegments,
                                 structureSegmentIds = nextStructureSegmentIds,
@@ -4468,7 +4476,7 @@ private fun TimelineMeasuresPlaceholder(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (!constrainToAvailableHeight) {
+            if (!unifiedSegmentLayout) {
                 ArrangementListCard(
                     modifier = Modifier.weight(1f),
                     title = stringResource(R.string.arrangement_segments_title),
@@ -4534,7 +4542,7 @@ private fun TimelineMeasuresPlaceholder(
                 )
             }
             ArrangementListCard(
-                modifier = if (constrainToAvailableHeight) {
+                modifier = if (unifiedSegmentLayout) {
                     Modifier.fillMaxWidth()
                 } else {
                     Modifier.weight(1f)
@@ -4576,7 +4584,7 @@ private fun TimelineMeasuresPlaceholder(
                 onItemAdd = null,
                 onItemDelete = { structureIndexId ->
                     val removeIndex = structureIndexId.toIntOrNull() ?: return@ArrangementListCard
-	                    if (constrainToAvailableHeight && !arrangementStructuralActionsEnabled) {
+	                    if (unifiedSegmentLayout && !arrangementStructuralActionsEnabled) {
 	                        return@ArrangementListCard
 	                    }
 	                    if (removeIndex in structureSegmentIds.indices) {
@@ -4586,14 +4594,14 @@ private fun TimelineMeasuresPlaceholder(
                             removeAt(removeIndex)
                         }
                         val nextSegments = if (
-                            constrainToAvailableHeight &&
+                            unifiedSegmentLayout &&
                             removedSegmentId !in nextStructureSegmentIds
                         ) {
                             arrangementSegments.filterNot { segment -> segment.id == removedSegmentId }
                         } else {
                             arrangementSegments
                         }
-                        val nextEntries = if (constrainToAvailableHeight) {
+                        val nextEntries = if (unifiedSegmentLayout) {
                             reconcileArrangementEntries(
                                 segments = nextSegments,
                                 structureSegmentIds = nextStructureSegmentIds,
@@ -4603,7 +4611,7 @@ private fun TimelineMeasuresPlaceholder(
                             arrangementEntries
                         }
                         if (
-                            constrainToAvailableHeight &&
+                            unifiedSegmentLayout &&
                             removedSegmentId !in nextStructureSegmentIds &&
                             selectedSegmentLoopId == removedSegmentId
                         ) {
@@ -4644,7 +4652,7 @@ private fun TimelineMeasuresPlaceholder(
                         )
                     }
                 },
-                onItemLongClick = if (constrainToAvailableHeight) {
+                onItemLongClick = if (unifiedSegmentLayout) {
                     { structureIndexId ->
                         val targetIndex = structureIndexId.toIntOrNull()
                             ?: return@ArrangementListCard
@@ -4653,8 +4661,8 @@ private fun TimelineMeasuresPlaceholder(
                 } else {
                     null
                 },
-                horizontalTrack = constrainToAvailableHeight,
-                onItemMove = if (constrainToAvailableHeight) {
+                horizontalTrack = unifiedSegmentLayout,
+                onItemMove = if (unifiedSegmentLayout) {
                     { structureIndexId, direction ->
                         structureIndexId.toIntOrNull()?.let { sourceIndex ->
                             moveArrangementOccurrence(sourceIndex, direction)
@@ -4663,9 +4671,9 @@ private fun TimelineMeasuresPlaceholder(
                 } else {
                     null
                 },
-                itemActionsEnabled = !constrainToAvailableHeight || arrangementStructuralActionsEnabled,
+                itemActionsEnabled = !unifiedSegmentLayout || arrangementStructuralActionsEnabled,
                 playhead = arrangementTrackPlayhead,
-                onPlayheadBoundaryChange = if (constrainToAvailableHeight) {
+                onPlayheadBoundaryChange = if (unifiedSegmentLayout) {
                     { boundaryIndex ->
                         arrangementInsertionBoundaryIndex = boundaryIndex
                         retainedArrangementTrackPlayhead = arrangementTrackPlayheadAtBoundary(
@@ -4722,7 +4730,7 @@ private fun TimelineMeasuresPlaceholder(
 	                        val nextName = targetSegment?.let { segment ->
 	                            localRenameDraft.text.trim().ifBlank { segment.name }
 	                        } ?: return@Button
-                        if (constrainToAvailableHeight) {
+                        if (unifiedSegmentLayout) {
                             updateArrangementOccurrence(targetId) { entry ->
                                 entry.copy(name = nextName)
                             }
@@ -4789,7 +4797,7 @@ private fun TimelineMeasuresPlaceholder(
                         if (sourceSongId.isEmpty()) return@Button
                         val chosenName = virtualArrangementNameDraft.text.trim()
                         val variantData = buildArrangementDataForPersistence(
-                            useOccurrenceModel = constrainToAvailableHeight,
+                            useOccurrenceModel = unifiedSegmentLayout,
                             name = chosenName,
                             sourceSongId = sourceSongId,
                             segments = arrangementSegments,
@@ -4927,7 +4935,7 @@ private fun TimelineMeasuresPlaceholder(
                                             context = context.applicationContext,
                                             songId = exportEditingTarget.ownerSongId,
                                             data = buildArrangementDataForPersistence(
-                                                useOccurrenceModel = constrainToAvailableHeight,
+                                                useOccurrenceModel = unifiedSegmentLayout,
                                                 name = chosenName,
                                                 sourceSongId = exportEditingTarget.sourceSongId,
                                                 segments = arrangementSegments,
@@ -5071,7 +5079,7 @@ private fun TimelineMeasuresPlaceholder(
                             segmentOptionsTargetId = null
                         }
                     )
-                    if (constrainToAvailableHeight && targetEntry != null) {
+                    if (unifiedSegmentLayout && targetEntry != null) {
                         Text(
                             text = stringResource(R.string.timeline_paste_here),
                             color = if (arrangementInsertionBoundaryIndex != null) {
@@ -6272,6 +6280,17 @@ private fun resolveNextTimelineArrangementSegmentIndex(
         segment.id.removePrefix("segment_").toLongOrNull() ?: 0L
     } ?: 0L
     return (maxExistingIndex + 1L).coerceAtLeast(1L)
+}
+
+internal fun arrangementPhoneDefaultSegmentName(sequenceIndex: Long): String {
+    var value = sequenceIndex.coerceAtLeast(1L)
+    val name = StringBuilder()
+    while (value > 0L) {
+        value -= 1L
+        name.insert(0, ('A'.code + (value % 26L).toInt()).toChar())
+        value /= 26L
+    }
+    return name.toString()
 }
 
 @Composable

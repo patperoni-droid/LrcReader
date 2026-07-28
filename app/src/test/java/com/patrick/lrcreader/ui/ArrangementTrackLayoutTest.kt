@@ -7,6 +7,14 @@ import org.junit.Test
 class ArrangementTrackLayoutTest {
 
     @Test
+    fun phoneDefaultSegmentName_usesCompactAlphabeticSequence() {
+        assertEquals("A", arrangementPhoneDefaultSegmentName(1))
+        assertEquals("Z", arrangementPhoneDefaultSegmentName(26))
+        assertEquals("AA", arrangementPhoneDefaultSegmentName(27))
+        assertEquals("AB", arrangementPhoneDefaultSegmentName(28))
+    }
+
+    @Test
     fun blockWidth_keepsShortSegmentsTouchable() {
         assertEquals(168f, arrangementTrackBlockWidthDp(null), 0f)
         assertEquals(168f, arrangementTrackBlockWidthDp(2_000L), 0f)

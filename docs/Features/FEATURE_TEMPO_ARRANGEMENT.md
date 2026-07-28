@@ -252,7 +252,7 @@ Segment A → Segment B → Segment C
 
 ## 🧭 UX CIBLE — PISTE HORIZONTALE D'ARRANGEMENT
 
-**Statut : conception tablette validée, mise en œuvre progressive en cours.**
+**Statut : piste horizontale validée sur tablette et portée dans l'éditeur canonique téléphone.**
 
 ### État d'implémentation
 
@@ -265,41 +265,42 @@ Fondation tablette réalisée :
 - les raccourcis supérieurs du panneau droit sont masqués afin de libérer la hauteur utile ;
 - le contenu d'Arrangement est contraint et défilable au-dessus du `Playback Control`, qui reste visible en bas ;
 - sur tablette, l'entrée `Arrangement` de l'écran `Paramètres / Plus` ouvre désormais l'éditeur canonique intégré à `Timeline / Grille` lorsqu'un morceau SMP est actif ;
-- l'ancien éditeur à deux colonnes n'est plus la route principale tablette ; il reste disponible sur téléphone et comme repli lorsqu'aucun morceau SMP actif ne peut alimenter l'éditeur canonique ;
+- l'ancien éditeur à deux colonnes n'est plus la route principale ; il reste uniquement un repli lorsqu'aucun morceau SMP actif ne peut alimenter l'éditeur canonique ;
 - dans l'éditeur canonique tablette, le bouton `Fermer` et le bouton Retour Android restaurent le cockpit `Playlist | Paroles` sans arrêter ni remplacer le morceau actif ;
-- ce comportement est strictement conditionné au layout tablette et ne modifie pas le téléphone.
+- les adaptations de cockpit, de playlist latérale et de plein écran restent strictement conditionnées au layout tablette.
 
-Implémenté dans l'éditeur canonique tablette :
+Implémenté dans l'éditeur canonique partagé :
 
 - au premier affichage, la waveform utilise une vue générale échantillonnée de 2 000 points et un cache distinct afin d'éviter le décodage complet du MP3 ; le placement de la tête et des points IN / OUT reste calculé en millisecondes et conserve sa précision ;
-- les deux points d'entrée Arrangement du téléphone réutilisent le même extracteur échantillonné avec 720 points et le même cache, sans modifier leur disposition ni leur comportement d'édition ;
+- les deux points d'entrée Arrangement du téléphone ouvrent le même éditeur canonique et réutilisent le même extracteur échantillonné avec 720 points et le même cache ;
 - les colonnes `Segments` et `Structure` sont fusionnées visuellement en une seule liste ordonnée ;
 - le bouton `Ajouter` insère directement le nouveau segment en tête de cette liste et dans la Structure de lecture ;
 - supprimer une ligne retire cette occurrence et supprime aussi son segment interne lorsqu'aucune autre occurrence ne le référence ;
-- le téléphone conserve volontairement l'ancien affichage à deux colonnes et son flux d'ajout existant ;
+- sur téléphone uniquement, les nouveaux segments reçoivent par défaut un nom alphabétique compact : `A` à `Z`, puis `AA`, `AB`, etc. ;
+- sur tablette, le nom proposé reste `Segment N` ;
+- ces noms par défaut restent entièrement modifiables avec le même dialogue de renommage sur les deux appareils ;
+- les projets existants conservent leurs noms : aucune migration ni réécriture automatique n'est effectuée ;
 - le modèle persistant V2 d'une occurrence est disponible avec `entryId`, nom, `startMs`, `endMs`, `repeatCount`, `muted` et `color` ;
 - la lecture d'un ancien fichier V1 crée en mémoire des occurrences indépendantes et déterministes, sans réécrire automatiquement le fichier ;
-- un fichier V2 conserve une projection `segments` / `structureSegmentIds` compatible avec l'ancien écran téléphone ; une sauvegarde issue de cet ancien écran préserve les métadonnées V2 déjà présentes ;
-- tant que la piste horizontale n'utilise pas encore ce nouveau modèle, les écrans actuels continuent volontairement d'enregistrer le format V1 et leur comportement reste inchangé ;
+- un fichier V2 conserve une projection `segments` / `structureSegmentIds` rétrocompatible ;
+- téléphone et tablette enregistrent le modèle V2 uniquement après une modification explicite dans l'éditeur canonique ;
 - les champs d'occurrence V2 participent au hash de synchronisation afin que répétition, mute et couleur soient transférés comme données de l'Arrangement.
-- sur tablette, la Structure est maintenant rendue comme une piste horizontale statique et défilable juste au-dessus du `Playback Control` ;
+- la Structure est rendue comme une piste horizontale statique et défilable juste au-dessus du `Playback Control` ;
 - chaque bloc affiche son ordre, son nom et sa durée, avec une largeur liée à la durée et une largeur tactile minimale ;
 - la sélection active reste verte, la prochaine occurrence préparée reste jaune et la suppression conserve le comportement existant ;
 - le défilement horizontal est un état d'interface local : il ne modifie ni l'ordre, ni le stockage, ni la lecture audio ;
-- le téléphone continue d'utiliser la carte verticale historique sans changement visuel ou fonctionnel.
-- lors du chargement tablette, chaque occurrence de la Structure reçoit son `entryId` V2 indépendant, y compris lorsque plusieurs occurrences provenaient du même segment V1 ;
+- lors du chargement, chaque occurrence de la Structure reçoit son `entryId` V2 indépendant, y compris lorsque plusieurs occurrences provenaient du même segment V1 ;
 - toucher un bloc recharge ses propres `startMs` / `endMs` dans les poignées IN / OUT de la waveform source ;
-- une correction IN / OUT, une suppression ou un undo conserve cette identité d'occurrence et sauvegarde la Structure tablette en V2 ;
+- une correction IN / OUT, une suppression ou un undo conserve cette identité d'occurrence et sauvegarde la Structure en V2 ;
 - les segments V1 non placés dans la Structure restent conservés dans le fichier pour éviter toute perte pendant la migration ;
 - ouvrir l'Arrangement ou sélectionner un bloc ne réécrit pas le fichier : la migration V2 est enregistrée seulement lors d'une modification explicite ;
-- le téléphone continue d'enregistrer sa forme V1 lorsqu'il travaille sur un Arrangement V1.
-- chaque bloc tablette propose maintenant renommage, couleur, collage à la tête, mute, répétition et suppression explicite ;
+- chaque bloc propose renommage, couleur, collage à la tête, mute, répétition et suppression explicite ;
 - la poignée de déplacement déplace une occurrence d'un voisin vers la gauche ou la droite sans changer son `entryId` ;
 - un collage crée à la frontière choisie une occurrence avec un nouvel `entryId` indépendant et ne duplique jamais le fichier audio ;
 - la couleur, le mute et `repeatCount` sont sauvegardés dans l'entrée V2 ;
 - avant la preview ou l'export, les occurrences en mute sont exclues et les répétitions sont développées dans la liste audio préparée ;
 - pendant une lecture Structure, une préparation ou un export, l'ajout, le déplacement et les actions de structure sont verrouillés afin de ne jamais reconstruire le montage en pleine lecture ;
-- la tête turquoise reste visible sur la piste tablette hors lecture ; après Stop, elle conserve la dernière position exacte, y compris au milieu d'un segment ;
+- la tête turquoise reste visible sur la piste hors lecture ; après Stop, elle conserve la dernière position exacte, y compris au milieu d'un segment ;
 - toucher ou faire glisser la zone supérieure de la piste passe en édition et quantifie la tête sur la frontière de segment la plus proche ;
 - après un Stop au milieu d'un segment, `Coller ici` reste indisponible tant qu'un toucher n'a pas choisi une frontière non ambiguë ;
 - `Coller ici`, dans le menu du segment sélectionné, duplique ce segment à la frontière indiquée par la tête ;
@@ -309,7 +310,7 @@ Implémenté dans l'éditeur canonique tablette :
 - pour un bloc répété, la tête parcourt successivement chaque fraction du bloc et affiche la répétition active sous la forme `1/N`, `2/N`, etc. ;
 - les occurrences en mute restent visibles dans l'éditeur mais sont sautées par la tête de lecture comme elles le sont par la liste audio préparée ;
 - le défilement horizontal conserve l'alignement entre la tête et le bloc actif sans créer d'horloge ou d'animation indépendante du lecteur ;
-- la piste tablette compacte n'affiche plus la ligne de titre `Structure` et sa hauteur est réduite afin de limiter le défilement vertical de l'écran ;
+- la piste compacte n'affiche plus la ligne de titre `Structure` et sa hauteur est réduite afin de limiter le défilement vertical de l'écran ;
 - tant qu'aucun bloc n'est sélectionné, le `Playback Control` pilote le titre complet ;
 - toucher un bloc arrête d'abord le titre complet puis donne temporairement les commandes du `Playback Control` à cette occurrence ;
 - pendant ce ciblage, Pause arrête entièrement la preview secondaire et Play relance le segment sélectionné depuis son début ;
@@ -319,16 +320,16 @@ Implémenté dans l'éditeur canonique tablette :
 - toute preview Arrangement active devient une source Player officielle et coupe le fond sonore via `PlaybackCoordinator` avant de produire du son.
 - sur tablette, le bandeau supérieur de navigation reste visible dans Arrangement afin d'ouvrir directement les autres écrans ; l'action textuelle `Fermer` n'est pas affichée dans ce mode, tandis que le bouton Retour Android reste disponible.
 
-### Périmètre appareil — tablette uniquement
+### Périmètre appareil
 
-Cette évolution d'interface concerne exclusivement la tablette.
+La gestion des segments et la construction de la Structure utilisent désormais la même piste horizontale sur téléphone et tablette.
 
-- le téléphone conserve l'écran Arrangement, sa disposition, sa navigation et ses comportements actuels ;
-- la piste horizontale ne doit jamais être activée sur téléphone ;
-- la playlist latérale escamotable dans Arrangement est strictement conditionnée au mode tablette ;
-- aucun espace, bouton ou geste supplémentaire ne doit être ajouté à l'interface téléphone ;
-- toute évolution du stockage partagé doit rester transparente et rétrocompatible pour le téléphone ;
-- la validation finale doit démontrer explicitement l'absence de régression téléphone.
+- le téléphone emploie l'éditeur canonique avec une waveform échantillonnée et une piste horizontalement défilable adaptée à sa largeur ;
+- les nouveaux noms compacts `A`, `B`, `C`… sont propres au téléphone ;
+- la tablette conserve ses noms `Segment N`, son layout plein écran et son comportement audio validé ;
+- la playlist latérale escamotable dans Arrangement reste strictement conditionnée au mode tablette ;
+- les données, les actions d'occurrence et le dialogue de renommage restent communs ;
+- toute évolution du stockage partagé doit rester transparente et rétrocompatible pour les projets existants.
 
 La future interface ne doit plus séparer :
 
@@ -405,6 +406,8 @@ Flux cible :
 4. il déplace ensuite ce segment à la position désirée dans la Structure.
 
 Il n'existe donc plus d'étape intermédiaire consistant à créer un segment dans une bibliothèque locale puis à l'ajouter séparément à la Structure.
+
+Le nom proposé à la création est `Segment N` sur tablette et une lettre compacte (`A`, `B`, `C`… puis `AA`…) sur téléphone. Ce nom n'est qu'une valeur initiale : l'utilisateur peut le remplacer librement par `Intro`, `Couplet`, `Refrain`, `Pont`, `Solo`, `Outro` ou tout autre libellé.
 
 ### Édition d'un segment existant
 
@@ -515,7 +518,7 @@ Règles :
 3. ✅ permettre de sélectionner un bloc et de recharger ses points IN / OUT dans la waveform source ;
 4. ✅ ajouter renommage, couleur, déplacement, duplication, copie/collage, mute et répétition ;
 5. ✅ relier la tête de lecture visuelle à la preview Structure réelle ;
-6. ajouter ensuite la playlist latérale escamotable et valider le redimensionnement sans changement d'état.
+6. ✅ ajouter ensuite la playlist latérale escamotable et valider le redimensionnement sans changement d'état.
 
 La playlist escamotable est volontairement placée en dernier : la piste horizontale doit d'abord rester cohérente seule, puis démontrer qu'elle conserve son échelle, son zoom et son défilement lorsque la largeur disponible change.
 
