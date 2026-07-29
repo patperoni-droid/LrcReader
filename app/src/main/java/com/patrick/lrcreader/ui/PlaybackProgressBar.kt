@@ -3,8 +3,10 @@ package com.patrick.lrcreader.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -34,8 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object PlaybackProgressBarDefaults {
-    val LinearHeight = 28.dp
-    val StructureHeight = 56.dp
+    val Height = 56.dp
+    val LinearTrackHeight = 28.dp
 }
 
 data class PlaybackStructureModel(
@@ -148,7 +150,7 @@ private fun TimeBarRenderer(
             enabled = state.isEnabled,
             modifier = Modifier
                 .weight(1f)
-                .height(PlaybackProgressBarDefaults.LinearHeight),
+                .height(PlaybackProgressBarDefaults.LinearTrackHeight),
             colors = SliderDefaults.colors(
                 thumbColor = state.highlightColor,
                 activeTrackColor = trackColor,
@@ -177,7 +179,7 @@ private fun StructureRenderer(
         Box(
             modifier = Modifier
                 .weight(1f)
-                .height(PlaybackProgressBarDefaults.StructureHeight)
+                .height(PlaybackProgressBarDefaults.Height)
                 .clip(RoundedCornerShape(4.dp))
                 .background(ArrangementTrackBackgroundColor)
                 .drawWithContent {
@@ -282,26 +284,33 @@ private fun PlaybackProgressFrame(
     content: @Composable RowScope.() -> Unit
 ) {
     val textSize = if (state.compact) 12.sp else 12.sp
-    val sidePadding = if (state.compact) 10.dp else 6.dp
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+    Column(
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Text(
-            text = state.positionText,
-            color = Color.LightGray,
-            fontSize = textSize,
-            modifier = Modifier.padding(end = sidePadding)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = state.positionText,
+                color = Color.LightGray,
+                fontSize = textSize
+            )
 
-        content()
+            Text(
+                text = state.durationText,
+                color = Color.LightGray,
+                fontSize = textSize
+            )
+        }
 
-        Text(
-            text = state.durationText,
-            color = Color.LightGray,
-            fontSize = textSize,
-            modifier = Modifier.padding(start = sidePadding)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(PlaybackProgressBarDefaults.Height),
+            verticalAlignment = Alignment.CenterVertically,
+            content = content
         )
     }
 }
