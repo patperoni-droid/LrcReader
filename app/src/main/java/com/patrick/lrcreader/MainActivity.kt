@@ -40,6 +40,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.Row
@@ -134,6 +135,9 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlin.math.pow
 import kotlin.math.roundToInt
+
+private val TABLET_PLAYLIST_PANE_WIDTH = 400.dp
+private const val TABLET_PLAYLIST_COMPACT_MAX_WIDTH_FRACTION = 0.38f
 
 private fun sanitizeDisplayTrackTitle(value: String?): String? {
     return value
@@ -5439,7 +5443,11 @@ class MainActivity : AppCompatActivity() {
                                 }
 
                                 if (useTabletSplitLiveLayout) {
-                                    Box(modifier = contentModifier.fillMaxSize()) {
+                                    BoxWithConstraints(modifier = contentModifier.fillMaxSize()) {
+                                        val tabletPlaylistPaneWidth = minOf(
+                                            TABLET_PLAYLIST_PANE_WIDTH,
+                                            maxWidth * TABLET_PLAYLIST_COMPACT_MAX_WIDTH_FRACTION
+                                        )
                                         Row(
                                             modifier = Modifier.fillMaxSize()
                                         ) {
@@ -5457,7 +5465,7 @@ class MainActivity : AppCompatActivity() {
                                                         .fillMaxHeight()
                                                 } else {
                                                     Modifier
-                                                        .weight(0.38f)
+                                                        .width(tabletPlaylistPaneWidth)
                                                         .fillMaxHeight()
                                                 }
                                             ) {
@@ -5473,13 +5481,7 @@ class MainActivity : AppCompatActivity() {
                                             }
                                             Box(
                                                 Modifier
-                                                    .weight(
-                                                        if (expandArrangementPane) {
-                                                            1f
-                                                        } else {
-                                                            0.62f
-                                                        }
-                                                    )
+                                                    .weight(1f)
                                                     .fillMaxHeight()
                                             ) {
                                                 when (tabletRightPanel) {

@@ -1418,6 +1418,11 @@ fun QuickPlaylistsScreen(
                             color = Color(0xFFFFF3E0),
                             fontSize = 18.sp,
                             maxLines = 1,
+                            overflow = if (compactTabletLayout) {
+                                TextOverflow.Ellipsis
+                            } else {
+                                TextOverflow.Clip
+                            },
                             modifier = Modifier.weight(1f)
                         )
 
@@ -2366,6 +2371,11 @@ fun QuickPlaylistsScreen(
                                             fontSize = titleFontSize,
                                             fontWeight = FontWeight.SemiBold,
                                             maxLines = 1,
+                                            overflow = if (compactTabletLayout) {
+                                                TextOverflow.Ellipsis
+                                            } else {
+                                                TextOverflow.Clip
+                                            },
                                             modifier = Modifier.weight(1f)
                                         )
                                         Text(
@@ -2783,6 +2793,12 @@ fun QuickPlaylistsScreen(
                                         text = (prefix + displayName).uppercase(),
                                         color = titleColor,
                                         fontSize = titleFontSize,
+                                        maxLines = if (compactTabletLayout) 1 else Int.MAX_VALUE,
+                                        overflow = if (compactTabletLayout) {
+                                            TextOverflow.Ellipsis
+                                        } else {
+                                            TextOverflow.Clip
+                                        },
                                         modifier = Modifier.weight(1f)
                                     )
                                     if (isPlayed) {
