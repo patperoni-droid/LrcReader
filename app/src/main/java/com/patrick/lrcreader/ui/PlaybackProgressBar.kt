@@ -30,7 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object PlaybackProgressBarDefaults {
-    val Height = 28.dp
+    val LinearHeight = 28.dp
+    val StructureHeight = 56.dp
 }
 
 data class PlaybackStructureModel(
@@ -138,7 +139,7 @@ private fun TimeBarRenderer(
             enabled = state.isEnabled,
             modifier = Modifier
                 .weight(1f)
-                .height(PlaybackProgressBarDefaults.Height),
+                .height(PlaybackProgressBarDefaults.LinearHeight),
             colors = SliderDefaults.colors(
                 thumbColor = state.highlightColor,
                 activeTrackColor = trackColor,
@@ -159,7 +160,7 @@ private fun StructureRenderer(
         Row(
             modifier = Modifier
                 .weight(1f)
-                .height(PlaybackProgressBarDefaults.Height)
+                .height(PlaybackProgressBarDefaults.StructureHeight)
                 .clip(RoundedCornerShape(4.dp))
                 .background(state.highlightColor.copy(alpha = 0.18f))
         ) {
@@ -188,11 +189,11 @@ private fun StructureRenderer(
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        if (maxWidth >= 24.dp) {
+                        if (maxWidth >= 28.dp) {
                             Text(
                                 text = segment.label,
                                 color = Color.LightGray,
-                                fontSize = 10.sp,
+                                fontSize = 16.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.padding(horizontal = 3.dp)
