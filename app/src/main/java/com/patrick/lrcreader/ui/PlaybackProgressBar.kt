@@ -36,7 +36,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object PlaybackProgressBarDefaults {
+    val TimeRowHeight = 20.dp
     val Height = 56.dp
+    val TotalHeight = TimeRowHeight + Height
     val LinearTrackHeight = 28.dp
 }
 
@@ -285,10 +287,14 @@ private fun PlaybackProgressFrame(
 ) {
     val textSize = if (state.compact) 12.sp else 12.sp
     Column(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(PlaybackProgressBarDefaults.TotalHeight)
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(PlaybackProgressBarDefaults.TimeRowHeight),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
