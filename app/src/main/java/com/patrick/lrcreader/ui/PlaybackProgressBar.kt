@@ -22,8 +22,13 @@ object PlaybackProgressBarDefaults {
     val Height = 20.dp
 }
 
+sealed interface PlaybackProgressMode {
+    data object Linear : PlaybackProgressMode
+}
+
 @Composable
 fun PlaybackProgressBar(
+    mode: PlaybackProgressMode,
     positionMs: Int,
     durationMs: Int,
     onSeekLivePreview: (Int) -> Unit,
@@ -31,14 +36,18 @@ fun PlaybackProgressBar(
     highlightColor: Color,
     compact: Boolean = false
 ) {
-    TimeBarRenderer(
-        positionMs = positionMs,
-        durationMs = durationMs,
-        onSeekLivePreview = onSeekLivePreview,
-        onSeekCommit = onSeekCommit,
-        highlightColor = highlightColor,
-        compact = compact
-    )
+    when (mode) {
+        PlaybackProgressMode.Linear -> {
+            TimeBarRenderer(
+                positionMs = positionMs,
+                durationMs = durationMs,
+                onSeekLivePreview = onSeekLivePreview,
+                onSeekCommit = onSeekCommit,
+                highlightColor = highlightColor,
+                compact = compact
+            )
+        }
+    }
 }
 
 @Composable

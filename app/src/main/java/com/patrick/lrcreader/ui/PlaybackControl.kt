@@ -27,6 +27,7 @@ fun PlaybackControl(
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         PlaybackProgressBar(
+            mode = PlaybackProgressMode.Linear,
             positionMs = positionMs,
             durationMs = durationMs,
             onSeekLivePreview = onSeekLivePreview,
