@@ -675,6 +675,14 @@ class MainActivity : AppCompatActivity() {
                 var activeVirtualArrangementPlayback by remember {
                     mutableStateOf<PreparedVirtualArrangementPlayback?>(null)
                 }
+                val mainPlaybackProgressMode = remember(activeVirtualArrangementPlayback) {
+                    val structureModel = activeVirtualArrangementPlayback
+                        ?.livePlan
+                        ?.let(PlaybackStructureModelAdapter::from)
+                    structureModel
+                        ?.let(PlaybackProgressMode::Structure)
+                        ?: PlaybackProgressMode.Linear
+                }
                 var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
                 var pendingPlaylistTrackTarget by remember { mutableStateOf<String?>(null) }
                 var pendingPlaylistBatchPlan by remember {
@@ -4670,6 +4678,7 @@ class MainActivity : AppCompatActivity() {
                                         currentArrangementSourceSongId = currentPlayingSongId
                                             ?.let(smpSongsById::get)
                                             ?.arrangementSourceSongId,
+                                        playbackProgressMode = mainPlaybackProgressMode,
                                         onOpenArrangementHub = {
                                             if (adaptiveTokens.tabletMode) {
                                                 moreNavigationTarget = "arrangement_from_tempo"
@@ -5863,6 +5872,7 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
                                         currentSongId = currentPlayingSongId,
+                                        playbackProgressMode = mainPlaybackProgressMode,
                                         onOpenArrangementHub = {
                                             if (adaptiveTokens.tabletMode) {
                                                 moreNavigationTarget = "arrangement_from_tempo"

@@ -13,11 +13,11 @@ data class PreparedVirtualArrangementPlayback(
     val sourceSongId: String,
     val sourceAudioUri: String,
     val mediaItems: List<MediaItem>,
-    val occurrenceDurationsMs: List<Long>
+    val livePlan: LiveArrangementPlan
 ) {
-    val durationMs: Long = occurrenceDurationsMs.fold(0L) { total, duration ->
-        if (duration > Long.MAX_VALUE - total) Long.MAX_VALUE else total + duration
-    }
+    val occurrenceDurationsMs: List<Long> =
+        livePlan.occurrences.map(LiveArrangementOccurrence::durationMs)
+    val durationMs: Long = livePlan.durationMs
 }
 
 object VirtualArrangementPlaybackResolver {
@@ -47,7 +47,16 @@ object VirtualArrangementPlaybackResolver {
         if (occurrences.isEmpty()) return@withContext null
 
         val sourceUri = Uri.fromFile(sourceAudioFile)
-        val mediaItems = occurrences.map { occurrence ->
+        val livePlan = LiveArrangementPlan(
+            occurrences = occurrences.map { occurrence ->
+                LiveArrangementOccurrence(
+                    key = "${variantSong.id}:${occurrence.entryIndex}:${occurrence.repeatIndex}",
+                    label = occurrence.segment.name,
+                    durationMs = occurrence.durationMs
+                )
+            }
+        )
+        val mediaItems = occurrences.zip(livePlan.occurrences).map { (occurrence, liveOccurrence) ->
             val startMs = minOf(
                 occurrence.segment.startMs,
                 occurrence.segment.endMs
@@ -58,7 +67,7 @@ object VirtualArrangementPlaybackResolver {
             ).coerceAtLeast(startMs + 1L)
             MediaItem.Builder()
                 .setUri(sourceUri)
-                .setMediaId("${variantSong.id}:${occurrence.entryIndex}:${occurrence.repeatIndex}")
+                .setMediaId(liveOccurrence.key)
                 .setClippingConfiguration(
                     MediaItem.ClippingConfiguration.Builder()
                         .setStartPositionMs(startMs)
@@ -74,7 +83,7 @@ object VirtualArrangementPlaybackResolver {
             sourceSongId = sourceSongId,
             sourceAudioUri = sourceUri.toString(),
             mediaItems = mediaItems,
-            occurrenceDurationsMs = occurrences.map { it.durationMs }
+            livePlan = livePlan
         )
     }
 }

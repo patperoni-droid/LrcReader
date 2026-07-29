@@ -23,11 +23,12 @@ fun PlaybackControl(
     liveConsoleMode: Boolean = false,
     liveSelectionInSync: Boolean = true,
     onLivePlay: (() -> Unit)? = null,
+    progressMode: PlaybackProgressMode = PlaybackProgressMode.Linear,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         PlaybackProgressBar(
-            mode = PlaybackProgressMode.Linear,
+            mode = progressMode,
             positionMs = positionMs,
             durationMs = durationMs,
             onSeekLivePreview = onSeekLivePreview,
