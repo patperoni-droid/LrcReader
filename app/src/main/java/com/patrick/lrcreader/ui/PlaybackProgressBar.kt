@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -27,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
@@ -39,8 +39,18 @@ object PlaybackProgressBarDefaults {
     val TimeRowHeight = 20.dp
     val Height = 56.dp
     val TotalHeight = TimeRowHeight + Height
-    val LinearTrackHeight = 28.dp
 }
+
+private val LinearPlaybackStructureModel = PlaybackStructureModel(
+    segments = listOf(
+        PlaybackStructureSegment(
+            key = "linear-timeline",
+            label = "",
+            fraction = 1f,
+            color = Color(0xFF37474F)
+        )
+    )
+)
 
 data class PlaybackStructureModel(
     val segments: List<PlaybackStructureSegment>
@@ -140,25 +150,31 @@ private fun TimeBarRenderer(
     onProgressChange: (Float) -> Unit,
     onProgressChangeFinished: () -> Unit
 ) {
-    val trackColor = state.highlightColor.copy(alpha = 0.25f)
-
     PlaybackProgressFrame(
         state = state
     ) {
-        Slider(
-            value = state.progressFraction,
-            onValueChange = onProgressChange,
-            onValueChangeFinished = onProgressChangeFinished,
-            enabled = state.isEnabled,
+        Box(
             modifier = Modifier
                 .weight(1f)
-                .height(PlaybackProgressBarDefaults.LinearTrackHeight),
-            colors = SliderDefaults.colors(
-                thumbColor = state.highlightColor,
-                activeTrackColor = trackColor,
-                inactiveTrackColor = trackColor.copy(alpha = 0.4f)
+                .fillMaxHeight()
+        ) {
+            PlaybackStructureTrack(
+                state = state,
+                model = LinearPlaybackStructureModel,
+                armedSegmentKey = null,
+                onSegmentSelected = null,
+                modifier = Modifier.fillMaxSize()
             )
-        )
+            Slider(
+                value = state.progressFraction,
+                onValueChange = onProgressChange,
+                onValueChangeFinished = onProgressChangeFinished,
+                enabled = state.isEnabled,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .alpha(0f)
+            )
+        }
     }
 }
 
@@ -169,86 +185,114 @@ private fun StructureRenderer(
     armedSegmentKey: String?,
     onSegmentSelected: (String) -> Unit
 ) {
+    PlaybackProgressFrame(
+        state = state
+    ) {
+        PlaybackStructureTrack(
+            state = state,
+            model = model,
+            armedSegmentKey = armedSegmentKey,
+            onSegmentSelected = onSegmentSelected,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+        )
+    }
+}
+
+@Composable
+private fun PlaybackStructureTrack(
+    state: PlaybackProgressState,
+    model: PlaybackStructureModel,
+    armedSegmentKey: String?,
+    onSegmentSelected: ((String) -> Unit)?,
+    modifier: Modifier
+) {
     val progressFraction = state.progressFraction.coerceIn(0f, 1f)
     val activeSegmentIndex = findActivePlaybackStructureSegmentIndex(
         model = model,
         progressFraction = progressFraction
     )
 
-    PlaybackProgressFrame(
-        state = state
-    ) {
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(PlaybackProgressBarDefaults.Height)
-                .clip(RoundedCornerShape(4.dp))
-                .background(ArrangementTrackBackgroundColor)
-                .drawWithContent {
-                    drawContent()
-                    if (model.segments.isNotEmpty()) {
-                        val playheadWidth = 2.dp.toPx()
-                        val playheadX = size.width * progressFraction
-                        drawLine(
-                            color = Color.White.copy(alpha = 0.90f),
-                            start = Offset(playheadX, 0f),
-                            end = Offset(playheadX, size.height),
-                            strokeWidth = playheadWidth
-                        )
-                    }
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(ArrangementTrackBackgroundColor)
+            .drawWithContent {
+                drawContent()
+                if (model.segments.isNotEmpty()) {
+                    val playheadWidth = 2.dp.toPx()
+                    val playheadX = size.width * progressFraction
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.90f),
+                        start = Offset(playheadX, 0f),
+                        end = Offset(playheadX, size.height),
+                        strokeWidth = playheadWidth
+                    )
                 }
-        ) {
-            Row(modifier = Modifier.fillMaxSize()) {
-                model.segments.forEachIndexed { index, segment ->
-                    androidx.compose.runtime.key(segment.key) {
-                        val isQueued = segment.key == armedSegmentKey
-                        BoxWithConstraints(
-                            modifier = Modifier
-                                .weight(segment.fraction)
-                                .fillMaxHeight()
-                                .clickable { onSegmentSelected(segment.key) }
-                                .background(
-                                    arrangementTrackOccurrenceContainerColor(
-                                        color = segment.color,
-                                        isMuted = false,
-                                        isActive = index == activeSegmentIndex,
-                                        isQueued = isQueued
+            }
+    ) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            model.segments.forEachIndexed { index, segment ->
+                androidx.compose.runtime.key(segment.key) {
+                    val isQueued = segment.key == armedSegmentKey
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .weight(segment.fraction)
+                            .fillMaxHeight()
+                            .then(
+                                if (onSegmentSelected != null) {
+                                    Modifier.clickable {
+                                        onSegmentSelected(segment.key)
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .background(
+                                arrangementTrackOccurrenceContainerColor(
+                                    color = segment.color,
+                                    isMuted = false,
+                                    isActive = index == activeSegmentIndex,
+                                    isQueued = isQueued
+                                )
+                            )
+                            .then(
+                                if (isQueued) {
+                                    Modifier.border(
+                                        width = 2.dp,
+                                        color = Color(0xFFFFD54F)
                                     )
-                                )
-                                .then(
-                                    if (isQueued) {
-                                        Modifier.border(
-                                            width = 2.dp,
-                                            color = Color(0xFFFFD54F)
-                                        )
-                                    } else {
-                                        Modifier
-                                    }
-                                )
-                                .drawWithContent {
-                                    drawContent()
-                                    if (index < model.segments.lastIndex) {
-                                        val separatorWidth = 1.dp.toPx()
-                                        drawLine(
-                                            color = Color.LightGray.copy(alpha = 0.55f),
-                                            start = Offset(size.width - separatorWidth / 2f, 0f),
-                                            end = Offset(size.width - separatorWidth / 2f, size.height),
-                                            strokeWidth = separatorWidth
-                                        )
-                                    }
-                                },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (maxWidth >= 28.dp) {
-                                Text(
-                                    text = segment.label,
-                                    color = Color.LightGray,
-                                    fontSize = 16.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(horizontal = 3.dp)
-                                )
-                            }
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .drawWithContent {
+                                drawContent()
+                                if (index < model.segments.lastIndex) {
+                                    val separatorWidth = 1.dp.toPx()
+                                    drawLine(
+                                        color = Color.LightGray.copy(alpha = 0.55f),
+                                        start = Offset(size.width - separatorWidth / 2f, 0f),
+                                        end = Offset(
+                                            size.width - separatorWidth / 2f,
+                                            size.height
+                                        ),
+                                        strokeWidth = separatorWidth
+                                    )
+                                }
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (maxWidth >= 28.dp) {
+                            Text(
+                                text = segment.label,
+                                color = Color.LightGray,
+                                fontSize = 16.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(horizontal = 3.dp)
+                            )
                         }
                     }
                 }
