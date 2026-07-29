@@ -8,8 +8,10 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -26,6 +28,17 @@ sealed interface PlaybackProgressMode {
     data object Linear : PlaybackProgressMode
 }
 
+@Immutable
+data class PlaybackProgressState(
+    val durationMs: Int,
+    val progressFraction: Float,
+    val isEnabled: Boolean,
+    val positionText: String,
+    val durationText: String,
+    val highlightColor: Color,
+    val compact: Boolean
+)
+
 @Composable
 fun PlaybackProgressBar(
     mode: PlaybackProgressMode,
@@ -36,15 +49,38 @@ fun PlaybackProgressBar(
     highlightColor: Color,
     compact: Boolean = false
 ) {
+    var previewPositionMs by remember { mutableIntStateOf(positionMs) }
+    var isDragging by remember { mutableStateOf(false) }
+    val displayPositionMs = if (isDragging) previewPositionMs else positionMs
+    val safeDurationMs = durationMs.coerceAtLeast(0)
+    val progressFraction = when {
+        safeDurationMs <= 0 -> 0f
+        else -> displayPositionMs.toFloat() / safeDurationMs.toFloat()
+    }
+    val state = PlaybackProgressState(
+        durationMs = safeDurationMs,
+        progressFraction = progressFraction,
+        isEnabled = safeDurationMs > 0,
+        positionText = remember(displayPositionMs) { formatMsLocal(displayPositionMs) },
+        durationText = remember(safeDurationMs) { formatMsLocal(safeDurationMs) },
+        highlightColor = highlightColor,
+        compact = compact
+    )
+
     when (mode) {
         PlaybackProgressMode.Linear -> {
             TimeBarRenderer(
-                positionMs = positionMs,
-                durationMs = durationMs,
-                onSeekLivePreview = onSeekLivePreview,
-                onSeekCommit = onSeekCommit,
-                highlightColor = highlightColor,
-                compact = compact
+                state = state,
+                onProgressChange = { fraction ->
+                    val preview = (fraction * state.durationMs).toInt()
+                    previewPositionMs = preview
+                    isDragging = true
+                    onSeekLivePreview(preview)
+                },
+                onProgressChangeFinished = {
+                    isDragging = false
+                    onSeekCommit(previewPositionMs)
+                }
             )
         }
     }
@@ -52,18 +88,13 @@ fun PlaybackProgressBar(
 
 @Composable
 private fun TimeBarRenderer(
-    positionMs: Int,
-    durationMs: Int,
-    onSeekLivePreview: (Int) -> Unit,
-    onSeekCommit: (Int) -> Unit,
-    highlightColor: Color,
-    compact: Boolean
+    state: PlaybackProgressState,
+    onProgressChange: (Float) -> Unit,
+    onProgressChangeFinished: () -> Unit
 ) {
-    val posText = remember(positionMs) { formatMsLocal(positionMs) }
-    val durText = remember(durationMs) { formatMsLocal(durationMs.coerceAtLeast(0)) }
-    val trackColor = highlightColor.copy(alpha = 0.25f)
-    val textSize = if (compact) 12.sp else 12.sp
-    val sidePadding = if (compact) 10.dp else 6.dp
+    val trackColor = state.highlightColor.copy(alpha = 0.25f)
+    val textSize = if (state.compact) 12.sp else 12.sp
+    val sidePadding = if (state.compact) 10.dp else 6.dp
     val sliderHeight = PlaybackProgressBarDefaults.Height
     val bottomPadding = 0.dp
 
@@ -74,42 +105,29 @@ private fun TimeBarRenderer(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
-            text = posText,
+            text = state.positionText,
             color = Color.LightGray,
             fontSize = textSize,
             modifier = Modifier.padding(end = sidePadding)
         )
 
-        val sliderValue = when {
-            durationMs <= 0 -> 0f
-            else -> positionMs.toFloat() / durationMs.toFloat()
-        }
-
-        var lastPreview by remember { mutableIntStateOf(positionMs) }
-
         Slider(
-            value = sliderValue,
-            onValueChange = { frac ->
-                val preview = (frac * durationMs).toInt()
-                lastPreview = preview
-                onSeekLivePreview(preview)
-            },
-            onValueChangeFinished = {
-                onSeekCommit(lastPreview)
-            },
-            enabled = durationMs > 0,
+            value = state.progressFraction,
+            onValueChange = onProgressChange,
+            onValueChangeFinished = onProgressChangeFinished,
+            enabled = state.isEnabled,
             modifier = Modifier
                 .weight(1f)
                 .height(sliderHeight),
             colors = SliderDefaults.colors(
-                thumbColor = highlightColor,
+                thumbColor = state.highlightColor,
                 activeTrackColor = trackColor,
                 inactiveTrackColor = trackColor.copy(alpha = 0.4f)
             )
         )
 
         Text(
-            text = durText,
+            text = state.durationText,
             color = Color.LightGray,
             fontSize = textSize,
             modifier = Modifier.padding(start = sidePadding)
