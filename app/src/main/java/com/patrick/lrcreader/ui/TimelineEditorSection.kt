@@ -70,6 +70,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -115,6 +116,8 @@ import com.patrick.lrcreader.core.audio.ArrangementSourceWavCache
 import com.patrick.lrcreader.core.audio.ArrangementWavRenderer
 import com.patrick.lrcreader.core.audio.SampleSegment
 import com.patrick.lrcreader.core.audio.SamplerEngine
+import com.patrick.lrcreader.core.arrangement.ArrangementLiveController
+import com.patrick.lrcreader.core.arrangement.ArrangementLiveMediaQueue
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.core.light.LightSceneState
@@ -1920,14 +1923,15 @@ private fun TimelineMeasuresPlaceholder(
     var preparedLoopStartMs by remember(currentSongId) { mutableStateOf<Long?>(null) }
     var arrangementLoopPreviewActive by remember(currentSongId) { mutableStateOf(false) }
     var arrangementLoopPositionMs by remember(currentSongId) { mutableLongStateOf(0L) }
-    var structurePlaybackActive by remember(currentSongId) { mutableStateOf(false) }
-    var structurePlaybackIndex by remember(currentSongId) { mutableIntStateOf(-1) }
-    var queuedStructureSegmentIndex by remember(currentSongId) { mutableStateOf<Int?>(null) }
     var selectedStructureEditIndex by remember(currentSongId) { mutableStateOf<Int?>(null) }
     var structureEditFocusRequest by remember(currentSongId) { mutableIntStateOf(0) }
     var structurePlaybackAbsolutePositionMs by remember(currentSongId) {
         mutableLongStateOf(currentPositionMs.coerceAtLeast(0L))
     }
+    val arrangementLiveController = remember(currentSongId) { ArrangementLiveController() }
+    val arrangementLiveState by arrangementLiveController.state.collectAsState()
+    val structurePlaybackActive = arrangementLiveState.previewActive
+    val structurePlaybackIndex = arrangementLiveState.activeOccurrenceIndex
     val savedAnchorMs = localMeasureAnchorMs
     val displayedCurrentPositionMs = if (structurePlaybackActive) {
         structurePlaybackAbsolutePositionMs.coerceAtLeast(0L)
@@ -1962,6 +1966,37 @@ private fun TimelineMeasuresPlaceholder(
         ExoPlayer.Builder(context.applicationContext).build().apply { playWhenReady = false }
     }
     val structureSamplerEngine = remember { SamplerEngine() }
+    val arrangementLiveMediaQueue = remember(structurePreviewPlayer) {
+        object : ArrangementLiveMediaQueue {
+            override val currentMediaItemIndex: Int
+                get() = structurePreviewPlayer.currentMediaItemIndex
+
+            override val mediaItemCount: Int
+                get() = structurePreviewPlayer.mediaItemCount
+
+            override val currentPositionMs: Long
+                get() = runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(-1L)
+
+            override fun addMediaItem(
+                audioPath: String,
+                segment: ArrangementSegmentData
+            ): Boolean {
+                val mediaItem = buildTimelineStructureMediaItem(audioPath, segment) ?: return false
+                structurePreviewPlayer.addMediaItem(mediaItem)
+                return true
+            }
+
+            override fun replaceMediaItem(
+                index: Int,
+                audioPath: String,
+                segment: ArrangementSegmentData
+            ): Boolean {
+                val mediaItem = buildTimelineStructureMediaItem(audioPath, segment) ?: return false
+                structurePreviewPlayer.replaceMediaItem(index, mediaItem)
+                return true
+            }
+        }
+    }
     val arrangementPreviewPlayer = remember(context.applicationContext) {
         ArrangementPreviewPlayer(context.applicationContext)
     }
@@ -2053,14 +2088,15 @@ private fun TimelineMeasuresPlaceholder(
     fun stopStructurePreviewPlayback(reason: String = "unspecified") {
         structurePreparationGeneration += 1
         val mediaItemCountBefore = runCatching { structurePreviewPlayer.mediaItemCount }.getOrDefault(0)
+        val armedOccurrenceIndex = arrangementLiveController.armedOccurrenceIndex
         Log.d(
             ARR_STRUCTURE_FLOW_TAG,
-            "STOP_STRUCTURE reason=$reason currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=$queuedStructureSegmentIndex mediaItemCount=$mediaItemCountBefore"
+            "STOP_STRUCTURE reason=$reason currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=$armedOccurrenceIndex mediaItemCount=$mediaItemCountBefore"
         )
-        if (queuedStructureSegmentIndex != null) {
+        if (armedOccurrenceIndex != null) {
             Log.d(
                 ARR_STRUCTURE_QUEUE_TAG,
-                "QUEUE_RESET old=$queuedStructureSegmentIndex reason=stopStructurePreviewPlayback"
+                "QUEUE_RESET old=$armedOccurrenceIndex reason=stopStructurePreviewPlayback"
             )
         }
         runCatching { structurePreviewPlayer.pause() }
@@ -2073,9 +2109,7 @@ private fun TimelineMeasuresPlaceholder(
         )
         runCatching { structurePreviewPlayer.clearMediaItems() }
         runCatching { structurePreviewPlayer.volume = arrangementTrackGainLinear }
-        structurePlaybackActive = false
-        structurePlaybackIndex = -1
-        queuedStructureSegmentIndex = null
+        arrangementLiveController.stopPreview()
         currentStructureSourcePath = null
         structureUsingWavSource = false
         structureUsingSampler = false
@@ -2110,24 +2144,24 @@ private fun TimelineMeasuresPlaceholder(
             audioPath = audioPath,
             segment = requestedSegment
         ) ?: return
-        structurePlaybackActive = true
         structureUsingSampler = false
-        structurePlaybackIndex = startIndex
+        arrangementLiveController.startPreview(startIndex)
         currentStructureSourcePath = audioPath
-        if (queuedStructureSegmentIndex != null) {
+        arrangementLiveController.armedOccurrenceIndex?.let { armedOccurrenceIndex ->
             Log.d(
                 ARR_STRUCTURE_QUEUE_TAG,
-                "QUEUE_RESET old=$queuedStructureSegmentIndex reason=startStructureSegment"
+                "QUEUE_RESET old=$armedOccurrenceIndex reason=startStructureSegment"
             )
         }
-        queuedStructureSegmentIndex = null
+        arrangementLiveController.clearArmedOccurrence()
         structurePlaybackAbsolutePositionMs = minOf(
             requestedSegment.startMs,
             requestedSegment.endMs
         ).coerceAtLeast(0L)
         Log.d(
             ARR_STRUCTURE_QUEUE_TAG,
-            "START_SEGMENT_APPLIED currentPlayingIndex=$structurePlaybackIndex isStructureSegmentPlaying=$structurePlaybackActive"
+            "START_SEGMENT_APPLIED currentPlayingIndex=${arrangementLiveController.activeOccurrenceIndex} " +
+                "isStructureSegmentPlaying=${arrangementLiveController.previewActive}"
         )
         Log.d(
             ARR_STRUCTURE_WAV_TAG,
@@ -2213,11 +2247,10 @@ private fun TimelineMeasuresPlaceholder(
             structurePreviewPlayer.pause()
             structurePreviewPlayer.stop()
             structurePreviewPlayer.clearMediaItems()
-            structurePlaybackActive = true
             structureUsingSampler = true
             structureUsingWavSource = true
-            structurePlaybackIndex = startIndex
-            queuedStructureSegmentIndex = null
+            arrangementLiveController.startPreview(startIndex)
+            arrangementLiveController.clearArmedOccurrence()
             currentStructureSourcePath = sourcePath
             structureSamplerSegmentStartRealtimeMs = SystemClock.elapsedRealtime()
             structurePlaybackAbsolutePositionMs = minOf(
@@ -2236,66 +2269,18 @@ private fun TimelineMeasuresPlaceholder(
         }.isSuccess
     }
 
-    fun queueStructureSegmentPreview(
+    fun defineNextStructureOccurrence(
         nextIndex: Int,
         audioPath: String,
         segments: List<ArrangementSegmentData>
     ) {
-        if (structureUsingSampler && structurePlaybackActive) {
-            if (nextIndex !in segments.indices) return
-            runCatching {
-                structureSamplerEngine.queueNext(nextIndex)
-                queuedStructureSegmentIndex = nextIndex
-                Log.d(ARR_STRUCTURE_SAMPLER_TAG, "QUEUE_NEXT index=$nextIndex")
-            }.onFailure { error ->
-                Log.w(
-                    ARR_STRUCTURE_SAMPLER_TAG,
-                    "FALLBACK_EXOPLAYER reason=sampler_queue_failed error=${error.message}",
-                    error
-                )
-            }
-            return
-        }
-        if (nextIndex !in segments.indices) return
-        val queuedSegment = segments[nextIndex]
-        val queuedStartMs = minOf(queuedSegment.startMs, queuedSegment.endMs).coerceAtLeast(0L)
-        val queuedEndMs = maxOf(queuedSegment.startMs, queuedSegment.endMs).coerceAtLeast(queuedStartMs + 1L)
-        val sourceUri = Uri.fromFile(File(audioPath))
-        val nextMediaItem = buildTimelineStructureMediaItem(
+        arrangementLiveController.defineNext(
+            nextIndex = nextIndex,
             audioPath = audioPath,
-            segment = queuedSegment
-        ) ?: return
-        val insertionIndex = structurePreviewPlayer.currentMediaItemIndex.coerceAtLeast(0) + 1
-        val mediaItemCount = structurePreviewPlayer.mediaItemCount
-        if (mediaItemCount <= insertionIndex) {
-            structurePreviewPlayer.addMediaItem(nextMediaItem)
-            Log.d(
-                ARR_STRUCTURE_QUEUE_TAG,
-                "NEXT_ITEM_SET queuedIndex=$nextIndex insertionIndex=$insertionIndex name=${queuedSegment.name}"
-            )
-            Log.d(
-                ARR_STRUCTURE_FLOW_TAG,
-                "NEXT_ITEM_SET queuedIndex=$nextIndex name=${queuedSegment.name} startMs=$queuedStartMs endMs=$queuedEndMs sourceUri=$sourceUri previousQueuedIndex=$queuedStructureSegmentIndex mediaItemCountBefore=$mediaItemCount mediaItemCountAfter=${structurePreviewPlayer.mediaItemCount}"
-            )
-        } else {
-            val oldQueuedIndex = queuedStructureSegmentIndex
-            structurePreviewPlayer.replaceMediaItem(insertionIndex, nextMediaItem)
-            Log.d(
-                ARR_STRUCTURE_QUEUE_TAG,
-                "NEXT_ITEM_REPLACED old=$oldQueuedIndex new=$nextIndex insertionIndex=$insertionIndex name=${queuedSegment.name}"
-            )
-            Log.d(
-                ARR_STRUCTURE_FLOW_TAG,
-                "NEXT_ITEM_REPLACED queuedIndex=$nextIndex name=${queuedSegment.name} startMs=$queuedStartMs endMs=$queuedEndMs sourceUri=$sourceUri previousQueuedIndex=$oldQueuedIndex mediaItemCountBefore=$mediaItemCount mediaItemCountAfter=${structurePreviewPlayer.mediaItemCount}"
-            )
-        }
-        queuedStructureSegmentIndex = nextIndex
-        Log.d(
-            ARR_TIMING_DIAG_TAG,
-            "STRUCTURE_QUEUE segmentId=${queuedSegment.id} segmentStartMs=$queuedStartMs " +
-                "segmentEndMs=$queuedEndMs mediaItemSourceUri=$sourceUri " +
-                "transitionTimestampMs=${SystemClock.elapsedRealtime()} expectedStartMs=$queuedStartMs " +
-                "currentPosition=${runCatching { structurePreviewPlayer.currentPosition }.getOrDefault(-1L)}"
+            segments = segments,
+            useSampler = structureUsingSampler && structurePlaybackActive,
+            queueSamplerOccurrence = structureSamplerEngine::queueNext,
+            mediaQueue = arrangementLiveMediaQueue
         )
     }
 
@@ -2581,9 +2566,7 @@ private fun TimelineMeasuresPlaceholder(
 	            selectedSegmentLoopEndMs = null
             arrangementLoopPreviewActive = false
             arrangementLoopPositionMs = 0L
-            structurePlaybackActive = false
-            structurePlaybackIndex = -1
-            queuedStructureSegmentIndex = null
+            arrangementLiveController.stopPreview()
             selectedStructureEditIndex = null
             structureEditFocusRequest = 0
             structurePlaybackAbsolutePositionMs = 0L
@@ -2739,9 +2722,7 @@ private fun TimelineMeasuresPlaceholder(
 	        selectedSegmentLoopEndMs = null
         arrangementLoopPreviewActive = false
         arrangementLoopPositionMs = 0L
-        structurePlaybackActive = false
-        structurePlaybackIndex = -1
-        queuedStructureSegmentIndex = null
+        arrangementLiveController.stopPreview()
         structurePlaybackAbsolutePositionMs = 0L
         suppressNextLoopAutoplay = false
     }
@@ -2778,7 +2759,7 @@ private fun TimelineMeasuresPlaceholder(
 	val activeStructureEntryIndex = preparedStructureOccurrences
 	    .getOrNull(structurePlaybackIndex)
 	    ?.entryIndex
-	val queuedStructureEntryIndex = queuedStructureSegmentIndex
+	val queuedStructureEntryIndex = arrangementLiveState.armedOccurrenceIndex
 	    ?.let { index -> preparedStructureOccurrences.getOrNull(index)?.entryIndex }
 	val preparedArrangementPlayhead = if (!unifiedSegmentLayout) {
 	    null
@@ -2857,10 +2838,10 @@ private fun TimelineMeasuresPlaceholder(
                     ARR_STRUCTURE_SAMPLER_TAG,
                     "PLAY_SEGMENT index=$index name=${segment?.name.orEmpty()}"
                 )
-                if (segment != null && structurePlaybackActive && structureUsingSampler) {
-                    val previousIndex = structurePlaybackIndex
-                    structurePlaybackIndex = index
-                    queuedStructureSegmentIndex = null
+                if (segment != null && arrangementLiveController.previewActive && structureUsingSampler) {
+                    val previousIndex = arrangementLiveController.activeOccurrenceIndex
+                    arrangementLiveController.updateActiveOccurrence(index)
+                    arrangementLiveController.clearArmedOccurrence()
                     structureSamplerSegmentStartRealtimeMs = SystemClock.elapsedRealtime()
                     structurePlaybackAbsolutePositionMs = minOf(segment.startMs, segment.endMs).coerceAtLeast(0L)
                     if (previousIndex >= 0 && previousIndex != index) {
@@ -2949,7 +2930,7 @@ private fun TimelineMeasuresPlaceholder(
             structurePlaybackAbsolutePositionMs = segmentStartMs + relativePositionMs
             return
         }
-        structurePlaybackIndex = targetSegmentIndex
+        arrangementLiveController.updateActiveOccurrence(targetSegmentIndex)
         structurePlaybackAbsolutePositionMs = segmentStartMs + relativePositionMs
         runCatching { structurePreviewPlayer.seekTo(targetSegmentIndex, relativePositionMs) }
         runCatching {
@@ -3412,22 +3393,23 @@ private fun TimelineMeasuresPlaceholder(
     DisposableEffect(structurePreviewPlayer) {
         val listener = object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                if (!structurePlaybackActive) return
-                val queuedIndex = queuedStructureSegmentIndex
+                if (!arrangementLiveController.previewActive) return
+                val queuedIndex = arrangementLiveController.armedOccurrenceIndex
+                val activeOccurrenceIndex = arrangementLiveController.activeOccurrenceIndex
                 val currentMediaItemIndex = structurePreviewPlayer.currentMediaItemIndex
                 val mediaItemCount = structurePreviewPlayer.mediaItemCount
-                val autoNextStructureIndex = (structurePlaybackIndex + 1)
+                val autoNextStructureIndex = (activeOccurrenceIndex + 1)
                     .takeIf { it in latestStructurePlaybackSegments.indices }
                 val sourceUri = mediaItem?.localConfiguration?.uri
                 Log.d(
                     ARR_STRUCTURE_QUEUE_TAG,
-                    "MEDIA_ITEM_TRANSITION mediaIndex=$currentMediaItemIndex currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedIndex reason=$reason"
+                    "MEDIA_ITEM_TRANSITION mediaIndex=$currentMediaItemIndex currentPlayingIndex=$activeOccurrenceIndex queuedIndex=$queuedIndex reason=$reason"
                 )
                 Log.d(
                     ARR_STRUCTURE_FLOW_TAG,
-                    "MEDIA_ITEM_TRANSITION reason=$reason mediaItemCount=$mediaItemCount currentMediaItemIndex=$currentMediaItemIndex currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=$queuedIndex autoNextStructureIndex=$autoNextStructureIndex sourceUri=$sourceUri"
+                    "MEDIA_ITEM_TRANSITION reason=$reason mediaItemCount=$mediaItemCount currentMediaItemIndex=$currentMediaItemIndex currentStructureIndex=$activeOccurrenceIndex queuedStructureSegmentIndex=$queuedIndex autoNextStructureIndex=$autoNextStructureIndex sourceUri=$sourceUri"
                 )
-                val expectedSegmentIndex = queuedIndex ?: autoNextStructureIndex ?: structurePlaybackIndex
+                val expectedSegmentIndex = queuedIndex ?: autoNextStructureIndex ?: activeOccurrenceIndex
                 val expectedSegment = latestStructurePlaybackSegments.getOrNull(expectedSegmentIndex)
                 if (expectedSegment != null) {
                     val expectedStartMs = minOf(expectedSegment.startMs, expectedSegment.endMs).coerceAtLeast(0L)
@@ -3443,23 +3425,23 @@ private fun TimelineMeasuresPlaceholder(
                     )
                 }
                 if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
-                    val previousIndex = structurePlaybackIndex
-                    if (queuedIndex != null) {
-                        structurePlaybackIndex = queuedIndex
+                    val previousIndex = activeOccurrenceIndex
+                    val armedIndex = arrangementLiveController.consumeArmedOccurrence()
+                    if (armedIndex != null) {
+                        arrangementLiveController.updateActiveOccurrence(armedIndex)
                         Log.d(
                             ARR_STRUCTURE_QUEUE_TAG,
-                            "QUEUE_RESET old=$queuedStructureSegmentIndex reason=mediaItemTransition"
+                            "QUEUE_RESET old=$queuedIndex reason=mediaItemTransition"
                         )
-                        queuedStructureSegmentIndex = null
                     } else {
                         val autoNextIndex = previousIndex + 1
                         if (autoNextIndex in latestStructurePlaybackSegments.indices) {
-                            structurePlaybackIndex = autoNextIndex
+                            arrangementLiveController.updateActiveOccurrence(autoNextIndex)
                         }
                     }
                     latestCurrentStructureSourcePath?.takeIf { it.isNotBlank() }?.let { audioPath ->
                         preloadAutomaticStructureSegmentPreview(
-                            currentIndex = structurePlaybackIndex,
+                            currentIndex = arrangementLiveController.activeOccurrenceIndex,
                             audioPath = audioPath,
                             segments = latestStructurePlaybackSegments
                         )
@@ -3469,29 +3451,30 @@ private fun TimelineMeasuresPlaceholder(
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_ENDED) {
+                    val activeOccurrenceIndex = arrangementLiveController.activeOccurrenceIndex
                     val validationSegments = latestStructurePlaybackSegments
                     val validationListSize = validationSegments.size
                     val mediaItemCount = structurePreviewPlayer.mediaItemCount
                     val currentMediaItemIndex = structurePreviewPlayer.currentMediaItemIndex
                     Log.d(
                         ARR_STRUCTURE_QUEUE_TAG,
-                        "END_CALLBACK currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedStructureSegmentIndex listSize=$validationListSize playerState=$playbackState playWhenReady=${structurePreviewPlayer.playWhenReady} isPlaying=${structurePreviewPlayer.isPlaying}"
+                        "END_CALLBACK currentPlayingIndex=$activeOccurrenceIndex queuedIndex=${arrangementLiveController.armedOccurrenceIndex} listSize=$validationListSize playerState=$playbackState playWhenReady=${structurePreviewPlayer.playWhenReady} isPlaying=${structurePreviewPlayer.isPlaying}"
                     )
                     Log.d(
                         ARR_STRUCTURE_FLOW_TAG,
-                        "END_CALLBACK mediaItemCount=$mediaItemCount currentMediaItemIndex=$currentMediaItemIndex currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=$queuedStructureSegmentIndex playerState=$playbackState playWhenReady=${structurePreviewPlayer.playWhenReady} isPlaying=${structurePreviewPlayer.isPlaying}"
+                        "END_CALLBACK mediaItemCount=$mediaItemCount currentMediaItemIndex=$currentMediaItemIndex currentStructureIndex=$activeOccurrenceIndex queuedStructureSegmentIndex=${arrangementLiveController.armedOccurrenceIndex} playerState=$playbackState playWhenReady=${structurePreviewPlayer.playWhenReady} isPlaying=${structurePreviewPlayer.isPlaying}"
                     )
                     Log.d(
                         ARR_STRUCTURE_QUEUE_TAG,
-                        "END_DECISION action=STOP_NO_NEXT currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedStructureSegmentIndex listSize=$validationListSize"
+                        "END_DECISION action=STOP_NO_NEXT currentPlayingIndex=$activeOccurrenceIndex queuedIndex=${arrangementLiveController.armedOccurrenceIndex} listSize=$validationListSize"
                     )
                     Log.d(
                         ARR_STRUCTURE_FLOW_TAG,
-                        "STOP_STRUCTURE reason=state_ended_no_next currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=$queuedStructureSegmentIndex mediaItemCount=$mediaItemCount"
+                        "STOP_STRUCTURE reason=state_ended_no_next currentStructureIndex=$activeOccurrenceIndex queuedStructureSegmentIndex=${arrangementLiveController.armedOccurrenceIndex} mediaItemCount=$mediaItemCount"
                     )
                     Log.d(
                         ARR_STRUCTURE_QUEUE_TAG,
-                        "STOP_AFTER_END reason=no queued segment currentPlayingIndex=$structurePlaybackIndex queuedIndex=$queuedStructureSegmentIndex"
+                        "STOP_AFTER_END reason=no queued segment currentPlayingIndex=$activeOccurrenceIndex queuedIndex=${arrangementLiveController.armedOccurrenceIndex}"
                     )
                     stopStructurePreviewPlayback(reason = "state_ended_no_next")
                 }
@@ -3525,7 +3508,7 @@ private fun TimelineMeasuresPlaceholder(
             if (activeStructurePlayback) {
                 Log.d(
                     ARR_STRUCTURE_FLOW_TAG,
-                    "STOP_IGNORED reason=structure_preview_stop_request active_structure_playback=true currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=$queuedStructureSegmentIndex mediaItemCount=${structurePreviewPlayer.mediaItemCount}"
+                    "STOP_IGNORED reason=structure_preview_stop_request active_structure_playback=true currentStructureIndex=$structurePlaybackIndex queuedStructureSegmentIndex=${arrangementLiveController.armedOccurrenceIndex} mediaItemCount=${structurePreviewPlayer.mediaItemCount}"
                 )
                 return@LaunchedEffect
             }
@@ -4604,16 +4587,20 @@ private fun TimelineMeasuresPlaceholder(
                     }
                     if (startIndex < 0) return@ArrangementListCard
                     val sourceAudioPath = currentSongAudioPath ?: return@ArrangementListCard
-                    val isStructureSegmentPlaying = structurePlaybackActive &&
+                    val isStructureSegmentPlaying = arrangementLiveController.previewActive &&
                         (structureUsingSampler || runCatching { structurePreviewPlayer.isPlaying }.getOrDefault(false))
                     Log.d(
                         ARR_STRUCTURE_QUEUE_TAG,
-                        "CLICK clickedIndex=$startIndex currentPlayingIndex=$structurePlaybackIndex isStructureSegmentPlaying=$isStructureSegmentPlaying queuedBefore=$queuedStructureSegmentIndex action=${if (isStructureSegmentPlaying) "QUEUE_NEXT" else "START_NOW"}"
+                        "CLICK clickedIndex=$startIndex currentPlayingIndex=${arrangementLiveController.activeOccurrenceIndex} isStructureSegmentPlaying=$isStructureSegmentPlaying queuedBefore=${arrangementLiveController.armedOccurrenceIndex} action=${if (isStructureSegmentPlaying) "QUEUE_NEXT" else "START_NOW"}"
                     )
                     if (isStructureSegmentPlaying) {
                         val activeSourcePath = currentStructureSourcePath?.takeIf { it.isNotBlank() }
                             ?: sourceAudioPath
-                        queueStructureSegmentPreview(startIndex, activeSourcePath, structurePlaybackSegments)
+                        defineNextStructureOccurrence(
+                            startIndex,
+                            activeSourcePath,
+                            structurePlaybackSegments
+                        )
                     } else {
                         startStructurePreviewAtLogicalIndex(logicalIndex)
                     }
@@ -4662,7 +4649,9 @@ private fun TimelineMeasuresPlaceholder(
                         if (structurePlaybackActive) {
                             when {
                                 removeIndex < structurePlaybackIndex -> {
-                                    structurePlaybackIndex -= 1
+                                    arrangementLiveController.updateActiveOccurrence(
+                                        structurePlaybackIndex - 1
+                                    )
                                 }
                                 removeIndex == structurePlaybackIndex -> {
                                     stopStructurePreviewPlayback(reason = "structure_item_deleted_current")
