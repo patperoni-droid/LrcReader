@@ -635,7 +635,7 @@ private fun FillerLocalPlaybackControls(
             .border(1.dp, fillerBorder, panelShape)
             .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
-        TimeBar(
+        PlaybackProgressBar(
             positionMs = positionMs,
             durationMs = durationMs,
             onSeekLivePreview = onSeekLivePreview,

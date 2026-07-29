@@ -1,15 +1,3 @@
-/**
- * Composant UI : TimeBar
- *
- * Rôle :
- * - Affiche une barre de progression du morceau (temps courant / durée totale)
- * - Permet de faire un seek avec prévisualisation (onSeekLivePreview) puis validation (onSeekCommit)
- * - Affiche le temps écoulé à gauche et la durée totale à droite, au format mm:ss ou hh:mm:ss.
- *
- * Utilisation :
- * - Appelé depuis l’écran lecteur (PlayerScreen) sous les paroles
- * - Le curseur est désactivé si durationMs <= 0
- */
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.layout.Row
@@ -30,8 +18,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+object PlaybackProgressBarDefaults {
+    val Height = 20.dp
+}
+
 @Composable
-fun TimeBar(
+fun PlaybackProgressBar(
     positionMs: Int,
     durationMs: Int,
     onSeekLivePreview: (Int) -> Unit,
@@ -39,12 +31,31 @@ fun TimeBar(
     highlightColor: Color,
     compact: Boolean = false
 ) {
+    TimeBarRenderer(
+        positionMs = positionMs,
+        durationMs = durationMs,
+        onSeekLivePreview = onSeekLivePreview,
+        onSeekCommit = onSeekCommit,
+        highlightColor = highlightColor,
+        compact = compact
+    )
+}
+
+@Composable
+private fun TimeBarRenderer(
+    positionMs: Int,
+    durationMs: Int,
+    onSeekLivePreview: (Int) -> Unit,
+    onSeekCommit: (Int) -> Unit,
+    highlightColor: Color,
+    compact: Boolean
+) {
     val posText = remember(positionMs) { formatMsLocal(positionMs) }
     val durText = remember(durationMs) { formatMsLocal(durationMs.coerceAtLeast(0)) }
     val trackColor = highlightColor.copy(alpha = 0.25f)
     val textSize = if (compact) 12.sp else 12.sp
     val sidePadding = if (compact) 10.dp else 6.dp
-    val sliderHeight = if (compact) 20.dp else 20.dp
+    val sliderHeight = PlaybackProgressBarDefaults.Height
     val bottomPadding = 0.dp
 
     Row(

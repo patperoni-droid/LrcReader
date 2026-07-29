@@ -26,7 +26,7 @@ fun PlaybackControl(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        TimeBar(
+        PlaybackProgressBar(
             positionMs = positionMs,
             durationMs = durationMs,
             onSeekLivePreview = onSeekLivePreview,
