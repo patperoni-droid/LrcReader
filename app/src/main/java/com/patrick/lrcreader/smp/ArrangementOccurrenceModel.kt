@@ -13,6 +13,7 @@ internal data class PreparedArrangementOccurrence(
     val repeatCount: Int,
     val arrangementStartMs: Long,
     val durationMs: Long,
+    val color: String?,
     val segment: ArrangementSegmentData
 )
 
@@ -136,6 +137,7 @@ internal fun prepareArrangementOccurrences(
                         repeatCount = repeatCount,
                         arrangementStartMs = arrangementStartMs,
                         durationMs = segmentDurationMs,
+                        color = if (useOccurrenceModel) entry?.color else null,
                         segment = segment
                     )
                 )

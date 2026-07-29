@@ -251,7 +251,7 @@ private fun ArrangementHorizontalTrack(
             .height(124.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(
-                color = Color(0xFF0B1014),
+                color = ArrangementTrackBackgroundColor,
                 shape = RoundedCornerShape(10.dp)
             )
     ) {
@@ -276,12 +276,12 @@ private fun ArrangementHorizontalTrack(
                 else -> Color(0xFF455A64)
             }
             val occurrenceColor = arrangementTrackOccurrenceColor(item.color)
-            val containerColor = when {
-                item.isMuted -> occurrenceColor.copy(alpha = 0.24f)
-                item.isActive -> occurrenceColor.copy(alpha = 0.82f)
-                item.isQueued -> occurrenceColor.copy(alpha = 0.68f)
-                else -> occurrenceColor.copy(alpha = 0.58f)
-            }
+            val containerColor = arrangementTrackOccurrenceContainerColor(
+                color = occurrenceColor,
+                isMuted = item.isMuted,
+                isActive = item.isActive,
+                isQueued = item.isQueued
+            )
             Column(
                 modifier = Modifier
                     .then(
@@ -525,17 +525,6 @@ private fun ArrangementHorizontalTrack(
             )
         }
     }
-}
-
-private fun arrangementTrackOccurrenceColor(color: String?): Color = when (color) {
-    "red" -> Color(0xFF6D2A2A)
-    "blue" -> Color(0xFF244A73)
-    "green" -> Color(0xFF285E3A)
-    "violet" -> Color(0xFF56336F)
-    "orange", "amber" -> Color(0xFF74471F)
-    "yellow" -> Color(0xFF665B1F)
-    "gray" -> Color(0xFF455A64)
-    else -> Color(0xFF1C2933)
 }
 
 internal fun arrangementTrackBlockWidthDp(durationMs: Long?): Float {

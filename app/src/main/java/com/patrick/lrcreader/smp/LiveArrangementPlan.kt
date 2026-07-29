@@ -15,5 +15,6 @@ data class LiveArrangementPlan(
 data class LiveArrangementOccurrence(
     val key: String,
     val label: String,
-    val durationMs: Long
+    val durationMs: Long,
+    val color: String? = null
 )

@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -7,9 +8,9 @@ class PlaybackStructureProgressTest {
 
     private val repeatedStructure = PlaybackStructureModel(
         segments = listOf(
-            PlaybackStructureSegment("variant:0:0", "A", 0.25f),
-            PlaybackStructureSegment("variant:0:1", "A", 0.25f),
-            PlaybackStructureSegment("variant:1:0", "B", 0.50f)
+            PlaybackStructureSegment("variant:0:0", "A", 0.25f, Color.Red),
+            PlaybackStructureSegment("variant:0:1", "A", 0.25f, Color.Red),
+            PlaybackStructureSegment("variant:1:0", "B", 0.50f, Color.Blue)
         )
     )
 

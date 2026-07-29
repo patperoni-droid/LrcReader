@@ -130,9 +130,16 @@ class ArrangementOccurrenceModelTest {
             ArrangementSegmentData("outro", "Outro", 3_000, 4_000)
         )
         val entries = listOf(
-            ArrangementEntryData("intro", "Intro", 0, 1_000, repeatCount = 2),
+            ArrangementEntryData(
+                "intro",
+                "Intro",
+                0,
+                1_000,
+                repeatCount = 2,
+                color = "blue"
+            ),
             ArrangementEntryData("chorus", "Refrain", 1_000, 3_000, muted = true),
-            ArrangementEntryData("outro", "Outro", 3_000, 4_000)
+            ArrangementEntryData("outro", "Outro", 3_000, 4_000, color = "orange")
         )
 
         val prepared = prepareArrangementOccurrences(
@@ -146,6 +153,7 @@ class ArrangementOccurrenceModelTest {
         assertEquals(listOf(0, 0, 2), prepared.map { it.entryIndex })
         assertEquals(listOf(0, 1, 0), prepared.map { it.repeatIndex })
         assertEquals(listOf(0L, 1_000L, 2_000L), prepared.map { it.arrangementStartMs })
+        assertEquals(listOf("blue", "blue", "orange"), prepared.map { it.color })
     }
 
     @Test

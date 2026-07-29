@@ -1,5 +1,6 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.ui.graphics.Color
 import com.patrick.lrcreader.smp.LiveArrangementOccurrence
 import com.patrick.lrcreader.smp.LiveArrangementPlan
 import org.junit.Assert.assertEquals
@@ -12,9 +13,9 @@ class PlaybackStructureModelAdapterTest {
     fun `maps live occurrence order labels keys and duration proportions`() {
         val plan = LiveArrangementPlan(
             occurrences = listOf(
-                LiveArrangementOccurrence("variant:0:0", "A", 1_000L),
-                LiveArrangementOccurrence("variant:1:0", "Refrain", 2_000L),
-                LiveArrangementOccurrence("variant:1:1", "Refrain", 2_000L)
+                LiveArrangementOccurrence("variant:0:0", "A", 1_000L, "red"),
+                LiveArrangementOccurrence("variant:1:0", "Refrain", 2_000L, "blue"),
+                LiveArrangementOccurrence("variant:1:1", "Refrain", 2_000L, "blue")
             )
         )
 
@@ -25,6 +26,10 @@ class PlaybackStructureModelAdapterTest {
             model.segments.map { it.key }
         )
         assertEquals(listOf("A", "Refrain", "Refrain"), model.segments.map { it.label })
+        assertEquals(
+            listOf(Color(0xFF6D2A2A), Color(0xFF244A73), Color(0xFF244A73)),
+            model.segments.map { it.color }
+        )
         assertEquals(0.2f, model.segments[0].fraction, 0.0001f)
         assertEquals(0.4f, model.segments[1].fraction, 0.0001f)
         assertEquals(0.4f, model.segments[2].fraction, 0.0001f)

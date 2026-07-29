@@ -52,7 +52,8 @@ object VirtualArrangementPlaybackResolver {
                 LiveArrangementOccurrence(
                     key = "${variantSong.id}:${occurrence.entryIndex}:${occurrence.repeatIndex}",
                     label = occurrence.segment.name,
-                    durationMs = occurrence.durationMs
+                    durationMs = occurrence.durationMs,
+                    color = occurrence.color
                 )
             }
         )

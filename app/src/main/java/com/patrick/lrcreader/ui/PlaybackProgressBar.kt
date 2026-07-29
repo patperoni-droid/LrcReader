@@ -43,7 +43,8 @@ data class PlaybackStructureModel(
 data class PlaybackStructureSegment(
     val key: String,
     val label: String,
-    val fraction: Float
+    val fraction: Float,
+    val color: Color
 ) {
     init {
         require(fraction.isFinite() && fraction > 0f)
@@ -170,7 +171,7 @@ private fun StructureRenderer(
                 .weight(1f)
                 .height(PlaybackProgressBarDefaults.StructureHeight)
                 .clip(RoundedCornerShape(4.dp))
-                .background(state.highlightColor.copy(alpha = 0.18f))
+                .background(ArrangementTrackBackgroundColor)
                 .drawWithContent {
                     drawContent()
                     if (model.segments.isNotEmpty()) {
@@ -193,12 +194,11 @@ private fun StructureRenderer(
                                 .weight(segment.fraction)
                                 .fillMaxHeight()
                                 .background(
-                                    state.highlightColor.copy(
-                                        alpha = when {
-                                            index == activeSegmentIndex -> 0.34f
-                                            index % 2 == 0 -> 0.10f
-                                            else -> 0.18f
-                                        }
+                                    arrangementTrackOccurrenceContainerColor(
+                                        color = segment.color,
+                                        isMuted = false,
+                                        isActive = index == activeSegmentIndex,
+                                        isQueued = false
                                     )
                                 )
                                 .drawWithContent {

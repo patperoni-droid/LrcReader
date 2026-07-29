@@ -15,7 +15,8 @@ object PlaybackStructureModelAdapter {
                     fraction = (
                         occurrence.durationMs.toDouble() /
                             totalDurationMs.toDouble()
-                        ).toFloat()
+                        ).toFloat(),
+                    color = arrangementTrackOccurrenceColor(occurrence.color)
                 )
             }
         )
