@@ -24,6 +24,7 @@ fun PlaybackControl(
     liveSelectionInSync: Boolean = true,
     onLivePlay: (() -> Unit)? = null,
     progressMode: PlaybackProgressMode = PlaybackProgressMode.Linear,
+    onStructureSegmentSelected: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -34,6 +35,7 @@ fun PlaybackControl(
             onSeekLivePreview = onSeekLivePreview,
             onSeekCommit = onSeekCommit,
             highlightColor = highlightColor,
+            onStructureSegmentSelected = onStructureSegmentSelected,
             compact = compact
         )
 

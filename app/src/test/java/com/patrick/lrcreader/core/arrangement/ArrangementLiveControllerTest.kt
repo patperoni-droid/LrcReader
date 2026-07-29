@@ -140,6 +140,51 @@ class ArrangementLiveControllerTest {
         assertNull(controller.armedOccurrenceIndex)
     }
 
+    @Test
+    fun `prepared occurrence is queued and becomes the only armed occurrence`() {
+        val controller = testController()
+        val queued = mutableListOf<Int>()
+
+        assertTrue(
+            controller.defineNextPreparedOccurrence(
+                nextIndex = 1,
+                occurrenceCount = 3,
+                queuePreparedOccurrence = {
+                    queued += it
+                    true
+                }
+            )
+        )
+        assertTrue(
+            controller.defineNextPreparedOccurrence(
+                nextIndex = 2,
+                occurrenceCount = 3,
+                queuePreparedOccurrence = {
+                    queued += it
+                    true
+                }
+            )
+        )
+
+        assertEquals(listOf(1, 2), queued)
+        assertEquals(2, controller.armedOccurrenceIndex)
+    }
+
+    @Test
+    fun `prepared occurrence is not armed when its queue rejects it`() {
+        val controller = testController()
+
+        assertFalse(
+            controller.defineNextPreparedOccurrence(
+                nextIndex = 1,
+                occurrenceCount = 3,
+                queuePreparedOccurrence = { false }
+            )
+        )
+
+        assertNull(controller.armedOccurrenceIndex)
+    }
+
     private fun testController() = ArrangementLiveController(
         debugLog = { _, _ -> },
         warningLog = { _, _, _ -> },

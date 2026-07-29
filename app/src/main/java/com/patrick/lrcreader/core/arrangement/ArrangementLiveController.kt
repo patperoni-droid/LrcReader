@@ -153,6 +153,32 @@ class ArrangementLiveController(
         return true
     }
 
+    fun defineNextPreparedOccurrence(
+        nextIndex: Int,
+        occurrenceCount: Int,
+        queuePreparedOccurrence: (Int) -> Boolean
+    ): Boolean {
+        if (nextIndex !in 0 until occurrenceCount) return false
+        val queued = runCatching {
+            queuePreparedOccurrence(nextIndex)
+        }.onFailure { error ->
+            warningLog(
+                ARR_STRUCTURE_QUEUE_TAG,
+                "PREPARED_QUEUE_FAILED index=$nextIndex error=${error.message}",
+                error
+            )
+        }.getOrDefault(false)
+        if (!queued) return false
+
+        val previousArmedIndex = armedOccurrenceIndex
+        armOccurrence(nextIndex)
+        debugLog(
+            ARR_STRUCTURE_QUEUE_TAG,
+            "PREPARED_NEXT_SET old=$previousArmedIndex new=$nextIndex"
+        )
+        return true
+    }
+
     private fun armOccurrence(index: Int) {
         mutableState.value = mutableState.value.copy(armedOccurrenceIndex = index)
     }

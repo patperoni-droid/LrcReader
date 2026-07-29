@@ -270,6 +270,7 @@ internal fun shouldUseDirectArrangementStructurePlayback(
 @Composable
 fun TimelineEditorSection(
     currentSongId: String?,
+    arrangementLiveController: ArrangementLiveController,
     startInGridSetup: Boolean = false,
     tabletArrangementLayout: Boolean = false,
     onTabletFocusModeChange: (TabletPlayerFocusMode) -> Unit = {},
@@ -960,6 +961,7 @@ fun TimelineEditorSection(
                     routeStructurePreviewToPlaybackControl =
                         routeArrangementPreviewToPlaybackControl,
                     currentSongId = currentSongId,
+                    arrangementLiveController = arrangementLiveController,
                     fallbackTempoBpm = measuresTempoBpm,
                     measureAnchorMs = measureAnchorMs,
                     isPlaying = isPlaying,
@@ -1732,6 +1734,7 @@ private fun GridSetupHost(
     unifiedSegmentLayout: Boolean = false,
     routeStructurePreviewToPlaybackControl: Boolean = false,
     currentSongId: String?,
+    arrangementLiveController: ArrangementLiveController,
     fallbackTempoBpm: Int?,
     measureAnchorMs: Long?,
     isPlaying: Boolean,
@@ -1819,6 +1822,7 @@ private fun GridSetupHost(
         unifiedSegmentLayout = unifiedSegmentLayout,
         routeStructurePreviewToPlaybackControl = routeStructurePreviewToPlaybackControl,
         currentSongId = currentSongId,
+        arrangementLiveController = arrangementLiveController,
         tempoDraft = gridTempoDraft,
         isTempoInvalid = isTempoInvalid,
         tempoBpm = gridTempoBpm?.roundToInt(),
@@ -1884,6 +1888,7 @@ private fun TimelineMeasuresPlaceholder(
     unifiedSegmentLayout: Boolean = false,
     routeStructurePreviewToPlaybackControl: Boolean = false,
     currentSongId: String?,
+    arrangementLiveController: ArrangementLiveController,
     tempoDraft: String,
     isTempoInvalid: Boolean,
     tempoBpm: Int?,
@@ -1928,7 +1933,6 @@ private fun TimelineMeasuresPlaceholder(
     var structurePlaybackAbsolutePositionMs by remember(currentSongId) {
         mutableLongStateOf(currentPositionMs.coerceAtLeast(0L))
     }
-    val arrangementLiveController = remember(currentSongId) { ArrangementLiveController() }
     val arrangementLiveState by arrangementLiveController.state.collectAsState()
     val structurePlaybackActive = arrangementLiveState.previewActive
     val structurePlaybackIndex = arrangementLiveState.activeOccurrenceIndex
