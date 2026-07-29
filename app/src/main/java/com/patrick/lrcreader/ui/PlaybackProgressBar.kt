@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
@@ -55,7 +57,8 @@ sealed interface PlaybackProgressMode {
     data object Linear : PlaybackProgressMode
 
     data class Structure(
-        val model: PlaybackStructureModel
+        val model: PlaybackStructureModel,
+        val armedSegmentKey: String? = null
     ) : PlaybackProgressMode
 }
 
@@ -78,6 +81,7 @@ fun PlaybackProgressBar(
     onSeekLivePreview: (Int) -> Unit,
     onSeekCommit: (Int) -> Unit,
     highlightColor: Color,
+    onStructureSegmentSelected: (String) -> Unit = {},
     compact: Boolean = false
 ) {
     var previewPositionMs by remember { mutableIntStateOf(positionMs) }
@@ -118,7 +122,9 @@ fun PlaybackProgressBar(
         is PlaybackProgressMode.Structure -> {
             StructureRenderer(
                 state = state,
-                model = mode.model
+                model = mode.model,
+                armedSegmentKey = mode.armedSegmentKey,
+                onSegmentSelected = onStructureSegmentSelected
             )
         }
     }
@@ -155,7 +161,9 @@ private fun TimeBarRenderer(
 @Composable
 private fun StructureRenderer(
     state: PlaybackProgressState,
-    model: PlaybackStructureModel
+    model: PlaybackStructureModel,
+    armedSegmentKey: String?,
+    onSegmentSelected: (String) -> Unit
 ) {
     val progressFraction = state.progressFraction.coerceIn(0f, 1f)
     val activeSegmentIndex = findActivePlaybackStructureSegmentIndex(
@@ -189,17 +197,29 @@ private fun StructureRenderer(
             Row(modifier = Modifier.fillMaxSize()) {
                 model.segments.forEachIndexed { index, segment ->
                     androidx.compose.runtime.key(segment.key) {
+                        val isQueued = segment.key == armedSegmentKey
                         BoxWithConstraints(
                             modifier = Modifier
                                 .weight(segment.fraction)
                                 .fillMaxHeight()
+                                .clickable { onSegmentSelected(segment.key) }
                                 .background(
                                     arrangementTrackOccurrenceContainerColor(
                                         color = segment.color,
                                         isMuted = false,
                                         isActive = index == activeSegmentIndex,
-                                        isQueued = false
+                                        isQueued = isQueued
                                     )
+                                )
+                                .then(
+                                    if (isQueued) {
+                                        Modifier.border(
+                                            width = 2.dp,
+                                            color = Color(0xFFFFD54F)
+                                        )
+                                    } else {
+                                        Modifier
+                                    }
                                 )
                                 .drawWithContent {
                                     drawContent()

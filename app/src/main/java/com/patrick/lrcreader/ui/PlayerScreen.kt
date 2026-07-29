@@ -182,6 +182,7 @@ fun PlayerScreen(
     currentSongId: String? = null,
     currentArrangementSourceSongId: String? = null,
     playbackProgressMode: PlaybackProgressMode = PlaybackProgressMode.Linear,
+    onPlaybackStructureSegmentSelected: (String) -> Unit = {},
     onOpenArrangementHub: () -> Unit = {},
     manualTransitionTargetTitle: String? = null,
     onManualCrossfadeToNext: () -> Unit = {},
@@ -2750,7 +2751,8 @@ fun PlayerScreen(
                 playbackProgressMode
             } else {
                 PlaybackProgressMode.Linear
-            }
+            },
+            onStructureSegmentSelected = onPlaybackStructureSegmentSelected
         )
     }
 

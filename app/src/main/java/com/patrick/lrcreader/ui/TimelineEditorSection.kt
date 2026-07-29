@@ -115,6 +115,8 @@ import com.patrick.lrcreader.core.audio.ArrangementSourceWavCache
 import com.patrick.lrcreader.core.audio.ArrangementWavRenderer
 import com.patrick.lrcreader.core.audio.SampleSegment
 import com.patrick.lrcreader.core.audio.SamplerEngine
+import com.patrick.lrcreader.core.arrangement.DefineNextQueueOperation
+import com.patrick.lrcreader.core.arrangement.decideDefineNextQueue
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
 import com.patrick.lrcreader.core.light.LightSceneState
@@ -2241,12 +2243,20 @@ private fun TimelineMeasuresPlaceholder(
         audioPath: String,
         segments: List<ArrangementSegmentData>
     ) {
+        val decision = decideDefineNextQueue(
+            selectedOccurrenceIndex = nextIndex,
+            occurrenceCount = segments.size,
+            currentMediaItemIndex = structurePreviewPlayer.currentMediaItemIndex,
+            mediaItemCount = structurePreviewPlayer.mediaItemCount
+        ) ?: return
         if (structureUsingSampler && structurePlaybackActive) {
-            if (nextIndex !in segments.indices) return
             runCatching {
-                structureSamplerEngine.queueNext(nextIndex)
-                queuedStructureSegmentIndex = nextIndex
-                Log.d(ARR_STRUCTURE_SAMPLER_TAG, "QUEUE_NEXT index=$nextIndex")
+                structureSamplerEngine.queueNext(decision.armedOccurrenceIndex)
+                queuedStructureSegmentIndex = decision.armedOccurrenceIndex
+                Log.d(
+                    ARR_STRUCTURE_SAMPLER_TAG,
+                    "QUEUE_NEXT index=${decision.armedOccurrenceIndex}"
+                )
             }.onFailure { error ->
                 Log.w(
                     ARR_STRUCTURE_SAMPLER_TAG,
@@ -2256,8 +2266,7 @@ private fun TimelineMeasuresPlaceholder(
             }
             return
         }
-        if (nextIndex !in segments.indices) return
-        val queuedSegment = segments[nextIndex]
+        val queuedSegment = segments[decision.armedOccurrenceIndex]
         val queuedStartMs = minOf(queuedSegment.startMs, queuedSegment.endMs).coerceAtLeast(0L)
         val queuedEndMs = maxOf(queuedSegment.startMs, queuedSegment.endMs).coerceAtLeast(queuedStartMs + 1L)
         val sourceUri = Uri.fromFile(File(audioPath))
@@ -2265,31 +2274,31 @@ private fun TimelineMeasuresPlaceholder(
             audioPath = audioPath,
             segment = queuedSegment
         ) ?: return
-        val insertionIndex = structurePreviewPlayer.currentMediaItemIndex.coerceAtLeast(0) + 1
+        val insertionIndex = decision.insertionIndex
         val mediaItemCount = structurePreviewPlayer.mediaItemCount
-        if (mediaItemCount <= insertionIndex) {
+        if (decision.operation == DefineNextQueueOperation.ADD) {
             structurePreviewPlayer.addMediaItem(nextMediaItem)
             Log.d(
                 ARR_STRUCTURE_QUEUE_TAG,
-                "NEXT_ITEM_SET queuedIndex=$nextIndex insertionIndex=$insertionIndex name=${queuedSegment.name}"
+                "NEXT_ITEM_SET queuedIndex=${decision.armedOccurrenceIndex} insertionIndex=$insertionIndex name=${queuedSegment.name}"
             )
             Log.d(
                 ARR_STRUCTURE_FLOW_TAG,
-                "NEXT_ITEM_SET queuedIndex=$nextIndex name=${queuedSegment.name} startMs=$queuedStartMs endMs=$queuedEndMs sourceUri=$sourceUri previousQueuedIndex=$queuedStructureSegmentIndex mediaItemCountBefore=$mediaItemCount mediaItemCountAfter=${structurePreviewPlayer.mediaItemCount}"
+                "NEXT_ITEM_SET queuedIndex=${decision.armedOccurrenceIndex} name=${queuedSegment.name} startMs=$queuedStartMs endMs=$queuedEndMs sourceUri=$sourceUri previousQueuedIndex=$queuedStructureSegmentIndex mediaItemCountBefore=$mediaItemCount mediaItemCountAfter=${structurePreviewPlayer.mediaItemCount}"
             )
         } else {
             val oldQueuedIndex = queuedStructureSegmentIndex
             structurePreviewPlayer.replaceMediaItem(insertionIndex, nextMediaItem)
             Log.d(
                 ARR_STRUCTURE_QUEUE_TAG,
-                "NEXT_ITEM_REPLACED old=$oldQueuedIndex new=$nextIndex insertionIndex=$insertionIndex name=${queuedSegment.name}"
+                "NEXT_ITEM_REPLACED old=$oldQueuedIndex new=${decision.armedOccurrenceIndex} insertionIndex=$insertionIndex name=${queuedSegment.name}"
             )
             Log.d(
                 ARR_STRUCTURE_FLOW_TAG,
-                "NEXT_ITEM_REPLACED queuedIndex=$nextIndex name=${queuedSegment.name} startMs=$queuedStartMs endMs=$queuedEndMs sourceUri=$sourceUri previousQueuedIndex=$oldQueuedIndex mediaItemCountBefore=$mediaItemCount mediaItemCountAfter=${structurePreviewPlayer.mediaItemCount}"
+                "NEXT_ITEM_REPLACED queuedIndex=${decision.armedOccurrenceIndex} name=${queuedSegment.name} startMs=$queuedStartMs endMs=$queuedEndMs sourceUri=$sourceUri previousQueuedIndex=$oldQueuedIndex mediaItemCountBefore=$mediaItemCount mediaItemCountAfter=${structurePreviewPlayer.mediaItemCount}"
             )
         }
-        queuedStructureSegmentIndex = nextIndex
+        queuedStructureSegmentIndex = decision.armedOccurrenceIndex
         Log.d(
             ARR_TIMING_DIAG_TAG,
             "STRUCTURE_QUEUE segmentId=${queuedSegment.id} segmentStartMs=$queuedStartMs " +
