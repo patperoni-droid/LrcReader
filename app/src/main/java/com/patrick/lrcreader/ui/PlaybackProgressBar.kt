@@ -1,10 +1,12 @@
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -154,56 +156,104 @@ private fun StructureRenderer(
     state: PlaybackProgressState,
     model: PlaybackStructureModel
 ) {
+    val progressFraction = state.progressFraction.coerceIn(0f, 1f)
+    val activeSegmentIndex = findActivePlaybackStructureSegmentIndex(
+        model = model,
+        progressFraction = progressFraction
+    )
+
     PlaybackProgressFrame(
         state = state
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .height(PlaybackProgressBarDefaults.StructureHeight)
                 .clip(RoundedCornerShape(4.dp))
                 .background(state.highlightColor.copy(alpha = 0.18f))
+                .drawWithContent {
+                    drawContent()
+                    if (model.segments.isNotEmpty()) {
+                        val playheadWidth = 2.dp.toPx()
+                        val playheadX = size.width * progressFraction
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.90f),
+                            start = Offset(playheadX, 0f),
+                            end = Offset(playheadX, size.height),
+                            strokeWidth = playheadWidth
+                        )
+                    }
+                }
         ) {
-            model.segments.forEachIndexed { index, segment ->
-                androidx.compose.runtime.key(segment.key) {
-                    BoxWithConstraints(
-                        modifier = Modifier
-                            .weight(segment.fraction)
-                            .fillMaxHeight()
-                            .background(
-                                state.highlightColor.copy(
-                                    alpha = if (index % 2 == 0) 0.10f else 0.18f
-                                )
-                            )
-                            .drawWithContent {
-                                drawContent()
-                                if (index < model.segments.lastIndex) {
-                                    val separatorWidth = 1.dp.toPx()
-                                    drawLine(
-                                        color = Color.LightGray.copy(alpha = 0.55f),
-                                        start = Offset(size.width - separatorWidth / 2f, 0f),
-                                        end = Offset(size.width - separatorWidth / 2f, size.height),
-                                        strokeWidth = separatorWidth
+            Row(modifier = Modifier.fillMaxSize()) {
+                model.segments.forEachIndexed { index, segment ->
+                    androidx.compose.runtime.key(segment.key) {
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .weight(segment.fraction)
+                                .fillMaxHeight()
+                                .background(
+                                    state.highlightColor.copy(
+                                        alpha = when {
+                                            index == activeSegmentIndex -> 0.34f
+                                            index % 2 == 0 -> 0.10f
+                                            else -> 0.18f
+                                        }
                                     )
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (maxWidth >= 28.dp) {
-                            Text(
-                                text = segment.label,
-                                color = Color.LightGray,
-                                fontSize = 16.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 3.dp)
-                            )
+                                )
+                                .drawWithContent {
+                                    drawContent()
+                                    if (index < model.segments.lastIndex) {
+                                        val separatorWidth = 1.dp.toPx()
+                                        drawLine(
+                                            color = Color.LightGray.copy(alpha = 0.55f),
+                                            start = Offset(size.width - separatorWidth / 2f, 0f),
+                                            end = Offset(size.width - separatorWidth / 2f, size.height),
+                                            strokeWidth = separatorWidth
+                                        )
+                                    }
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (maxWidth >= 28.dp) {
+                                Text(
+                                    text = segment.label,
+                                    color = Color.LightGray,
+                                    fontSize = 16.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 3.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
     }
+}
+
+internal fun findActivePlaybackStructureSegmentIndex(
+    model: PlaybackStructureModel,
+    progressFraction: Float
+): Int {
+    if (model.segments.isEmpty()) return -1
+
+    val totalFraction = model.segments.fold(0.0) { total, segment ->
+        total + segment.fraction.toDouble()
+    }
+    if (totalFraction <= 0.0) return -1
+
+    val position = progressFraction.coerceIn(0f, 1f).toDouble() * totalFraction
+    var boundary = 0.0
+    model.segments.forEachIndexed { index, segment ->
+        boundary += segment.fraction.toDouble()
+        if (position < boundary || index == model.segments.lastIndex) {
+            return index
+        }
+    }
+
+    return model.segments.lastIndex
 }
 
 @Composable
