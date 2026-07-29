@@ -18,7 +18,6 @@ import androidx.compose.material3.FilterChip
 import com.patrick.lrcreader.core.notes.LiveNote
 import com.patrick.lrcreader.core.notes.LiveNoteManager
 import com.patrick.lrcreader.core.PlayerBusController
-import com.patrick.lrcreader.core.arrangement.ArrangementLiveController
 import com.patrick.lrcreader.core.SmpLaunchTiming
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -183,8 +182,6 @@ fun PlayerScreen(
     currentSongId: String? = null,
     currentArrangementSourceSongId: String? = null,
     playbackProgressMode: PlaybackProgressMode = PlaybackProgressMode.Linear,
-    arrangementLiveController: ArrangementLiveController,
-    onPlaybackStructureSegmentSelected: (String) -> Unit = {},
     onOpenArrangementHub: () -> Unit = {},
     manualTransitionTargetTitle: String? = null,
     onManualCrossfadeToNext: () -> Unit = {},
@@ -2753,8 +2750,7 @@ fun PlayerScreen(
                 playbackProgressMode
             } else {
                 PlaybackProgressMode.Linear
-            },
-            onStructureSegmentSelected = onPlaybackStructureSegmentSelected
+            }
         )
     }
 
@@ -3053,7 +3049,6 @@ fun PlayerScreen(
         } else if (isEditingTimeline) {
             TimelineEditorSection(
                 currentSongId = currentSongId,
-                arrangementLiveController = arrangementLiveController,
                 startInGridSetup = startTimelineInGridSetup,
                 tabletArrangementLayout = compactTabletLayout,
                 onTabletFocusModeChange = onTabletFocusModeChange,

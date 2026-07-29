@@ -89,7 +89,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.EmbeddedLyricsListener
-import com.patrick.lrcreader.core.arrangement.ArrangementLiveController
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.history.HistoryRepository
@@ -676,23 +675,12 @@ class MainActivity : AppCompatActivity() {
                 var activeVirtualArrangementPlayback by remember {
                     mutableStateOf<PreparedVirtualArrangementPlayback?>(null)
                 }
-                val arrangementLiveController = remember { ArrangementLiveController() }
-                val arrangementLiveState by arrangementLiveController.state.collectAsState()
-                val mainPlaybackProgressMode = remember(
-                    activeVirtualArrangementPlayback,
-                    arrangementLiveState.armedOccurrenceIndex
-                ) {
-                    val livePlan = activeVirtualArrangementPlayback?.livePlan
-                    val structureModel = livePlan?.let(PlaybackStructureModelAdapter::from)
-                    val armedSegmentKey = arrangementLiveState.armedOccurrenceIndex
-                        ?.let { index -> livePlan?.occurrences?.getOrNull(index)?.key }
+                val mainPlaybackProgressMode = remember(activeVirtualArrangementPlayback) {
+                    val structureModel = activeVirtualArrangementPlayback
+                        ?.livePlan
+                        ?.let(PlaybackStructureModelAdapter::from)
                     structureModel
-                        ?.let { model ->
-                            PlaybackProgressMode.Structure(
-                                model = model,
-                                armedSegmentKey = armedSegmentKey
-                            )
-                        }
+                        ?.let(PlaybackProgressMode::Structure)
                         ?: PlaybackProgressMode.Linear
                 }
                 var selectedSmpImportedSongDetail by remember { mutableStateOf<SmpImportedSongDetail?>(null) }
@@ -1392,11 +1380,7 @@ class MainActivity : AppCompatActivity() {
 
                 fun effectiveMainPlaybackPositionMs(): Long {
                     val arrangement = activeVirtualArrangementPlayback ?: return exoPlayer.currentPosition
-                    val currentMediaId = exoPlayer.currentMediaItem?.mediaId.orEmpty()
-                    val currentIndex = arrangement.livePlan.occurrences
-                        .indexOfFirst { occurrence -> occurrence.key == currentMediaId }
-                        .takeIf { it >= 0 }
-                        ?: exoPlayer.currentMediaItemIndex.coerceAtLeast(0)
+                    val currentIndex = exoPlayer.currentMediaItemIndex.coerceAtLeast(0)
                     val elapsedBefore = arrangement.occurrenceDurationsMs
                         .take(currentIndex)
                         .fold(0L) { total, duration ->
@@ -1425,107 +1409,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         elapsedMs = nextElapsedMs
                     }
-                    val targetMediaId = arrangement.livePlan.occurrences
-                        .getOrNull(targetIndex)
-                        ?.key
-                    val queuedTargetIndex = targetMediaId?.let { mediaId ->
-                        (0 until exoPlayer.mediaItemCount)
-                            .firstOrNull { index -> exoPlayer.getMediaItemAt(index).mediaId == mediaId }
-                    }
-                    if (queuedTargetIndex != null) {
-                        exoPlayer.seekTo(queuedTargetIndex, targetOffsetMs)
-                    } else {
-                        exoPlayer.setMediaItems(
-                            arrangement.mediaItems,
-                            targetIndex,
-                            targetOffsetMs
-                        )
-                        exoPlayer.prepare()
-                    }
-                }
-
-                fun queuePreparedMainArrangementOccurrence(
-                    arrangement: PreparedVirtualArrangementPlayback,
-                    occurrenceIndex: Int
-                ): Boolean {
-                    val mediaItem = arrangement.mediaItems.getOrNull(occurrenceIndex) ?: return false
-                    val insertionIndex = exoPlayer.currentMediaItemIndex.coerceAtLeast(0) + 1
-                    return runCatching {
-                        if (exoPlayer.mediaItemCount <= insertionIndex) {
-                            exoPlayer.addMediaItem(mediaItem)
-                        } else {
-                            exoPlayer.replaceMediaItem(insertionIndex, mediaItem)
-                        }
-                    }.isSuccess
-                }
-
-                fun defineNextFromPlaybackProgress(segmentKey: String) {
-                    val arrangement = activeVirtualArrangementPlayback ?: return
-                    val occurrenceIndex = arrangement.livePlan.occurrences
-                        .indexOfFirst { occurrence -> occurrence.key == segmentKey }
-                    if (occurrenceIndex < 0) return
-                    arrangementLiveController.defineNextPreparedOccurrence(
-                        nextIndex = occurrenceIndex,
-                        occurrenceCount = arrangement.livePlan.occurrences.size
-                    ) { selectedIndex ->
-                        queuePreparedMainArrangementOccurrence(arrangement, selectedIndex)
-                    }
-                }
-
-                DisposableEffect(exoPlayer, activeVirtualArrangementPlayback) {
-                    val arrangement = activeVirtualArrangementPlayback
-                    if (arrangement == null) {
-                        arrangementLiveController.stopPreview()
-                        onDispose { }
-                    } else {
-                        fun occurrenceIndexFor(mediaItem: MediaItem?): Int {
-                            val mediaId = mediaItem?.mediaId.orEmpty()
-                            return arrangement.livePlan.occurrences
-                                .indexOfFirst { occurrence -> occurrence.key == mediaId }
-                        }
-
-                        val initialIndex = occurrenceIndexFor(exoPlayer.currentMediaItem)
-                            .takeIf { it >= 0 }
-                            ?: 0
-                        arrangementLiveController.startPreview(initialIndex)
-                        arrangementLiveController.clearArmedOccurrence()
-
-                        val listener = object : Player.Listener {
-                            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                                val resolvedIndex = occurrenceIndexFor(mediaItem)
-                                if (resolvedIndex < 0) return
-
-                                val armedIndex = arrangementLiveController.armedOccurrenceIndex
-                                val transitionedToArmedOccurrence =
-                                    reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO &&
-                                        armedIndex == resolvedIndex
-                                if (transitionedToArmedOccurrence) {
-                                    arrangementLiveController.consumeArmedOccurrence()
-                                }
-                                arrangementLiveController.updateActiveOccurrence(resolvedIndex)
-
-                                if (transitionedToArmedOccurrence) {
-                                    val firstFollowingMediaItemIndex =
-                                        exoPlayer.currentMediaItemIndex.coerceAtLeast(0) + 1
-                                    if (exoPlayer.mediaItemCount > firstFollowingMediaItemIndex) {
-                                        exoPlayer.removeMediaItems(
-                                            firstFollowingMediaItemIndex,
-                                            exoPlayer.mediaItemCount
-                                        )
-                                    }
-                                    val followingOccurrences =
-                                        arrangement.mediaItems.drop(resolvedIndex + 1)
-                                    if (followingOccurrences.isNotEmpty()) {
-                                        exoPlayer.addMediaItems(followingOccurrences)
-                                    }
-                                }
-                            }
-                        }
-                        exoPlayer.addListener(listener)
-                        onDispose {
-                            exoPlayer.removeListener(listener)
-                        }
-                    }
+                    exoPlayer.seekTo(targetIndex, targetOffsetMs)
                 }
                 val quickPlaylistLiveSelectionInSync = remember(
                     quickPlaylistSequentialSelectionPendingPlay,
@@ -4795,9 +4679,6 @@ class MainActivity : AppCompatActivity() {
                                             ?.let(smpSongsById::get)
                                             ?.arrangementSourceSongId,
                                         playbackProgressMode = mainPlaybackProgressMode,
-                                        arrangementLiveController = arrangementLiveController,
-                                        onPlaybackStructureSegmentSelected =
-                                            ::defineNextFromPlaybackProgress,
                                         onOpenArrangementHub = {
                                             if (adaptiveTokens.tabletMode) {
                                                 moreNavigationTarget = "arrangement_from_tempo"
@@ -5992,9 +5873,6 @@ class MainActivity : AppCompatActivity() {
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
                                         currentSongId = currentPlayingSongId,
                                         playbackProgressMode = mainPlaybackProgressMode,
-                                        arrangementLiveController = arrangementLiveController,
-                                        onPlaybackStructureSegmentSelected =
-                                            ::defineNextFromPlaybackProgress,
                                         onOpenArrangementHub = {
                                             if (adaptiveTokens.tabletMode) {
                                                 moreNavigationTarget = "arrangement_from_tempo"
