@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -39,6 +40,7 @@ import androidx.compose.ui.unit.sp
 
 object PlaybackProgressBarDefaults {
     val Height = 56.dp
+    val ClassicHeight = 28.dp
 }
 
 private val LinearPlaybackStructureModel = PlaybackStructureModel(
@@ -68,6 +70,8 @@ data class PlaybackStructureSegment(
 }
 
 sealed interface PlaybackProgressMode {
+    data object Classic : PlaybackProgressMode
+
     data object Linear : PlaybackProgressMode
 
     data class Structure(
@@ -117,21 +121,31 @@ fun PlaybackProgressBar(
         highlightColor = highlightColor,
         compact = compact
     )
+    val onProgressChange: (Float) -> Unit = { fraction ->
+        val preview = (fraction * state.durationMs).toInt()
+        previewPositionMs = preview
+        isDragging = true
+        onSeekLivePreview(preview)
+    }
+    val onProgressChangeFinished: () -> Unit = {
+        isDragging = false
+        onSeekCommit(previewPositionMs)
+    }
 
     when (mode) {
+        PlaybackProgressMode.Classic -> {
+            ClassicTimeBarRenderer(
+                state = state,
+                onProgressChange = onProgressChange,
+                onProgressChangeFinished = onProgressChangeFinished
+            )
+        }
+
         PlaybackProgressMode.Linear -> {
             TimeBarRenderer(
                 state = state,
-                onProgressChange = { fraction ->
-                    val preview = (fraction * state.durationMs).toInt()
-                    previewPositionMs = preview
-                    isDragging = true
-                    onSeekLivePreview(preview)
-                },
-                onProgressChangeFinished = {
-                    isDragging = false
-                    onSeekCommit(previewPositionMs)
-                }
+                onProgressChange = onProgressChange,
+                onProgressChangeFinished = onProgressChangeFinished
             )
         }
 
@@ -145,6 +159,35 @@ fun PlaybackProgressBar(
                 onSegmentLongPressed = onStructureSegmentLongPressed
             )
         }
+    }
+}
+
+@Composable
+private fun ClassicTimeBarRenderer(
+    state: PlaybackProgressState,
+    onProgressChange: (Float) -> Unit,
+    onProgressChangeFinished: () -> Unit
+) {
+    val trackColor = state.highlightColor.copy(alpha = 0.25f)
+
+    PlaybackProgressFrame(
+        state = state,
+        trackHeight = PlaybackProgressBarDefaults.ClassicHeight
+    ) {
+        Slider(
+            value = state.progressFraction,
+            onValueChange = onProgressChange,
+            onValueChangeFinished = onProgressChangeFinished,
+            enabled = state.isEnabled,
+            modifier = Modifier
+                .weight(1f)
+                .height(PlaybackProgressBarDefaults.ClassicHeight),
+            colors = SliderDefaults.colors(
+                thumbColor = state.highlightColor,
+                activeTrackColor = trackColor,
+                inactiveTrackColor = trackColor.copy(alpha = 0.4f)
+            )
+        )
     }
 }
 
@@ -356,6 +399,7 @@ internal fun findActivePlaybackStructureSegmentIndex(
 @Composable
 private fun PlaybackProgressFrame(
     state: PlaybackProgressState,
+    trackHeight: androidx.compose.ui.unit.Dp = PlaybackProgressBarDefaults.Height,
     content: @Composable RowScope.() -> Unit
 ) {
     val textSize = if (state.compact) 12.sp else 12.sp
@@ -383,7 +427,7 @@ private fun PlaybackProgressFrame(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(PlaybackProgressBarDefaults.Height),
+                .height(trackHeight),
             verticalAlignment = Alignment.CenterVertically,
             content = content
         )

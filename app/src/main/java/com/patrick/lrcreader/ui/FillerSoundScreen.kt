@@ -636,7 +636,7 @@ private fun FillerLocalPlaybackControls(
             .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         PlaybackProgressBar(
-            mode = PlaybackProgressMode.Linear,
+            mode = PlaybackProgressMode.Classic,
             positionMs = positionMs,
             durationMs = durationMs,
             onSeekLivePreview = onSeekLivePreview,
