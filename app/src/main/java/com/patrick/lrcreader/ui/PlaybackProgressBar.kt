@@ -6,6 +6,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -25,6 +26,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -38,9 +40,11 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 
 object PlaybackProgressBarDefaults {
     val Height = 56.dp
@@ -107,6 +111,7 @@ fun PlaybackProgressBar(
     highlightColor: Color,
     onStructureSegmentSelected: (String) -> Unit = {},
     onStructureSegmentLongPressed: (String) -> Unit = {},
+    isPlaying: Boolean = false,
     compact: Boolean = false
 ) {
     var previewPositionMs by remember { mutableIntStateOf(positionMs) }
@@ -161,7 +166,8 @@ fun PlaybackProgressBar(
                 armedSegmentKey = mode.armedSegmentKey,
                 loopedSegmentKey = mode.loopedSegmentKey,
                 onSegmentSelected = onStructureSegmentSelected,
-                onSegmentLongPressed = onStructureSegmentLongPressed
+                onSegmentLongPressed = onStructureSegmentLongPressed,
+                autoFollowPlayhead = isPlaying
             )
         }
     }
@@ -239,7 +245,8 @@ private fun StructureRenderer(
     armedSegmentKey: String?,
     loopedSegmentKey: String?,
     onSegmentSelected: (String) -> Unit,
-    onSegmentLongPressed: (String) -> Unit
+    onSegmentLongPressed: (String) -> Unit,
+    autoFollowPlayhead: Boolean
 ) {
     PlaybackProgressFrame(
         state = state
@@ -251,6 +258,7 @@ private fun StructureRenderer(
             loopedSegmentKey = loopedSegmentKey,
             onSegmentSelected = onSegmentSelected,
             onSegmentLongPressed = onSegmentLongPressed,
+            autoFollowPlayhead = autoFollowPlayhead,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
@@ -267,6 +275,7 @@ private fun PlaybackStructureTrack(
     loopedSegmentKey: String?,
     onSegmentSelected: ((String) -> Unit)?,
     onSegmentLongPressed: ((String) -> Unit)?,
+    autoFollowPlayhead: Boolean = false,
     modifier: Modifier
 ) {
     val progressFraction = state.progressFraction.coerceIn(0f, 1f)
@@ -275,6 +284,9 @@ private fun PlaybackStructureTrack(
         progressFraction = progressFraction
     )
     val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+    val autoFollowSuspended = remember { mutableStateOf(false) }
+    val isUserDragging = scrollState.interactionSource.collectIsDraggedAsState()
 
     BoxWithConstraints(
         modifier = modifier
@@ -294,6 +306,41 @@ private fun PlaybackStructureTrack(
             segmentWidthsDp = segmentWidthsDp,
             progressFraction = progressFraction
         )
+        val viewportWidthPx = with(density) { maxWidth.roundToPx() }
+        val maxScrollPx = scrollState.maxValue
+        LaunchedEffect(isUserDragging.value, scrollState.isScrollInProgress) {
+            if (isUserDragging.value) {
+                autoFollowSuspended.value = true
+            } else if (autoFollowSuspended.value && !scrollState.isScrollInProgress) {
+                delay(PLAYBACK_STRUCTURE_AUTO_FOLLOW_RESUME_DELAY_MS)
+                autoFollowSuspended.value = false
+            }
+        }
+        LaunchedEffect(
+            autoFollowPlayhead,
+            playheadOffsetDp,
+            viewportWidthPx,
+            maxScrollPx,
+            autoFollowSuspended.value
+        ) {
+            if (
+                !autoFollowPlayhead ||
+                viewportWidthPx <= 0 ||
+                maxScrollPx <= 0 ||
+                maxScrollPx == Int.MAX_VALUE ||
+                autoFollowSuspended.value ||
+                scrollState.isScrollInProgress
+            ) {
+                return@LaunchedEffect
+            }
+            val targetScrollPx = arrangementTrackAutoFollowTargetPx(
+                playheadOffsetPx = with(density) { playheadOffsetDp.dp.toPx() },
+                currentScrollPx = scrollState.value,
+                viewportWidthPx = viewportWidthPx,
+                maxScrollPx = maxScrollPx
+            ) ?: return@LaunchedEffect
+            scrollState.scrollTo(targetScrollPx)
+        }
         Row(
             modifier = Modifier
                 .fillMaxSize()
@@ -504,3 +551,5 @@ private fun formatMsLocal(ms: Int): String {
     val h = totalSeconds / 3600
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%02d:%02d".format(m, s)
 }
+
+private const val PLAYBACK_STRUCTURE_AUTO_FOLLOW_RESUME_DELAY_MS = 900L

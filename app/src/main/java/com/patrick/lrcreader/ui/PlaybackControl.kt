@@ -38,6 +38,7 @@ fun PlaybackControl(
             highlightColor = highlightColor,
             onStructureSegmentSelected = onStructureSegmentSelected,
             onStructureSegmentLongPressed = onStructureSegmentLongPressed,
+            isPlaying = isPlaying,
             compact = compact
         )
 
