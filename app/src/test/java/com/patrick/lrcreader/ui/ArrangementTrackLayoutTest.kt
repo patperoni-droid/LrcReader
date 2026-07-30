@@ -135,4 +135,56 @@ class ArrangementTrackLayoutTest {
         assertEquals(1, arrangementTrackNearestBoundaryIndex(items, 60f, widths))
         assertEquals(2, arrangementTrackNearestBoundaryIndex(items, 140f, widths))
     }
+
+    @Test
+    fun autoFollow_doesNothingWhenTrackFitsTheViewport() {
+        assertEquals(
+            null,
+            arrangementTrackAutoFollowTargetPx(
+                playheadOffsetPx = 900f,
+                currentScrollPx = 0,
+                viewportWidthPx = 1_000,
+                maxScrollPx = 0
+            )
+        )
+    }
+
+    @Test
+    fun autoFollow_doesNothingInsideTheSafetyZone() {
+        assertEquals(
+            null,
+            arrangementTrackAutoFollowTargetPx(
+                playheadOffsetPx = 700f,
+                currentScrollPx = 200,
+                viewportWidthPx = 1_000,
+                maxScrollPx = 2_000
+            )
+        )
+    }
+
+    @Test
+    fun autoFollow_placesPlayheadAtSeventyPercentAfterRightThreshold() {
+        assertEquals(
+            150,
+            arrangementTrackAutoFollowTargetPx(
+                playheadOffsetPx = 850f,
+                currentScrollPx = 0,
+                viewportWidthPx = 1_000,
+                maxScrollPx = 2_000
+            )
+        )
+    }
+
+    @Test
+    fun autoFollow_usesSymmetricTargetAfterLeftThreshold() {
+        assertEquals(
+            800,
+            arrangementTrackAutoFollowTargetPx(
+                playheadOffsetPx = 1_100f,
+                currentScrollPx = 1_000,
+                viewportWidthPx = 1_000,
+                maxScrollPx = 2_000
+            )
+        )
+    }
 }

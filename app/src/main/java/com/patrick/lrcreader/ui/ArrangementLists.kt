@@ -7,6 +7,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,6 +37,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -53,7 +57,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.exo.R
+import kotlinx.coroutines.delay
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 data class ArrangementListItem(
     val id: String,
@@ -90,6 +96,7 @@ fun ArrangementListCard(
     showHorizontalItemControls: Boolean = true,
     adaptiveHorizontalItemWidth: Boolean = false,
     playhead: ArrangementTrackPlayhead? = null,
+    autoFollowPlayhead: Boolean = false,
     onPlayheadBoundaryChange: ((Int) -> Unit)? = null
 ) {
     Card(
@@ -137,6 +144,7 @@ fun ArrangementListCard(
                     showItemControls = showHorizontalItemControls,
                     adaptiveItemWidth = adaptiveHorizontalItemWidth,
                     playhead = playhead,
+                    autoFollowPlayhead = autoFollowPlayhead,
                     onPlayheadBoundaryChange = onPlayheadBoundaryChange
                 )
             } else {
@@ -227,10 +235,14 @@ private fun ArrangementHorizontalTrack(
     showItemControls: Boolean,
     adaptiveItemWidth: Boolean,
     playhead: ArrangementTrackPlayhead?,
+    autoFollowPlayhead: Boolean,
     onPlayheadBoundaryChange: ((Int) -> Unit)?
 ) {
     val scrollState = rememberScrollState()
     val density = LocalDensity.current
+    val viewportWidthPx = remember { mutableIntStateOf(0) }
+    val autoFollowSuspended = remember { mutableStateOf(false) }
+    val isUserDragging = scrollState.interactionSource.collectIsDraggedAsState()
     val measuredItemWidthsDp = remember(items.map { it.id }) {
         mutableStateMapOf<String, Float>()
     }
@@ -244,11 +256,48 @@ private fun ArrangementHorizontalTrack(
         playhead = playhead,
         itemWidthsDp = adaptiveItemWidthsDp
     )
+    val maxScrollPx = scrollState.maxValue
+    LaunchedEffect(isUserDragging.value, scrollState.isScrollInProgress) {
+        if (isUserDragging.value) {
+            autoFollowSuspended.value = true
+        } else if (autoFollowSuspended.value && !scrollState.isScrollInProgress) {
+            delay(ARRANGEMENT_TRACK_AUTO_FOLLOW_RESUME_DELAY_MS)
+            autoFollowSuspended.value = false
+        }
+    }
+    LaunchedEffect(
+        autoFollowPlayhead,
+        playheadOffsetDp,
+        viewportWidthPx.intValue,
+        maxScrollPx,
+        autoFollowSuspended.value
+    ) {
+        val viewportWidth = viewportWidthPx.intValue
+        if (
+            !autoFollowPlayhead ||
+            playheadOffsetDp == null ||
+            viewportWidth <= 0 ||
+            maxScrollPx <= 0 ||
+            maxScrollPx == Int.MAX_VALUE ||
+            autoFollowSuspended.value ||
+            scrollState.isScrollInProgress
+        ) {
+            return@LaunchedEffect
+        }
+        val targetScrollPx = arrangementTrackAutoFollowTargetPx(
+            playheadOffsetPx = with(density) { playheadOffsetDp.dp.toPx() },
+            currentScrollPx = scrollState.value,
+            viewportWidthPx = viewportWidth,
+            maxScrollPx = maxScrollPx
+        ) ?: return@LaunchedEffect
+        scrollState.scrollTo(targetScrollPx)
+    }
     val scrollOffsetDp = with(density) { scrollState.value.toDp().value }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(124.dp)
+            .onSizeChanged { size -> viewportWidthPx.intValue = size.width }
             .clip(RoundedCornerShape(10.dp))
             .background(
                 color = ArrangementTrackBackgroundColor,
@@ -606,6 +655,31 @@ internal fun arrangementTrackNearestBoundaryIndex(
     } ?: 0
 }
 
+internal fun arrangementTrackAutoFollowTargetPx(
+    playheadOffsetPx: Float,
+    currentScrollPx: Int,
+    viewportWidthPx: Int,
+    maxScrollPx: Int
+): Int? {
+    if (viewportWidthPx <= 0 || maxScrollPx <= 0 || maxScrollPx == Int.MAX_VALUE) return null
+    val viewportStartPx = currentScrollPx.toFloat()
+    val viewportLeftLimitPx =
+        viewportStartPx + viewportWidthPx * ARRANGEMENT_TRACK_AUTO_FOLLOW_LEFT_LIMIT
+    val viewportRightLimitPx =
+        viewportStartPx + viewportWidthPx * ARRANGEMENT_TRACK_AUTO_FOLLOW_RIGHT_LIMIT
+    val requestedScrollPx = when {
+        playheadOffsetPx < viewportLeftLimitPx ->
+            playheadOffsetPx - viewportWidthPx * ARRANGEMENT_TRACK_AUTO_FOLLOW_LEFT_TARGET
+        playheadOffsetPx > viewportRightLimitPx ->
+            playheadOffsetPx - viewportWidthPx * ARRANGEMENT_TRACK_AUTO_FOLLOW_RIGHT_TARGET
+        else -> return null
+    }
+    return requestedScrollPx
+        .roundToInt()
+        .coerceIn(0, maxScrollPx)
+        .takeIf { targetScrollPx -> targetScrollPx != currentScrollPx }
+}
+
 private fun formatArrangementTrackDuration(durationMs: Long): String {
     val totalSeconds = durationMs.coerceAtLeast(0L) / 1_000L
     val minutes = totalSeconds / 60L
@@ -620,3 +694,8 @@ private const val ARRANGEMENT_TRACK_COMPACT_MIN_BLOCK_WIDTH_DP = 48f
 private const val ARRANGEMENT_TRACK_COMPACT_MAX_BLOCK_WIDTH_DP = 240f
 private const val ARRANGEMENT_TRACK_CONTENT_PADDING_DP = 8f
 private const val ARRANGEMENT_TRACK_SPACING_DP = 8f
+private const val ARRANGEMENT_TRACK_AUTO_FOLLOW_LEFT_LIMIT = 0.20f
+private const val ARRANGEMENT_TRACK_AUTO_FOLLOW_RIGHT_LIMIT = 0.80f
+private const val ARRANGEMENT_TRACK_AUTO_FOLLOW_LEFT_TARGET = 0.30f
+private const val ARRANGEMENT_TRACK_AUTO_FOLLOW_RIGHT_TARGET = 0.70f
+private const val ARRANGEMENT_TRACK_AUTO_FOLLOW_RESUME_DELAY_MS = 900L

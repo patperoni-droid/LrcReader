@@ -4732,6 +4732,7 @@ private fun TimelineMeasuresPlaceholder(
                 showHorizontalItemControls = !compactArrangementTrackControls,
                 adaptiveHorizontalItemWidth = compactArrangementTrackControls,
                 playhead = arrangementTrackPlayhead,
+                autoFollowPlayhead = unifiedSegmentLayout && structurePlaybackActive,
                 onPlayheadBoundaryChange = if (unifiedSegmentLayout) {
                     { boundaryIndex ->
                         arrangementInsertionBoundaryIndex = boundaryIndex
