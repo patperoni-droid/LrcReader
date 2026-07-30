@@ -2,7 +2,8 @@ package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,14 +32,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 object PlaybackProgressBarDefaults {
-    val TimeRowHeight = 20.dp
     val Height = 56.dp
-    val TotalHeight = TimeRowHeight + Height
 }
 
 private val LinearPlaybackStructureModel = PlaybackStructureModel(
@@ -72,7 +72,8 @@ sealed interface PlaybackProgressMode {
 
     data class Structure(
         val model: PlaybackStructureModel,
-        val armedSegmentKey: String? = null
+        val armedSegmentKey: String? = null,
+        val loopedSegmentKey: String? = null
     ) : PlaybackProgressMode
 }
 
@@ -96,6 +97,7 @@ fun PlaybackProgressBar(
     onSeekCommit: (Int) -> Unit,
     highlightColor: Color,
     onStructureSegmentSelected: (String) -> Unit = {},
+    onStructureSegmentLongPressed: (String) -> Unit = {},
     compact: Boolean = false
 ) {
     var previewPositionMs by remember { mutableIntStateOf(positionMs) }
@@ -138,7 +140,9 @@ fun PlaybackProgressBar(
                 state = state,
                 model = mode.model,
                 armedSegmentKey = mode.armedSegmentKey,
-                onSegmentSelected = onStructureSegmentSelected
+                loopedSegmentKey = mode.loopedSegmentKey,
+                onSegmentSelected = onStructureSegmentSelected,
+                onSegmentLongPressed = onStructureSegmentLongPressed
             )
         }
     }
@@ -162,7 +166,9 @@ private fun TimeBarRenderer(
                 state = state,
                 model = LinearPlaybackStructureModel,
                 armedSegmentKey = null,
+                loopedSegmentKey = null,
                 onSegmentSelected = null,
+                onSegmentLongPressed = null,
                 modifier = Modifier.fillMaxSize()
             )
             Slider(
@@ -183,7 +189,9 @@ private fun StructureRenderer(
     state: PlaybackProgressState,
     model: PlaybackStructureModel,
     armedSegmentKey: String?,
-    onSegmentSelected: (String) -> Unit
+    loopedSegmentKey: String?,
+    onSegmentSelected: (String) -> Unit,
+    onSegmentLongPressed: (String) -> Unit
 ) {
     PlaybackProgressFrame(
         state = state
@@ -192,7 +200,9 @@ private fun StructureRenderer(
             state = state,
             model = model,
             armedSegmentKey = armedSegmentKey,
+            loopedSegmentKey = loopedSegmentKey,
             onSegmentSelected = onSegmentSelected,
+            onSegmentLongPressed = onSegmentLongPressed,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
@@ -201,11 +211,14 @@ private fun StructureRenderer(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun PlaybackStructureTrack(
     state: PlaybackProgressState,
     model: PlaybackStructureModel,
     armedSegmentKey: String?,
+    loopedSegmentKey: String?,
     onSegmentSelected: ((String) -> Unit)?,
+    onSegmentLongPressed: ((String) -> Unit)?,
     modifier: Modifier
 ) {
     val progressFraction = state.progressFraction.coerceIn(0f, 1f)
@@ -236,29 +249,45 @@ private fun PlaybackStructureTrack(
             model.segments.forEachIndexed { index, segment ->
                 androidx.compose.runtime.key(segment.key) {
                     val isQueued = segment.key == armedSegmentKey
+                    val isLooped = segment.key == loopedSegmentKey
+                    val containerColor = arrangementTrackOccurrenceContainerColor(
+                        color = segment.color,
+                        isMuted = false,
+                        isActive = index == activeSegmentIndex,
+                        isQueued = isQueued
+                    )
                     BoxWithConstraints(
                         modifier = Modifier
                             .weight(segment.fraction)
                             .fillMaxHeight()
                             .then(
                                 if (onSegmentSelected != null) {
-                                    Modifier.clickable {
-                                        onSegmentSelected(segment.key)
-                                    }
+                                    Modifier.combinedClickable(
+                                        onClick = {
+                                            onSegmentSelected(segment.key)
+                                        },
+                                        onLongClick = onSegmentLongPressed?.let { onLongPress ->
+                                            { onLongPress(segment.key) }
+                                        }
+                                    )
                                 } else {
                                     Modifier
                                 }
                             )
                             .background(
-                                arrangementTrackOccurrenceContainerColor(
-                                    color = segment.color,
-                                    isMuted = false,
-                                    isActive = index == activeSegmentIndex,
-                                    isQueued = isQueued
-                                )
+                                if (isLooped) {
+                                    lerp(containerColor, Color.White, 0.27f)
+                                } else {
+                                    containerColor
+                                }
                             )
                             .then(
-                                if (isQueued) {
+                                if (isLooped) {
+                                    Modifier.border(
+                                        width = 2.dp,
+                                        color = lerp(segment.color, Color.White, 0.42f)
+                                    )
+                                } else if (isQueued) {
                                     Modifier.border(
                                         width = 2.dp,
                                         color = Color(0xFFFFD54F)
@@ -331,14 +360,10 @@ private fun PlaybackProgressFrame(
 ) {
     val textSize = if (state.compact) 12.sp else 12.sp
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(PlaybackProgressBarDefaults.TotalHeight)
+        modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(PlaybackProgressBarDefaults.TimeRowHeight),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {

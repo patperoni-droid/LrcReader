@@ -680,12 +680,17 @@ class MainActivity : AppCompatActivity() {
                 var armedVirtualArrangementOccurrenceIndex by remember {
                     mutableStateOf<Int?>(null)
                 }
+                var loopedVirtualArrangementSegmentKey by remember {
+                    mutableStateOf<String?>(null)
+                }
                 LaunchedEffect(activeVirtualArrangementPlayback?.variantSongId) {
                     armedVirtualArrangementOccurrenceIndex = null
+                    loopedVirtualArrangementSegmentKey = null
                 }
                 val mainPlaybackProgressMode = remember(
                     activeVirtualArrangementPlayback,
-                    armedVirtualArrangementOccurrenceIndex
+                    armedVirtualArrangementOccurrenceIndex,
+                    loopedVirtualArrangementSegmentKey
                 ) {
                     val livePlan = activeVirtualArrangementPlayback?.livePlan
                     val structureModel = livePlan?.let(PlaybackStructureModelAdapter::from)
@@ -695,7 +700,8 @@ class MainActivity : AppCompatActivity() {
                         ?.let { model ->
                             PlaybackProgressMode.Structure(
                                 model = model,
-                                armedSegmentKey = armedSegmentKey
+                                armedSegmentKey = armedSegmentKey,
+                                loopedSegmentKey = loopedVirtualArrangementSegmentKey
                             )
                         }
                         ?: PlaybackProgressMode.Linear
@@ -1280,6 +1286,9 @@ class MainActivity : AppCompatActivity() {
                     mark("compose.AudioEngine.getPlayer:after")
                     player
                 }
+                LaunchedEffect(exoPlayer, activeVirtualArrangementPlayback?.variantSongId) {
+                    exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
+                }
 
                 LaunchedEffect(savedRoot, canUseWorkspace, playlistStateReadyForRoot, playlistRepoVersion) {
                     val rootKey = savedRoot?.toString()
@@ -1450,8 +1459,117 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
 
+                fun arrangementEntryKeyOf(occurrenceKey: String): String? {
+                    val separatorIndex = occurrenceKey.lastIndexOf(':')
+                    if (separatorIndex <= 0 || separatorIndex == occurrenceKey.lastIndex) return null
+                    if (occurrenceKey.substring(separatorIndex + 1).toIntOrNull() == null) return null
+                    return occurrenceKey.substring(0, separatorIndex)
+                }
+
+                fun playbackDisplayGroupRange(
+                    arrangement: PreparedVirtualArrangementPlayback,
+                    segmentKey: String
+                ): IntRange? {
+                    val occurrences = arrangement.livePlan.occurrences
+                    val firstIndex = occurrences.indexOfFirst { occurrence ->
+                        occurrence.key == segmentKey
+                    }
+                    if (firstIndex < 0) return null
+
+                    val first = occurrences[firstIndex]
+                    val entryKey = arrangementEntryKeyOf(first.key) ?: return firstIndex..firstIndex
+                    var lastIndex = firstIndex
+                    while (lastIndex < occurrences.lastIndex) {
+                        val next = occurrences[lastIndex + 1]
+                        if (
+                            arrangementEntryKeyOf(next.key) != entryKey ||
+                            next.label != first.label ||
+                            next.color != first.color
+                        ) {
+                            break
+                        }
+                        lastIndex++
+                    }
+                    return firstIndex..lastIndex
+                }
+
+                fun replaceMainPlaybackTail(
+                    tail: List<MediaItem>
+                ): Boolean = runCatching {
+                    val currentQueueIndex = exoPlayer.currentMediaItemIndex
+                    if (currentQueueIndex !in 0 until exoPlayer.mediaItemCount) {
+                        return@runCatching false
+                    }
+                    val tailStartIndex = currentQueueIndex + 1
+                    if (exoPlayer.mediaItemCount > tailStartIndex) {
+                        exoPlayer.removeMediaItems(tailStartIndex, exoPlayer.mediaItemCount)
+                    }
+                    if (currentQueueIndex > 0) {
+                        exoPlayer.removeMediaItems(0, currentQueueIndex)
+                    }
+                    if (tail.isNotEmpty()) {
+                        exoPlayer.addMediaItems(tail)
+                    }
+                    true
+                }.onFailure { error ->
+                    Log.w("ARR_PLAYER_SEGMENT_LOOP", "QUEUE_FAILED", error)
+                }.getOrDefault(false)
+
+                fun loopSegmentFromPlaybackProgress(segmentKey: String) {
+                    val arrangement = activeVirtualArrangementPlayback ?: return
+                    val loopRange = playbackDisplayGroupRange(
+                        arrangement = arrangement,
+                        segmentKey = segmentKey
+                    ) ?: return
+                    val loopItems = arrangement.mediaItems.slice(loopRange)
+                    if (loopItems.isEmpty()) return
+
+                    val currentOccurrenceIndex = arrangement.livePlan.occurrences
+                        .indexOfFirst { occurrence ->
+                            occurrence.key == exoPlayer.currentMediaItem?.mediaId
+                        }
+                    exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
+
+                    val prepared = if (currentOccurrenceIndex in loopRange) {
+                        val relativeIndex = currentOccurrenceIndex - loopRange.first
+                        val prefix = loopItems.take(relativeIndex)
+                        val suffix = loopItems.drop(relativeIndex + 1)
+                        if (!replaceMainPlaybackTail(suffix)) {
+                            false
+                        } else {
+                            runCatching {
+                                if (prefix.isNotEmpty()) {
+                                    exoPlayer.addMediaItems(0, prefix)
+                                }
+                                exoPlayer.repeatMode = Player.REPEAT_MODE_ALL
+                                true
+                            }.onFailure { error ->
+                                Log.w(
+                                    "ARR_PLAYER_SEGMENT_LOOP",
+                                    "ACTIVATE_CURRENT_FAILED key=$segmentKey",
+                                    error
+                                )
+                            }.getOrDefault(false)
+                        }
+                    } else {
+                        replaceMainPlaybackTail(loopItems)
+                    }
+
+                    if (prepared) {
+                        armedVirtualArrangementOccurrenceIndex = null
+                        loopedVirtualArrangementSegmentKey = segmentKey
+                        Log.d(
+                            "ARR_PLAYER_SEGMENT_LOOP",
+                            "ARMED key=$segmentKey range=${loopRange.first}..${loopRange.last} " +
+                                "activeNow=${currentOccurrenceIndex in loopRange}"
+                        )
+                    }
+                }
+
                 fun defineNextFromPlaybackProgress(segmentKey: String) {
                     val arrangement = activeVirtualArrangementPlayback ?: return
+                    loopedVirtualArrangementSegmentKey = null
+                    exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
                     val selectedOccurrenceIndex = arrangement.livePlan.occurrences
                         .indexOfFirst { occurrence -> occurrence.key == segmentKey }
                     val decision = decideDefineNextQueue(
@@ -1520,6 +1638,27 @@ class MainActivity : AppCompatActivity() {
                                 mediaItem: MediaItem?,
                                 reason: Int
                             ) {
+                                val loopedKey = loopedVirtualArrangementSegmentKey
+                                if (loopedKey != null && mediaItem?.mediaId == loopedKey) {
+                                    runCatching {
+                                        val currentQueueIndex = exoPlayer.currentMediaItemIndex
+                                        if (currentQueueIndex > 0) {
+                                            exoPlayer.removeMediaItems(0, currentQueueIndex)
+                                        }
+                                        exoPlayer.repeatMode = Player.REPEAT_MODE_ALL
+                                        Log.d(
+                                            "ARR_PLAYER_SEGMENT_LOOP",
+                                            "ACTIVE key=$loopedKey"
+                                        )
+                                    }.onFailure { error ->
+                                        Log.w(
+                                            "ARR_PLAYER_SEGMENT_LOOP",
+                                            "ACTIVATE_FAILED key=$loopedKey",
+                                            error
+                                        )
+                                    }
+                                }
+
                                 val armedIndex =
                                     armedVirtualArrangementOccurrenceIndex ?: return
                                 val armedKey = arrangement.livePlan.occurrences
@@ -1540,6 +1679,8 @@ class MainActivity : AppCompatActivity() {
                             override fun onPlaybackStateChanged(playbackState: Int) {
                                 if (playbackState == Player.STATE_ENDED) {
                                     armedVirtualArrangementOccurrenceIndex = null
+                                    loopedVirtualArrangementSegmentKey = null
+                                    exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
                                 }
                             }
                         }
@@ -4819,6 +4960,8 @@ class MainActivity : AppCompatActivity() {
                                         playbackProgressMode = mainPlaybackProgressMode,
                                         onPlaybackStructureSegmentSelected =
                                             ::defineNextFromPlaybackProgress,
+                                        onPlaybackStructureSegmentLongPressed =
+                                            ::loopSegmentFromPlaybackProgress,
                                         onOpenArrangementHub = {
                                             if (adaptiveTokens.tabletMode) {
                                                 moreNavigationTarget = "arrangement_from_tempo"
@@ -6015,6 +6158,8 @@ class MainActivity : AppCompatActivity() {
                                         playbackProgressMode = mainPlaybackProgressMode,
                                         onPlaybackStructureSegmentSelected =
                                             ::defineNextFromPlaybackProgress,
+                                        onPlaybackStructureSegmentLongPressed =
+                                            ::loopSegmentFromPlaybackProgress,
                                         onOpenArrangementHub = {
                                             if (adaptiveTokens.tabletMode) {
                                                 moreNavigationTarget = "arrangement_from_tempo"
