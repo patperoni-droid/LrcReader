@@ -15,6 +15,7 @@ object EditionConfig {
     private const val KEY_CURRENT_EDITION = "current_edition"
     private const val BETA_PRO_CODE = "SMP-PRO-2026"
     private val defaultEdition: AppEdition = AppEdition.PRO
+    const val areFreemiumLimitsEnabled: Boolean = false
 
     private var currentState by mutableStateOf(defaultEdition)
 
@@ -24,10 +25,10 @@ object EditionConfig {
     const val isDmxUiEnabled: Boolean = false
 
     val isLite: Boolean
-        get() = current == AppEdition.LITE
+        get() = areFreemiumLimitsEnabled && current == AppEdition.LITE
 
     val isPro: Boolean
-        get() = current == AppEdition.PRO
+        get() = !areFreemiumLimitsEnabled || current == AppEdition.PRO
 
     fun initialize(context: Context) {
         val savedName = prefs(context).getString(KEY_CURRENT_EDITION, defaultEdition.name)

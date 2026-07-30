@@ -12,6 +12,7 @@ object PlaylistTrackLimitPolicy {
     )
 
     fun isUnlimitedEdition(context: Context): Boolean {
+        if (EditionConfig.isPro) return true
         if (BuildConfig.DEBUG) return true
         val androidId = runCatching {
             Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
