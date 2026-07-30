@@ -555,8 +555,10 @@
     <string name="timeline_measures_signature_label">Signature</string>
     <string name="timeline_measures_signature_default">4/4</string>
     <string name="timeline_tempo_action_add">Ajouter</string>
-    <string name="timeline_tempo_action_export">Assembler</string>
+    <string name="timeline_tempo_action_add_phone">Ajout</string>
+    <string name="timeline_tempo_action_export">Créer</string>
     <string name="arrangement_save_to_library_action">Bibliothèque</string>
+    <string name="arrangement_save_to_library_action_phone">Biblio</string>
     <string name="arrangement_virtual_name_title">Enregistrer une variante</string>
     <string name="arrangement_virtual_name_label">Nom de la variante</string>
     <string name="arrangement_virtual_save_success">Variante ajoutée à la bibliothèque : %1$s</string>

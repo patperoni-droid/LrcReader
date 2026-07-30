@@ -4277,13 +4277,20 @@ private fun TimelineMeasuresPlaceholder(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = stringResource(R.string.timeline_tempo_action_add),
+                text = stringResource(
+                    if (constrainToAvailableHeight) {
+                        R.string.timeline_tempo_action_add
+                    } else {
+                        R.string.timeline_tempo_action_add_phone
+                    }
+                ),
                 color = if (!unifiedSegmentLayout || arrangementStructuralActionsEnabled) {
                     Color.White
                 } else {
                     Color(0xFF546E7A)
                 },
                 fontSize = 14.sp,
+                maxLines = 1,
                 modifier = Modifier
                     .clickable(
                         enabled = !unifiedSegmentLayout || arrangementStructuralActionsEnabled
@@ -4416,13 +4423,16 @@ private fun TimelineMeasuresPlaceholder(
                     text = stringResource(
                         if (arrangementEditingTarget?.variantSongId != null) {
                             R.string.arrangement_virtual_save_as_new_action
-                        } else {
+                        } else if (constrainToAvailableHeight) {
                             R.string.arrangement_save_to_library_action
+                        } else {
+                            R.string.arrangement_save_to_library_action_phone
                         }
                     ),
                     color = if (isVirtualArrangementSaving) Color(0xFF607D8B) else Color(0xFFFFD54F),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
+                    maxLines = 1,
                     modifier = Modifier
                         .clickable(enabled = !isVirtualArrangementSaving) {
                             if (structurePlaybackSegments.isEmpty()) {
@@ -4456,6 +4466,7 @@ private fun TimelineMeasuresPlaceholder(
                 color = if (isFinalExporting) Color(0xFF607D8B) else Color(0xFF80CBC4),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
+                maxLines = 1,
                 modifier = Modifier
                     .clickable(enabled = !isFinalExporting) {
                         if (isLite) {

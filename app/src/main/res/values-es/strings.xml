@@ -624,8 +624,10 @@
     <string name="timeline_measures_signature_label">Compás</string>
     <string name="timeline_measures_signature_default">4/4</string>
     <string name="timeline_tempo_action_add">Agregar</string>
-    <string name="timeline_tempo_action_export">Ensamblar</string>
+    <string name="timeline_tempo_action_add_phone">Añadir</string>
+    <string name="timeline_tempo_action_export">Crear</string>
     <string name="arrangement_save_to_library_action">Biblioteca</string>
+    <string name="arrangement_save_to_library_action_phone">Biblio</string>
     <string name="arrangement_virtual_name_title">Guardar una variante</string>
     <string name="arrangement_virtual_name_label">Nombre de la variante</string>
     <string name="arrangement_virtual_save_success">Variante añadida a la biblioteca: %1$s</string>

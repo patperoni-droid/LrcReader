@@ -676,8 +676,10 @@
     <string name="timeline_measures_signature_label">Time signature</string>
     <string name="timeline_measures_signature_default">4/4</string>
     <string name="timeline_tempo_action_add">Add</string>
-    <string name="timeline_tempo_action_export">Assemble</string>
+    <string name="timeline_tempo_action_add_phone">Add</string>
+    <string name="timeline_tempo_action_export">Create</string>
     <string name="arrangement_save_to_library_action">Library</string>
+    <string name="arrangement_save_to_library_action_phone">Library</string>
     <string name="arrangement_virtual_name_title">Save a variant</string>
     <string name="arrangement_virtual_name_label">Variant name</string>
     <string name="arrangement_virtual_save_success">Variant added to the library: %1$s</string>
