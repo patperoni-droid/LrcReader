@@ -4368,7 +4368,13 @@ private fun TimelineMeasuresPlaceholder(
             if (unifiedSegmentLayout) {
                 arrangementEditingTarget?.variantSongId?.let { variantSongId ->
                     Text(
-                        text = stringResource(R.string.arrangement_virtual_update_action),
+                        text = stringResource(
+                            if (constrainToAvailableHeight) {
+                                R.string.arrangement_virtual_update_action
+                            } else {
+                                R.string.arrangement_virtual_update_action_phone
+                            }
+                        ),
                         color = if (isVirtualArrangementSaving) {
                             Color(0xFF607D8B)
                         } else {
@@ -4422,7 +4428,11 @@ private fun TimelineMeasuresPlaceholder(
                 Text(
                     text = stringResource(
                         if (arrangementEditingTarget?.variantSongId != null) {
-                            R.string.arrangement_virtual_save_as_new_action
+                            if (constrainToAvailableHeight) {
+                                R.string.arrangement_virtual_save_as_new_action
+                            } else {
+                                R.string.arrangement_virtual_save_as_new_action_phone
+                            }
                         } else if (constrainToAvailableHeight) {
                             R.string.arrangement_save_to_library_action
                         } else {

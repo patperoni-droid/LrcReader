@@ -685,7 +685,9 @@
     <string name="arrangement_virtual_save_success">Variant added to the library: %1$s</string>
     <string name="arrangement_virtual_save_failed">Unable to save the variant: %1$s</string>
     <string name="arrangement_virtual_update_action">Update</string>
+    <string name="arrangement_virtual_update_action_phone">Upd.</string>
     <string name="arrangement_virtual_save_as_new_action">New variant</string>
+    <string name="arrangement_virtual_save_as_new_action_phone">Variant</string>
     <string name="arrangement_virtual_update_success">Variant updated: %1$s</string>
     <string name="arrangement_virtual_update_failed">Unable to update the variant: %1$s</string>
     <string name="arrangement_virtual_playback_unavailable">This Arrangement variant cannot be prepared</string>
