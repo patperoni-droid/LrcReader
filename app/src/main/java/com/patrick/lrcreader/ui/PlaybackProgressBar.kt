@@ -1,9 +1,11 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -15,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -41,6 +45,7 @@ import androidx.compose.ui.unit.sp
 object PlaybackProgressBarDefaults {
     val Height = 56.dp
     val ClassicHeight = 28.dp
+    val StructureSegmentMinWidth = 48.dp
 }
 
 private val LinearPlaybackStructureModel = PlaybackStructureModel(
@@ -269,26 +274,31 @@ private fun PlaybackStructureTrack(
         model = model,
         progressFraction = progressFraction
     )
+    val scrollState = rememberScrollState()
 
-    Box(
+    BoxWithConstraints(
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
             .background(ArrangementTrackBackgroundColor)
-            .drawWithContent {
-                drawContent()
-                if (model.segments.isNotEmpty()) {
-                    val playheadWidth = 2.dp.toPx()
-                    val playheadX = size.width * progressFraction
-                    drawLine(
-                        color = Color.White.copy(alpha = 0.90f),
-                        start = Offset(playheadX, 0f),
-                        end = Offset(playheadX, size.height),
-                        strokeWidth = playheadWidth
-                    )
-                }
-            }
     ) {
-        Row(modifier = Modifier.fillMaxSize()) {
+        val segmentWidthsDp = remember(model, maxWidth) {
+            playbackStructureSegmentWidthsDp(
+                model = model,
+                viewportWidthDp = maxWidth.value,
+                minimumSegmentWidthDp =
+                    PlaybackProgressBarDefaults.StructureSegmentMinWidth.value
+            )
+        }
+        val playheadOffsetDp = playbackStructurePlayheadOffsetDp(
+            model = model,
+            segmentWidthsDp = segmentWidthsDp,
+            progressFraction = progressFraction
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(scrollState)
+        ) {
             model.segments.forEachIndexed { index, segment ->
                 androidx.compose.runtime.key(segment.key) {
                     val isQueued = segment.key == armedSegmentKey
@@ -301,7 +311,7 @@ private fun PlaybackStructureTrack(
                     )
                     BoxWithConstraints(
                         modifier = Modifier
-                            .weight(segment.fraction)
+                            .width(segmentWidthsDp.getOrElse(index) { 0f }.dp)
                             .fillMaxHeight()
                             .then(
                                 if (onSegmentSelected != null) {
@@ -370,6 +380,17 @@ private fun PlaybackStructureTrack(
                 }
             }
         }
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val viewportPlayheadX = playheadOffsetDp.dp.toPx() - scrollState.value
+            if (model.segments.isNotEmpty() && viewportPlayheadX in 0f..size.width) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.90f),
+                    start = Offset(viewportPlayheadX, 0f),
+                    end = Offset(viewportPlayheadX, size.height),
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
+        }
     }
 }
 
@@ -394,6 +415,47 @@ internal fun findActivePlaybackStructureSegmentIndex(
     }
 
     return model.segments.lastIndex
+}
+
+internal fun playbackStructureSegmentWidthsDp(
+    model: PlaybackStructureModel,
+    viewportWidthDp: Float,
+    minimumSegmentWidthDp: Float
+): List<Float> {
+    if (model.segments.isEmpty()) return emptyList()
+    val safeViewportWidthDp = viewportWidthDp.coerceAtLeast(0f)
+    val safeMinimumWidthDp = minimumSegmentWidthDp.coerceAtLeast(0f)
+    val totalFraction = model.segments.sumOf { segment -> segment.fraction.toDouble() }
+    if (totalFraction <= 0.0) return List(model.segments.size) { safeMinimumWidthDp }
+    return model.segments.map { segment ->
+        (safeViewportWidthDp * (segment.fraction / totalFraction).toFloat())
+            .coerceAtLeast(safeMinimumWidthDp)
+    }
+}
+
+internal fun playbackStructurePlayheadOffsetDp(
+    model: PlaybackStructureModel,
+    segmentWidthsDp: List<Float>,
+    progressFraction: Float
+): Float {
+    if (model.segments.isEmpty() || segmentWidthsDp.size != model.segments.size) return 0f
+    val totalFraction = model.segments.sumOf { segment -> segment.fraction.toDouble() }
+    if (totalFraction <= 0.0) return 0f
+    val position = progressFraction.coerceIn(0f, 1f).toDouble() * totalFraction
+    var fractionBeforeSegment = 0.0
+    var widthBeforeSegmentDp = 0f
+    model.segments.forEachIndexed { index, segment ->
+        val segmentEnd = fractionBeforeSegment + segment.fraction
+        if (position < segmentEnd || index == model.segments.lastIndex) {
+            val localProgress = (
+                (position - fractionBeforeSegment) / segment.fraction
+                ).toFloat().coerceIn(0f, 1f)
+            return widthBeforeSegmentDp + segmentWidthsDp[index] * localProgress
+        }
+        fractionBeforeSegment = segmentEnd
+        widthBeforeSegmentDp += segmentWidthsDp[index]
+    }
+    return segmentWidthsDp.sum()
 }
 
 @Composable
