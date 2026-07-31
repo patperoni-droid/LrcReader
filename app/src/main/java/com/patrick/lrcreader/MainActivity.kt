@@ -4331,6 +4331,7 @@ class MainActivity : AppCompatActivity() {
                                     // ✅ C'EST ICI LE FIX :
                                     // même si selectedTab est déjà Player, on demande explicitement au PlayerScreen
                                     // de fermer Track Console et revenir à l'écran lecteur.
+                                    isFillerSettingsOpen = false
                                     closeMixSignal++
                                 }
                             )
