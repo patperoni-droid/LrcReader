@@ -39,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,17 +52,6 @@ object PlaybackProgressBarDefaults {
     val ClassicHeight = 28.dp
     val StructureSegmentMinWidth = 48.dp
 }
-
-private val LinearPlaybackStructureModel = PlaybackStructureModel(
-    segments = listOf(
-        PlaybackStructureSegment(
-            key = "linear-timeline",
-            label = "",
-            fraction = 1f,
-            color = Color(0xFF37474F)
-        )
-    )
-)
 
 data class PlaybackStructureModel(
     val segments: List<PlaybackStructureSegment>
@@ -216,15 +206,29 @@ private fun TimeBarRenderer(
                 .weight(1f)
                 .fillMaxHeight()
         ) {
-            PlaybackStructureTrack(
-                state = state,
-                model = LinearPlaybackStructureModel,
-                armedSegmentKey = null,
-                loopedSegmentKey = null,
-                onSegmentSelected = null,
-                onSegmentLongPressed = null,
-                modifier = Modifier.fillMaxSize()
-            )
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val railY = size.height / 2f
+                val strokeWidth = 2.dp.toPx()
+                drawLine(
+                    color = state.highlightColor.copy(alpha = 0.10f),
+                    start = Offset(0f, railY),
+                    end = Offset(size.width, railY),
+                    strokeWidth = strokeWidth,
+                    cap = StrokeCap.Round
+                )
+                if (state.progressFraction > 0f) {
+                    drawLine(
+                        color = state.highlightColor.copy(alpha = 0.30f),
+                        start = Offset(0f, railY),
+                        end = Offset(
+                            size.width * state.progressFraction.coerceIn(0f, 1f),
+                            railY
+                        ),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
             Slider(
                 value = state.progressFraction,
                 onValueChange = onProgressChange,
