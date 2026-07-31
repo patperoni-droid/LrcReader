@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -78,6 +80,7 @@ fun LibraryList(
     isExplorerMode: Boolean,
     canImportBackupJson: Boolean,
     selectedSongs: Set<Uri>,
+    selectionOnLongPress: Boolean = false,
     onToggleSelect: (Uri) -> Unit,
     onOpenFolder: (LibraryEntry) -> Unit,
 
@@ -241,6 +244,7 @@ fun LibraryList(
                     null
                 }
                 val displayName = titleAlias ?: entry.name
+                val usesLongPressSelection = selectionOnLongPress && isPrompter
 
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Row(
@@ -260,28 +264,56 @@ fun LibraryList(
                                         )
                                 }
                             )
+                            .then(
+                                if (usesLongPressSelection) {
+                                    Modifier.combinedClickable(
+                                        onClick = {
+                                            if (selectionMode) onToggleSelect(uri)
+                                            else if (canOpenPlayer) onOpenPlayer(uri)
+                                            else if (canImportBackupJson && isJson) onImportBackupJson(uri)
+                                            else if (isLrc) onOpenLrcEditor(uri)
+                                        },
+                                        onLongClick = { onToggleSelect(uri) }
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
                             .padding(horizontal = 12.dp, vertical = if (isExplorerMode) 8.dp else 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(20.dp)
-                                .background(
-                                    if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
-                                    androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                        if (usesLongPressSelection && selectionMode) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { onToggleSelect(uri) },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = accent,
+                                    uncheckedColor = Color.White.copy(alpha = 0.7f),
+                                    checkmarkColor = Color.Black
                                 )
-                                .border(
-                                    1.dp,
-                                    if (isSelected) accent else Color.White.copy(alpha = 0.7f),
-                                    androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
-                                )
-                                .clickable { onToggleSelect(uri) },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (isSelected) Text("✕", color = accent, fontSize = 13.sp)
-                        }
+                            )
+                            Spacer(Modifier.width(4.dp))
+                        } else if (!usesLongPressSelection) {
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .background(
+                                        if (isSelected) accent.copy(alpha = 0.18f) else Color.Transparent,
+                                        androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (isSelected) accent else Color.White.copy(alpha = 0.7f),
+                                        androidx.compose.foundation.shape.RoundedCornerShape(4.dp)
+                                    )
+                                    .clickable { onToggleSelect(uri) },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelected) Text("✕", color = accent, fontSize = 13.sp)
+                            }
 
-                        Spacer(Modifier.width(10.dp))
+                            Spacer(Modifier.width(10.dp))
+                        }
 
                         if (isExplorerMode && !isPrompter) {
                             Icon(
@@ -296,12 +328,18 @@ fun LibraryList(
                         Row(
                             modifier = Modifier
                                 .weight(1f)
-                                .clickable {
-                                    if (selectionMode) onToggleSelect(uri)
-                                    else if (canOpenPlayer) onOpenPlayer(uri)
-                                    else if (canImportBackupJson && isJson) onImportBackupJson(uri)
-                                    else if (isLrc) onOpenLrcEditor(uri)
-                                },
+                                .then(
+                                    if (usesLongPressSelection) {
+                                        Modifier
+                                    } else {
+                                        Modifier.clickable {
+                                            if (selectionMode) onToggleSelect(uri)
+                                            else if (canOpenPlayer) onOpenPlayer(uri)
+                                            else if (canImportBackupJson && isJson) onImportBackupJson(uri)
+                                            else if (isLrc) onOpenLrcEditor(uri)
+                                        }
+                                    }
+                                ),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -345,7 +383,7 @@ fun LibraryList(
                             }
                         }
 
-                        Box {
+                        if (!usesLongPressSelection || !selectionMode) Box {
                             IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) {
                                 Icon(Icons.Default.MoreVert, null, tint = Color.White)
                             }

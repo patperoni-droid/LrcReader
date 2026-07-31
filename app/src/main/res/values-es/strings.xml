@@ -1215,6 +1215,11 @@ No olvides guardar.</string>
         <item quantity="one">¿Eliminar esta playlist definitivamente?</item>
         <item quantity="other">¿Eliminar estas %1$d playlists definitivamente?</item>
     </plurals>
+    <string name="library_delete_selected_lyrics_title">Eliminar letras seleccionadas</string>
+    <plurals name="library_delete_selected_lyrics_confirm">
+        <item quantity="one">¿Eliminar definitivamente esta letra?</item>
+        <item quantity="other">¿Eliminar definitivamente estas %1$d letras?</item>
+    </plurals>
     <string name="library_copying">Copiando…</string>
     <string name="library_delete_selected_title">Eliminar selección</string>
     <string name="library_delete_selected_confirm_text">¿Eliminar permanentemente %1$d archivo(s) seleccionado(s)?</string>

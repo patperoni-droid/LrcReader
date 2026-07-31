@@ -778,6 +778,7 @@ fun LibraryScreen(
     }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var playlistSelection by remember { mutableStateOf(LibrarySelectionState<String>()) }
+    var prompterSelection by remember { mutableStateOf(LibrarySelectionState<Uri>()) }
 
     var isLoading by remember { mutableStateOf(false) }
     var loadingStartedAt by remember { mutableStateOf(0L) }
@@ -1719,6 +1720,7 @@ fun LibraryScreen(
     var playlistRenameText by remember { mutableStateOf("") }
     var playlistDeleteTarget by remember { mutableStateOf<String?>(null) }
     var pendingPlaylistDeleteSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var pendingPrompterDeleteSelection by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var editPrompterId by remember { mutableStateOf<String?>(null) }
     var editPrompterTitle by remember { mutableStateOf("") }
     var editPrompterContent by remember { mutableStateOf("") }
@@ -2004,11 +2006,22 @@ fun LibraryScreen(
         if (libraryViewMode != LIBRARY_VIEW_MODE_PLAYLISTS && playlistSelection.isActive) {
             playlistSelection = playlistSelection.clear()
         }
+        if (libraryViewMode != LIBRARY_VIEW_MODE_PROMPTERS && prompterSelection.isActive) {
+            prompterSelection = prompterSelection.clear()
+        }
     }
     LaunchedEffect(filteredPlaylists) {
         val visibleSelection = playlistSelection.retainOnly(filteredPlaylists)
         if (visibleSelection != playlistSelection) {
             playlistSelection = visibleSelection
+        }
+    }
+    LaunchedEffect(filteredEntries, isPrompterViewMode) {
+        if (isPrompterViewMode) {
+            val visibleSelection = prompterSelection.retainOnly(filteredEntries.map { it.uri })
+            if (visibleSelection != prompterSelection) {
+                prompterSelection = visibleSelection
+            }
         }
     }
     suspend fun injectSmpEntriesAndCheckVisible(
@@ -4607,10 +4620,19 @@ fun LibraryScreen(
                                 bottomPadding = if (isPrompterViewMode) 96.dp else selectionBottomPadding,
                                 isExplorerMode = isFilesViewMode,
                                 canImportBackupJson = canImportBackupJsonFromCurrentFolder,
-                                selectedSongs = selectedSongs,
+                                selectedSongs = if (isPrompterViewMode) {
+                                    prompterSelection.selectedKeys
+                                } else {
+                                    selectedSongs
+                                },
+                                selectionOnLongPress = isPrompterViewMode,
 
                                 onToggleSelect = { uri ->
-                                    toggleSelection(uri)
+                                    if (isPrompterViewMode) {
+                                        prompterSelection = prompterSelection.toggle(uri)
+                                    } else {
+                                        toggleSelection(uri)
+                                    }
                                 },
 
                                 onOpenFolder = { entry ->
@@ -4806,17 +4828,35 @@ fun LibraryScreen(
                                 .align(androidx.compose.ui.Alignment.BottomCenter)
                                 .zIndex(10f)
                         ) {
-                            val isLibraryPlaybackActive = !activePlaybackUri.isNullOrBlank()
-                            LibraryPlaybackControl(
-                                isPlaybackActive = isLibraryPlaybackActive,
-                                gainDb = currentTrackGainDb,
-                                onPlayPause = onActivePlaybackPlayPause,
-                                onGainDelta = { deltaDb ->
-                                    if (liveGainControlsEnabled) {
-                                        onActivePlaybackGainDelta(deltaDb)
+                            if (prompterSelection.isActive) {
+                                LibrarySelectionActionBar(
+                                    bottomBarHeight = bottomBarHeight,
+                                    selectedCount = prompterSelection.selectedKeys.size,
+                                    onSelectAll = {
+                                        prompterSelection = prompterSelection.selectAll(
+                                            filteredEntries.map { it.uri }
+                                        )
+                                    },
+                                    onClear = {
+                                        prompterSelection = prompterSelection.clear()
+                                    },
+                                    onDelete = {
+                                        pendingPrompterDeleteSelection = prompterSelection.selectedKeys
                                     }
-                                }
-                            )
+                                )
+                            } else {
+                                val isLibraryPlaybackActive = !activePlaybackUri.isNullOrBlank()
+                                LibraryPlaybackControl(
+                                    isPlaybackActive = isLibraryPlaybackActive,
+                                    gainDb = currentTrackGainDb,
+                                    onPlayPause = onActivePlaybackPlayPause,
+                                    onGainDelta = { deltaDb ->
+                                        if (liveGainControlsEnabled) {
+                                            onActivePlaybackGainDelta(deltaDb)
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
 
@@ -5569,6 +5609,54 @@ fun LibraryScreen(
                     dismissButton = {
                         androidx.compose.material3.TextButton(
                             onClick = { pendingPlaylistDeleteSelection = emptySet() }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
+            if (pendingPrompterDeleteSelection.isNotEmpty()) {
+                val selectedPrompters = pendingPrompterDeleteSelection
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { pendingPrompterDeleteSelection = emptySet() },
+                    title = {
+                        androidx.compose.material3.Text(
+                            stringResource(R.string.library_delete_selected_lyrics_title)
+                        )
+                    },
+                    text = {
+                        androidx.compose.material3.Text(
+                            pluralStringResource(
+                                R.plurals.library_delete_selected_lyrics_confirm,
+                                selectedPrompters.size,
+                                selectedPrompters.size
+                            )
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                selectedPrompters.forEach { uri ->
+                                    deletePrompterAndRemoveFromAllPlaylists(context, uri.toString())
+                                }
+                                prompterSelection = prompterSelection.clear()
+                                pendingPrompterDeleteSelection = emptySet()
+                                val folder = currentFolderUri
+                                if (folder != null) {
+                                    entries = buildEntriesForFolder(folder, useCache = false)
+                                }
+                            }
+                        ) {
+                            androidx.compose.material3.Text(
+                                stringResource(R.string.library_delete_action),
+                                color = Color(0xFFFF6464)
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = { pendingPrompterDeleteSelection = emptySet() }
                         ) {
                             androidx.compose.material3.Text(stringResource(R.string.common_cancel))
                         }

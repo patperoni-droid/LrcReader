@@ -1309,6 +1309,11 @@ N’oubliez pas de sauvegarder.</string>
         <item quantity="one">Supprimer définitivement cette playlist ?</item>
         <item quantity="other">Supprimer définitivement ces %1$d playlists ?</item>
     </plurals>
+    <string name="library_delete_selected_lyrics_title">Supprimer les paroles sélectionnées</string>
+    <plurals name="library_delete_selected_lyrics_confirm">
+        <item quantity="one">Supprimer définitivement ces paroles ?</item>
+        <item quantity="other">Supprimer définitivement ces %1$d paroles ?</item>
+    </plurals>
     <string name="library_copying">Copie…</string>
     <string name="library_delete_selected_title">Supprimer la sélection</string>
     <string name="library_delete_selected_confirm_text">Supprimer définitivement %1$d fichier(s) sélectionné(s) ?</string>

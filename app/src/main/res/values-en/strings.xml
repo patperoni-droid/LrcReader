@@ -1303,6 +1303,11 @@ Don’t forget to save.</string>
         <item quantity="one">Delete this playlist permanently?</item>
         <item quantity="other">Delete these %1$d playlists permanently?</item>
     </plurals>
+    <string name="library_delete_selected_lyrics_title">Delete selected lyrics</string>
+    <plurals name="library_delete_selected_lyrics_confirm">
+        <item quantity="one">Delete these lyrics permanently?</item>
+        <item quantity="other">Delete these %1$d lyrics permanently?</item>
+    </plurals>
     <string name="library_copying">Copying…</string>
     <string name="library_delete_selected_title">Delete selection</string>
     <string name="library_delete_selected_confirm_text">Delete %1$d selected file(s) permanently?</string>
