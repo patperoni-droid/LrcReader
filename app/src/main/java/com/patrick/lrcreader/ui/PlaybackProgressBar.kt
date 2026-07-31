@@ -34,12 +34,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
@@ -198,47 +196,41 @@ private fun TimeBarRenderer(
     onProgressChange: (Float) -> Unit,
     onProgressChangeFinished: () -> Unit
 ) {
-    PlaybackProgressFrame(
-        state = state
+    val trackColor = state.highlightColor.copy(alpha = 0.25f)
+    val sidePadding = if (state.compact) 10.dp else 6.dp
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
+        Text(
+            text = state.positionText,
+            color = Color.LightGray,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(end = sidePadding)
+        )
+
+        Slider(
+            value = state.progressFraction,
+            onValueChange = onProgressChange,
+            onValueChangeFinished = onProgressChangeFinished,
+            enabled = state.isEnabled,
             modifier = Modifier
                 .weight(1f)
-                .fillMaxHeight()
-        ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val railY = size.height / 2f
-                val strokeWidth = 2.dp.toPx()
-                drawLine(
-                    color = state.highlightColor.copy(alpha = 0.10f),
-                    start = Offset(0f, railY),
-                    end = Offset(size.width, railY),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round
-                )
-                if (state.progressFraction > 0f) {
-                    drawLine(
-                        color = state.highlightColor.copy(alpha = 0.30f),
-                        start = Offset(0f, railY),
-                        end = Offset(
-                            size.width * state.progressFraction.coerceIn(0f, 1f),
-                            railY
-                        ),
-                        strokeWidth = strokeWidth,
-                        cap = StrokeCap.Round
-                    )
-                }
-            }
-            Slider(
-                value = state.progressFraction,
-                onValueChange = onProgressChange,
-                onValueChangeFinished = onProgressChangeFinished,
-                enabled = state.isEnabled,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .alpha(0f)
+                .height(20.dp),
+            colors = SliderDefaults.colors(
+                thumbColor = state.highlightColor,
+                activeTrackColor = trackColor,
+                inactiveTrackColor = trackColor.copy(alpha = 0.4f)
             )
-        }
+        )
+
+        Text(
+            text = state.durationText,
+            color = Color.LightGray,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(start = sidePadding)
+        )
     }
 }
 
