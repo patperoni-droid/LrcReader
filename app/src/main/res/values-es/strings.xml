@@ -1202,7 +1202,19 @@ No olvides guardar.</string>
 
     <!-- Library components -->
     <string name="library_bottom_assign">Asignar</string>
+    <string name="library_bottom_delete">Eliminar</string>
     <string name="library_bottom_clear_selection">Deseleccionar.</string>
+    <string name="library_multi_select_all">Seleccionar todo</string>
+    <string name="library_multi_select_clear">Deseleccionar</string>
+    <plurals name="library_multi_select_count">
+        <item quantity="one">%1$d seleccionada</item>
+        <item quantity="other">%1$d seleccionadas</item>
+    </plurals>
+    <string name="library_delete_selected_playlists_title">Eliminar playlists seleccionadas</string>
+    <plurals name="library_delete_selected_playlists_confirm">
+        <item quantity="one">¿Eliminar esta playlist definitivamente?</item>
+        <item quantity="other">¿Eliminar estas %1$d playlists definitivamente?</item>
+    </plurals>
     <string name="library_copying">Copiando…</string>
     <string name="library_delete_selected_title">Eliminar selección</string>
     <string name="library_delete_selected_confirm_text">¿Eliminar permanentemente %1$d archivo(s) seleccionado(s)?</string>

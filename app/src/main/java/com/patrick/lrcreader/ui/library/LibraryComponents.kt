@@ -9,7 +9,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -145,6 +149,57 @@ fun LibraryBottomBar(
             Spacer(Modifier.width(8.dp))
         }
         TextButton(onClick = onClear) { Text(stringResource(R.string.library_bottom_clear_selection), color = Color(0xFFB0B0B0)) }
+    }
+}
+
+@Composable
+fun LibrarySelectionActionBar(
+    bottomBarHeight: Dp,
+    selectedCount: Int,
+    onSelectAll: () -> Unit,
+    onClear: () -> Unit,
+    onDelete: () -> Unit
+) {
+    BottomAppBar(
+        containerColor = Color(0xFF1E1E1E),
+        contentColor = Color.White,
+        tonalElevation = 6.dp,
+        modifier = Modifier
+            .navigationBarsPadding()
+            .height(bottomBarHeight)
+    ) {
+        Text(
+            text = pluralStringResource(
+                R.plurals.library_multi_select_count,
+                selectedCount,
+                selectedCount
+            ),
+            color = Color.White,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(start = 16.dp)
+        )
+
+        Spacer(Modifier.weight(1f))
+
+        IconButton(onClick = onSelectAll) {
+            Icon(
+                imageVector = Icons.Default.SelectAll,
+                contentDescription = stringResource(R.string.library_multi_select_all)
+            )
+        }
+        IconButton(onClick = onClear) {
+            Icon(
+                imageVector = Icons.Default.Deselect,
+                contentDescription = stringResource(R.string.library_multi_select_clear)
+            )
+        }
+        IconButton(onClick = onDelete) {
+            Icon(
+                imageVector = Icons.Default.Delete,
+                contentDescription = stringResource(R.string.library_bottom_delete),
+                tint = Color(0xFFFF6464)
+            )
+        }
     }
 }
 

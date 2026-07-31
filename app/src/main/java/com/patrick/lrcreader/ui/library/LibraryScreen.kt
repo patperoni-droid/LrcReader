@@ -17,6 +17,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.*
@@ -28,6 +29,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -41,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -558,6 +562,7 @@ fun LibraryScreen(
     onDeleteSmpSong: suspend (String) -> Boolean = { false },
     onKeyboardNavigationAvailabilityChange: (Boolean) -> Unit = {},
     onOpenPlaylistFromLibrary: (String) -> Unit = {},
+    onPlaylistsDeleted: (Set<String>) -> Unit = {},
     onLufsManualGainChanged: (String, Int) -> Unit = { _, _ -> },
     activePlaybackUri: String? = null,
     isActivePlaybackPlaying: Boolean = false,
@@ -642,6 +647,7 @@ fun LibraryScreen(
     val sPromptersView = stringResource(R.string.library_view_mode_prompters)
     val sLufsView = stringResource(R.string.library_view_mode_lufs)
     val sPlaylistsEmpty = stringResource(R.string.all_playlists_empty)
+    val sDeleteSelectedPlaylistsTitle = stringResource(R.string.library_delete_selected_playlists_title)
     val sPrompterEmptyState = stringResource(R.string.library_prompter_empty_state)
     val sLufsActive = stringResource(R.string.library_lufs_active)
     val sLufsStatusLoading = stringResource(R.string.library_lufs_status_loading)
@@ -771,6 +777,7 @@ fun LibraryScreen(
         mutableStateOf<String?>(null)
     }
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
+    var playlistSelection by remember { mutableStateOf(LibrarySelectionState<String>()) }
 
     var isLoading by remember { mutableStateOf(false) }
     var loadingStartedAt by remember { mutableStateOf(0L) }
@@ -1711,6 +1718,7 @@ fun LibraryScreen(
     var playlistRenameTarget by remember { mutableStateOf<String?>(null) }
     var playlistRenameText by remember { mutableStateOf("") }
     var playlistDeleteTarget by remember { mutableStateOf<String?>(null) }
+    var pendingPlaylistDeleteSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editPrompterId by remember { mutableStateOf<String?>(null) }
     var editPrompterTitle by remember { mutableStateOf("") }
     var editPrompterContent by remember { mutableStateOf("") }
@@ -1990,6 +1998,17 @@ fun LibraryScreen(
                 items = searchablePlaylists.map { it.indexedItem },
                 query = searchQuery
             ).mapNotNull { filteredItem -> playlistById[filteredItem.id]?.name }
+        }
+    }
+    LaunchedEffect(libraryViewMode) {
+        if (libraryViewMode != LIBRARY_VIEW_MODE_PLAYLISTS && playlistSelection.isActive) {
+            playlistSelection = playlistSelection.clear()
+        }
+    }
+    LaunchedEffect(filteredPlaylists) {
+        val visibleSelection = playlistSelection.retainOnly(filteredPlaylists)
+        if (visibleSelection != playlistSelection) {
+            playlistSelection = visibleSelection
         }
     }
     suspend fun injectSmpEntriesAndCheckVisible(
@@ -3981,17 +4000,43 @@ fun LibraryScreen(
                                 contentPadding = PaddingValues(bottom = 96.dp)
                             ) {
                                 items(filteredPlaylists, key = { it }) { playlistName ->
+                                    val isSelected = playlistName in playlistSelection.selectedKeys
                                     Column(modifier = Modifier.fillMaxWidth()) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .combinedClickable(
+                                                    onClick = {
+                                                        if (playlistSelection.isActive) {
+                                                            playlistSelection = playlistSelection.toggle(playlistName)
+                                                        } else {
+                                                            onOpenPlaylistFromLibrary(playlistName)
+                                                        }
+                                                    },
+                                                    onLongClick = {
+                                                        playlistSelection = playlistSelection.toggle(playlistName)
+                                                    }
+                                                )
                                                 .padding(start = 14.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
+                                            if (playlistSelection.isActive) {
+                                                Checkbox(
+                                                    checked = isSelected,
+                                                    onCheckedChange = {
+                                                        playlistSelection = playlistSelection.toggle(playlistName)
+                                                    },
+                                                    colors = CheckboxDefaults.colors(
+                                                        checkedColor = accent,
+                                                        uncheckedColor = subtitleColor,
+                                                        checkmarkColor = Color.Black
+                                                    )
+                                                )
+                                                Spacer(Modifier.width(4.dp))
+                                            }
                                             Box(
                                                 modifier = Modifier
                                                     .weight(1f)
-                                                    .clickable { onOpenPlaylistFromLibrary(playlistName) }
                                                     .padding(vertical = 4.dp)
                                             ) {
                                                 Text(
@@ -4000,7 +4045,7 @@ fun LibraryScreen(
                                                     fontSize = 15.sp
                                                 )
                                             }
-                                            Box {
+                                            if (!playlistSelection.isActive) Box {
                                                 IconButton(
                                                     modifier = Modifier.zIndex(1f),
                                                     onClick = { playlistMenuTarget = playlistName }
@@ -4052,17 +4097,33 @@ fun LibraryScreen(
                                 .align(androidx.compose.ui.Alignment.BottomCenter)
                                 .zIndex(10f)
                         ) {
-                            val isLibraryPlaybackActive = !activePlaybackUri.isNullOrBlank()
-                            LibraryPlaybackControl(
-                                isPlaybackActive = isLibraryPlaybackActive,
-                                gainDb = currentTrackGainDb,
-                                onPlayPause = onActivePlaybackPlayPause,
-                                onGainDelta = { deltaDb ->
-                                    if (liveGainControlsEnabled) {
-                                        onActivePlaybackGainDelta(deltaDb)
+                            if (playlistSelection.isActive) {
+                                LibrarySelectionActionBar(
+                                    bottomBarHeight = bottomBarHeight,
+                                    selectedCount = playlistSelection.selectedKeys.size,
+                                    onSelectAll = {
+                                        playlistSelection = playlistSelection.selectAll(filteredPlaylists)
+                                    },
+                                    onClear = {
+                                        playlistSelection = playlistSelection.clear()
+                                    },
+                                    onDelete = {
+                                        pendingPlaylistDeleteSelection = playlistSelection.selectedKeys
                                     }
-                                }
-                            )
+                                )
+                            } else {
+                                val isLibraryPlaybackActive = !activePlaybackUri.isNullOrBlank()
+                                LibraryPlaybackControl(
+                                    isPlaybackActive = isLibraryPlaybackActive,
+                                    gainDb = currentTrackGainDb,
+                                    onPlayPause = onActivePlaybackPlayPause,
+                                    onGainDelta = { deltaDb ->
+                                        if (liveGainControlsEnabled) {
+                                            onActivePlaybackGainDelta(deltaDb)
+                                        }
+                                    }
+                                )
+                            }
                         }
                     }
                 } else if (currentFolderUri == null && !isSongBasedViewMode) {
@@ -5474,6 +5535,47 @@ fun LibraryScreen(
                 )
             }
 
+            if (pendingPlaylistDeleteSelection.isNotEmpty()) {
+                val selectedPlaylists = pendingPlaylistDeleteSelection
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = { pendingPlaylistDeleteSelection = emptySet() },
+                    title = {
+                        androidx.compose.material3.Text(sDeleteSelectedPlaylistsTitle)
+                    },
+                    text = {
+                        androidx.compose.material3.Text(
+                            pluralStringResource(
+                                R.plurals.library_delete_selected_playlists_confirm,
+                                selectedPlaylists.size,
+                                selectedPlaylists.size
+                            )
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                selectedPlaylists.forEach(PlaylistRepository::deletePlaylist)
+                                onPlaylistsDeleted(selectedPlaylists)
+                                playlistSelection = playlistSelection.clear()
+                                pendingPlaylistDeleteSelection = emptySet()
+                            }
+                        ) {
+                            androidx.compose.material3.Text(
+                                stringResource(R.string.library_delete_action),
+                                color = Color(0xFFFF6464)
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = { pendingPlaylistDeleteSelection = emptySet() }
+                        ) {
+                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
+                        }
+                    }
+                )
+            }
+
             if (playlistDeleteTarget != null) {
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = { playlistDeleteTarget = null },
@@ -5493,6 +5595,7 @@ fun LibraryScreen(
                             onClick = {
                                 val target = playlistDeleteTarget ?: return@TextButton
                                 PlaylistRepository.deletePlaylist(target)
+                                onPlaylistsDeleted(setOf(target))
                                 playlistDeleteTarget = null
                             }
                         ) {

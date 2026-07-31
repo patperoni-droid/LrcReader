@@ -1292,6 +1292,17 @@ Don’t forget to save.</string>
     <string name="library_bottom_move">Move</string>
     <string name="library_bottom_delete">Delete</string>
     <string name="library_bottom_clear_selection">Deselect.</string>
+    <string name="library_multi_select_all">Select all</string>
+    <string name="library_multi_select_clear">Deselect</string>
+    <plurals name="library_multi_select_count">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <string name="library_delete_selected_playlists_title">Delete selected playlists</string>
+    <plurals name="library_delete_selected_playlists_confirm">
+        <item quantity="one">Delete this playlist permanently?</item>
+        <item quantity="other">Delete these %1$d playlists permanently?</item>
+    </plurals>
     <string name="library_copying">Copying…</string>
     <string name="library_delete_selected_title">Delete selection</string>
     <string name="library_delete_selected_confirm_text">Delete %1$d selected file(s) permanently?</string>

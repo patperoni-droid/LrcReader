@@ -2663,6 +2663,26 @@ class MainActivity : AppCompatActivity() {
                     persistCurrentUiSession(reason = reason)
                 }
 
+                fun reconcileDeletedPlaylists(deletedPlaylists: Set<String>) {
+                    if (
+                        selectedQuickPlaylist !in deletedPlaylists &&
+                        openedPlaylist !in deletedPlaylists
+                    ) {
+                        return
+                    }
+                    val remainingPlaylists = PlaylistRepository.getPlaylists()
+                    val fallbackPlaylist = selectedQuickPlaylist
+                        ?.takeIf { it !in deletedPlaylists && it in remainingPlaylists }
+                        ?: remainingPlaylists.firstOrNull()
+                    if (selectedQuickPlaylist in deletedPlaylists) {
+                        selectedQuickPlaylist = fallbackPlaylist
+                    }
+                    if (openedPlaylist in deletedPlaylists) {
+                        openedPlaylist = fallbackPlaylist
+                    }
+                    persistCurrentUiSession(reason = "libraryDeletePlaylists")
+                }
+
                 LaunchedEffect(playerMediaToggleToken) {
                     if (playerMediaToggleToken == 0) return@LaunchedEffect
                     if (selectedTab !is BottomTab.Player) return@LaunchedEffect
@@ -5102,6 +5122,7 @@ class MainActivity : AppCompatActivity() {
                                             openedPlaylist = name
                                             setTabAndPersist(BottomTab.QuickPlaylists, reason = "libraryOpenPlaylist")
                                         },
+                                        onPlaylistsDeleted = ::reconcileDeletedPlaylists,
                                         onLufsManualGainChanged = { songId, gainDb ->
                                             if (songId == currentPlayingSongId) {
                                                 val safeDb = clampTrackDb(gainDb)
@@ -6446,6 +6467,7 @@ class MainActivity : AppCompatActivity() {
                                             openedPlaylist = name
                                             setTabAndPersist(BottomTab.QuickPlaylists, reason = "libraryOpenPlaylist")
                                         },
+                                        onPlaylistsDeleted = ::reconcileDeletedPlaylists,
                                         onLufsManualGainChanged = { songId, gainDb ->
                                             if (songId == currentPlayingSongId) {
                                                 val safeDb = clampTrackDb(gainDb)
