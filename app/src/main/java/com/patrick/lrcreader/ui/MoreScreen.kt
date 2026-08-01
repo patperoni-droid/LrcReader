@@ -34,6 +34,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
@@ -54,11 +55,32 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.FormatSize
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.PlayCircleFilled
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.TabletAndroid
 import androidx.core.os.LocaleListCompat
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.AppLanguagePrefs
@@ -1024,11 +1046,14 @@ private fun MoreRootScreen(
 
                     Spacer(Modifier.height(8.dp))
 
-                    // Bloc fonctionnel
-                    SettingsHeader(stringResource(R.string.more_section_functions))
-                    SettingsItem(stringResource(R.string.more_item_history), onClick = onOpenHistory)
+                    SettingsItem(
+                        icon = Icons.Filled.History,
+                        label = stringResource(R.string.more_item_history),
+                        onClick = onOpenHistory
+                    )
                     val exportLiveSongsLabel = stringResource(R.string.more_item_export_live_songs)
                     SettingsItem(
+                        icon = Icons.Filled.Save,
                         label = exportLiveSongsLabel,
                         helpText = stringResource(R.string.more_item_export_live_songs_subtitle),
                         onHelpClick = { help -> openSettingsHelp(exportLiveSongsLabel, help) },
@@ -1046,6 +1071,7 @@ private fun MoreRootScreen(
                     )
                     val restoreLibraryLabel = stringResource(R.string.more_item_restore_library)
                     SettingsItem(
+                        icon = Icons.Filled.Restore,
                         label = restoreLibraryLabel,
                         helpText = stringResource(R.string.more_item_restore_library_subtitle),
                         onHelpClick = { help -> openSettingsHelp(restoreLibraryLabel, help) },
@@ -1056,6 +1082,7 @@ private fun MoreRootScreen(
                         }
                     )
                     SettingsItem(
+                        icon = Icons.AutoMirrored.Filled.PlaylistAdd,
                         label = stringResource(R.string.more_item_import_playlist),
                         onClick = {
                             importPlaylistLauncher.launch(
@@ -1068,33 +1095,30 @@ private fun MoreRootScreen(
                         }
                     )
                     SettingsItem(
+                        icon = Icons.Filled.Devices,
                         label = stringResource(R.string.more_item_second_screen),
                         subtitle = stringResource(R.string.more_item_second_screen_subtitle),
                         onClick = onOpenSecondScreen
                     )
                     if (showSmpSyncDebug) {
                         SettingsItem(
+                            icon = Icons.Filled.Sync,
                             label = stringResource(R.string.more_item_smp_sync_debug),
                             subtitle = stringResource(R.string.more_item_smp_sync_debug_subtitle),
                             onClick = onOpenSmpSyncDebug
                         )
                     }
 
-                    HorizontalDivider(color = Color(0xFF262626))
-
-                    // Bloc interface / audio
                     SettingsItem(
+                        icon = Icons.Filled.Language,
                         label = stringResource(R.string.more_item_language),
-                        value = stringResource(
-                            R.string.settings_language_subtitle,
-                            currentLanguageLabel
-                        ),
+                        value = currentLanguageLabel,
                         onClick = { showLanguageDialog = true }
                     )
 
-                    SettingsHeader(stringResource(R.string.settings_lyrics_section))
                     val lyricsTextSizeSettingLabel = stringResource(R.string.settings_lyrics_text_size)
                     SettingsItem(
+                        icon = Icons.Filled.FormatSize,
                         label = lyricsTextSizeSettingLabel,
                         value = lyricsTextSizeLabel,
                         helpText = stringResource(R.string.settings_lyrics_text_size_hint),
@@ -1104,6 +1128,7 @@ private fun MoreRootScreen(
 
                     val guidedReadingColorsLabel = stringResource(R.string.settings_guided_reading_colors)
                     SettingsItem(
+                        icon = Icons.Filled.Palette,
                         label = guidedReadingColorsLabel,
                         value = guidedReadingColorsSubtitle,
                         helpText = stringResource(R.string.settings_guided_reading_colors_hint),
@@ -1113,6 +1138,7 @@ private fun MoreRootScreen(
 
                     val showDjLabel = stringResource(R.string.more_show_dj_mode)
                     SwitchSettingItem(
+                        icon = Icons.Filled.Headphones,
                         label = showDjLabel,
                         checked = showDjMode,
                         helpText = stringResource(R.string.more_show_dj_mode_help),
@@ -1126,6 +1152,7 @@ private fun MoreRootScreen(
 
                     val showMainBusLabel = stringResource(R.string.more_show_main_bus)
                     SwitchSettingItem(
+                        icon = Icons.Filled.GraphicEq,
                         label = showMainBusLabel,
                         checked = showMainBusMode,
                         helpText = stringResource(R.string.more_show_main_bus_help),
@@ -1139,6 +1166,7 @@ private fun MoreRootScreen(
 
                     if (adaptiveTokens.tabletMode) {
                         SwitchSettingItem(
+                            icon = Icons.Filled.TabletAndroid,
                             label = stringResource(R.string.more_tablet_experimental_mode),
                             checked = tabletExperimentalMode,
                             onCheckedChange = { enabled ->
@@ -1152,6 +1180,7 @@ private fun MoreRootScreen(
                     // 🔁 Retour auto vers la playlist (ON/OFF)
                     val autoReturnLabel = stringResource(R.string.more_auto_return_playlist)
                     SwitchSettingItem(
+                        icon = Icons.Filled.Replay,
                         label = autoReturnLabel,
                         checked = autoReturnEnabled,
                         helpText = stringResource(R.string.more_auto_return_playlist_help),
@@ -1164,6 +1193,7 @@ private fun MoreRootScreen(
 
                     val playerOpenModeLabel = stringResource(R.string.more_player_open_mode)
                     SettingsItem(
+                        icon = Icons.Filled.PlayCircleFilled,
                         label = playerOpenModeLabel,
                         value = currentPlayerLaunchModeLabel,
                         helpText = stringResource(R.string.more_player_open_mode_help),
@@ -1173,6 +1203,7 @@ private fun MoreRootScreen(
 
                     val manualCrossfadeLabel = stringResource(R.string.more_manual_crossfade_duration)
                     SettingsItem(
+                        icon = Icons.Filled.SwapHoriz,
                         label = manualCrossfadeLabel,
                         value = currentManualCrossfadeDurationLabel,
                         helpText = stringResource(R.string.more_manual_crossfade_duration_help),
@@ -1181,10 +1212,10 @@ private fun MoreRootScreen(
                     )
 
                     if (!adaptiveTokens.tabletMode) {
-                        SettingsHeader(stringResource(R.string.more_section_advanced))
                         val arrangementCompatibilityModeLabel =
                             stringResource(R.string.more_arrangement_compatibility_mode)
                         SwitchSettingItem(
+                            icon = Icons.Filled.Build,
                             label = arrangementCompatibilityModeLabel,
                             checked = arrangementCompatibilityModeEnabled,
                             helpText = stringResource(
@@ -1203,17 +1234,20 @@ private fun MoreRootScreen(
                         )
                     }
 
-                    HorizontalDivider(color = Color(0xFF262626))
+                    SettingsItem(
+                        icon = Icons.Filled.Bluetooth,
+                        label = stringResource(R.string.more_item_test_bluetooth_midi),
+                        onClick = {
+                            MidiOutput.init(context)
 
-                    SettingsItem(stringResource(R.string.more_item_test_bluetooth_midi), onClick = {
-                        MidiOutput.init(context)
+                            val pc = testProgramChanges[testPcIndex]
+                            MidiOutput.sendProgramChange(channel = 1, program = pc)
 
-                        val pc = testProgramChanges[testPcIndex]
-                        MidiOutput.sendProgramChange(channel = 1, program = pc)
-
-                        testPcIndex = (testPcIndex + 1) % testProgramChanges.size
-                    })
+                            testPcIndex = (testPcIndex + 1) % testProgramChanges.size
+                        }
+                    )
                     SettingsInfoItem(
+                        icon = Icons.Filled.Folder,
                         label = stringResource(R.string.more_working_folder),
                         value = workingFolderPath
                     )
@@ -1791,6 +1825,7 @@ private fun SettingsHeader(label: String) {
 
 @Composable
 private fun SettingsItem(
+    icon: ImageVector,
     label: String,
     subtitle: String? = null,
     value: String? = null,
@@ -1801,15 +1836,21 @@ private fun SettingsItem(
     Row(
         Modifier
             .fillMaxWidth()
+            .height(SettingsMainRowHeight)
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp, horizontal = 14.dp),
+            .padding(horizontal = SettingsMainRowHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        SettingsLeadingIcon(icon)
         Text(
             text = label,
             color = Color(0xFFF5F5F5),
             fontSize = 14.sp,
-            modifier = Modifier.weight(1f)
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(start = SettingsMainRowIconSpacing)
+                .weight(1f)
         )
         if (!value.isNullOrBlank()) {
             Text(
@@ -1817,6 +1858,8 @@ private fun SettingsItem(
                 color = Color(0xFF9E9E9E),
                 fontSize = 12.sp,
                 textAlign = TextAlign.End,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .padding(start = 10.dp)
                     .weight(0.7f, fill = false)
@@ -1834,6 +1877,7 @@ private fun SettingsItem(
 
 @Composable
 private fun SwitchSettingItem(
+    icon: ImageVector,
     label: String,
     checked: Boolean,
     helpText: String? = null,
@@ -1843,14 +1887,20 @@ private fun SwitchSettingItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .height(SettingsMainRowHeight)
+            .padding(horizontal = SettingsMainRowHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        SettingsLeadingIcon(icon)
         Text(
             text = label,
             color = Color(0xFFF5F5F5),
             fontSize = 14.sp,
-            modifier = Modifier.weight(1f)
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .padding(start = SettingsMainRowIconSpacing)
+                .weight(1f)
         )
         Switch(
             checked = checked,
@@ -2090,27 +2140,57 @@ private data class GuidedReadingColorOption(
 
 @Composable
 private fun SettingsInfoItem(
+    icon: ImageVector,
     label: String,
     value: String
 ) {
-    Column(
+    Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 12.dp)
+            .height(SettingsMainRowHeight)
+            .padding(horizontal = SettingsMainRowHorizontalPadding),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = label,
-            color = Color(0xFFF5F5F5),
-            fontSize = 14.sp
-        )
-        Spacer(Modifier.height(4.dp))
-        Text(
-            text = value,
-            color = Color(0xFF9E9E9E),
-            fontSize = 12.sp
-        )
+        SettingsLeadingIcon(icon)
+        Column(
+            modifier = Modifier
+                .padding(start = SettingsMainRowIconSpacing)
+                .weight(1f)
+        ) {
+            Text(
+                text = label,
+                color = Color(0xFFF5F5F5),
+                fontSize = 14.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = value,
+                color = Color(0xFF9E9E9E),
+                fontSize = 12.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
     HorizontalDivider(color = Color(0xFF1E1E1E))
+}
+
+private val SettingsMainRowHeight = 64.dp
+private val SettingsMainRowHorizontalPadding = 14.dp
+private val SettingsMainRowIconSpacing = 16.dp
+
+@Composable
+private fun SettingsLeadingIcon(icon: ImageVector) {
+    Icon(
+        imageVector = icon,
+        contentDescription = null,
+        tint = Color(0xFFB0BEC5),
+        modifier = Modifier
+            .width(24.dp)
+            .height(24.dp)
+    )
 }
 
 internal fun buildDefaultLiveSongsExportName(at: Date = Date()): String {

@@ -855,7 +855,7 @@
     <string name="more_arrangement_compatibility_mode_help">Off: recommended direct segment playback. Enable this mode only if transitions are unstable on this phone; SMP will then reuse the historical WAV / Sampler preparation.</string>
     <string name="more_item_filler">🎧  Background sound</string>
     <string name="more_item_backup_restore">💾  Backup / Restore</string>
-    <string name="more_item_history">🕘  History</string>
+    <string name="more_item_history">History</string>
     <string name="more_item_arrangement">🎼  Arrangement</string>
     <string name="more_item_arrangement_disabled_hint">Open an SMP song first</string>
     <string name="more_item_arrangement_requires_song">Open an SMP song first</string>
@@ -864,7 +864,7 @@
     <string name="more_item_restore_library">Restore my library</string>
     <string name="more_item_restore_library_subtitle">Imports songs and playlists from a backup folder without deleting your other songs.</string>
     <string name="more_item_import_playlist">Import a playlist</string>
-    <string name="more_item_second_screen">📱  Second screen</string>
+    <string name="more_item_second_screen">Second screen</string>
     <string name="more_item_second_screen_subtitle">Show lyrics on another device.</string>
     <string name="more_item_local_link_sender">Share lyrics</string>
     <string name="more_item_local_link_receiver">Show lyrics</string>
@@ -1067,10 +1067,10 @@
     <string name="playlist_import_failed">Unable to import this playlist</string>
     <string name="more_item_editing">🛠  Editing</string>
     <string name="more_item_audio">🔊  Audio</string>
-    <string name="more_item_language">🌐  Language</string>
+    <string name="more_item_language">Language</string>
     <string name="more_item_tuner">🎸  Tuner</string>
     <string name="more_item_advanced">⚙️  Advanced</string>
-    <string name="more_item_test_bluetooth_midi">📶  Test Bluetooth MIDI</string>
+    <string name="more_item_test_bluetooth_midi">Test Bluetooth MIDI</string>
     <string name="more_auto_return_playlist">Auto return to playlist (10 s before end)</string>
     <string name="more_auto_return_playlist_help">Automatically returns to the playlist about 10 seconds before the song ends, without interrupting playback.</string>
     <string name="more_player_open_mode">Player opening</string>

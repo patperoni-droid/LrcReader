@@ -861,7 +861,7 @@
     <string name="more_arrangement_compatibility_mode_help">Désactivé : lecture directe recommandée des segments. Activez ce mode uniquement si les transitions sont instables sur ce téléphone ; SMP réutilisera alors la préparation WAV / Sampler historique.</string>
     <string name="more_item_filler">🎧  Fond sonore</string>
     <string name="more_item_backup_restore">💾  Sauvegarde / Restauration</string>
-    <string name="more_item_history">🕘  Historique</string>
+    <string name="more_item_history">Historique</string>
     <string name="more_item_arrangement">🎼  Arrangement</string>
     <string name="more_item_arrangement_disabled_hint">Ouvre d’abord un morceau SMP</string>
     <string name="more_item_arrangement_requires_song">Ouvre d’abord un morceau SMP</string>
@@ -870,7 +870,7 @@
     <string name="more_item_restore_library">Restaurer ma bibliothèque</string>
     <string name="more_item_restore_library_subtitle">Importe les morceaux et playlists depuis un dossier de sauvegarde sans supprimer les autres morceaux.</string>
     <string name="more_item_import_playlist">Importer une playlist</string>
-    <string name="more_item_second_screen">📱  Deuxième écran</string>
+    <string name="more_item_second_screen">Deuxième écran</string>
     <string name="more_item_second_screen_subtitle">Diffusez les paroles vers un autre appareil.</string>
     <string name="more_item_local_link_sender">Diffuser les paroles</string>
     <string name="more_item_local_link_receiver">Afficher les paroles</string>
@@ -1073,10 +1073,10 @@
     <string name="playlist_import_failed">Impossible d’importer cette playlist</string>
     <string name="more_item_editing">🛠  Édition</string>
     <string name="more_item_audio">🔊  Audio</string>
-    <string name="more_item_language">🌐  Langue</string>
+    <string name="more_item_language">Langue</string>
     <string name="more_item_tuner">🎸  Accordeur</string>
     <string name="more_item_advanced">⚙️  Avancé</string>
-    <string name="more_item_test_bluetooth_midi">📶  Test Bluetooth MIDI</string>
+    <string name="more_item_test_bluetooth_midi">Test Bluetooth MIDI</string>
     <string name="more_auto_return_playlist">Retour auto vers la playlist (10 s avant la fin)</string>
     <string name="more_auto_return_playlist_help">Revient automatiquement à la playlist environ 10 secondes avant la fin du morceau, sans interrompre la lecture.</string>
     <string name="more_player_open_mode">Ouverture du lecteur</string>
