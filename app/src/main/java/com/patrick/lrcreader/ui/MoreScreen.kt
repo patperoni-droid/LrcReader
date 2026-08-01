@@ -62,14 +62,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.core.os.LocaleListCompat
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.core.AppLanguagePrefs
-import com.patrick.lrcreader.core.AppEdition
 import com.patrick.lrcreader.core.ArrangementPlaybackModePrefs
 import com.patrick.lrcreader.core.AutoReturnPrefs
 import com.patrick.lrcreader.core.BackupManager
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.LegacyLibraryVisibilityPrefs
-import com.patrick.lrcreader.core.LightIndicatorPrefs
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.ManualCrossfadeDurationOption
 import com.patrick.lrcreader.core.ManualCrossfadePrefs
@@ -558,9 +556,6 @@ private fun MoreRootScreen(
     var manualCrossfadeDurationOption by remember {
         mutableStateOf(ManualCrossfadePrefs.getDurationOption(context))
     }
-    var showLightIndicator by remember {
-        mutableStateOf(LightIndicatorPrefs.isEnabled(context))
-    }
     var guidedReadingColorsEnabled by remember {
         mutableStateOf(DisplayPrefs.isGuidedReadingColorsEnabled(context))
     }
@@ -582,7 +577,6 @@ private fun MoreRootScreen(
     var arrangementCompatibilityModeEnabled by remember {
         mutableStateOf(ArrangementPlaybackModePrefs.isCompatibilityModeEnabled(context))
     }
-    var betaCode by remember { mutableStateOf("") }
     var settingsHelpTitle by remember { mutableStateOf<String?>(null) }
     var settingsHelpText by remember { mutableStateOf<String?>(null) }
 
@@ -648,11 +642,6 @@ private fun MoreRootScreen(
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     val isLite = EditionConfig.isLite
     val showSmpSyncDebug = BuildConfig.DEBUG && BuildConfig.FLAVOR == "labo"
-    val currentEdition = EditionConfig.current
-    val currentEditionLabel = when (currentEdition) {
-        AppEdition.LITE -> stringResource(R.string.more_beta_mode_freemium)
-        AppEdition.PRO -> stringResource(R.string.more_beta_mode_pro)
-    }
     val workspaceSnapshot = remember(context) { WorkspaceResolver.resolve(context) }
     val workingFolderPath = remember(workspaceSnapshot) {
         workspaceSnapshot.workspaceRootUri?.let { uri ->
@@ -1037,13 +1026,7 @@ private fun MoreRootScreen(
 
                     // Bloc fonctionnel
                     SettingsHeader(stringResource(R.string.more_section_functions))
-                    SettingsItem(stringResource(R.string.more_item_filler), onClick = onOpenFiller)
                     SettingsItem(stringResource(R.string.more_item_history), onClick = onOpenHistory)
-                    SettingsItem(
-                        label = stringResource(R.string.more_item_arrangement),
-                        subtitle = null,
-                        onClick = onOpenArrangement
-                    )
                     val exportLiveSongsLabel = stringResource(R.string.more_item_export_live_songs)
                     SettingsItem(
                         label = exportLiveSongsLabel,
@@ -1108,9 +1091,6 @@ private fun MoreRootScreen(
                         ),
                         onClick = { showLanguageDialog = true }
                     )
-
-                    // Accordeur, dans le bloc Audio
-                    SettingsItem(stringResource(R.string.more_item_tuner), onClick = onOpenTuner)
 
                     SettingsHeader(stringResource(R.string.settings_lyrics_section))
                     val lyricsTextSizeSettingLabel = stringResource(R.string.settings_lyrics_text_size)
@@ -1221,72 +1201,6 @@ private fun MoreRootScreen(
                                 )
                             }
                         )
-                    }
-
-                    val lightIndicatorLabel = stringResource(R.string.more_show_light_indicator)
-                    SwitchSettingItem(
-                        label = lightIndicatorLabel,
-                        checked = showLightIndicator,
-                        helpText = stringResource(R.string.more_show_light_indicator_help),
-                        onHelpClick = { help -> openSettingsHelp(lightIndicatorLabel, help) },
-                        onCheckedChange = { enabled ->
-                            showLightIndicator = enabled
-                            LightIndicatorPrefs.setEnabled(context, enabled)
-                        }
-                    )
-
-                    HorizontalDivider(color = Color(0xFF262626))
-
-                    SettingsHeader(stringResource(R.string.more_beta_mode_section))
-                    SettingsInfoItem(
-                        label = stringResource(R.string.more_beta_mode_current),
-                        value = currentEditionLabel
-                    )
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = betaCode,
-                            onValueChange = { betaCode = it },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(text = stringResource(R.string.more_beta_mode_code_label)) },
-                            singleLine = true
-                        )
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            TextButton(
-                                onClick = {
-                                    val enabled = EditionConfig.tryEnablePro(context, betaCode)
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(
-                                            if (enabled) {
-                                                R.string.more_beta_mode_pro_enabled
-                                            } else {
-                                                R.string.more_beta_mode_invalid_code
-                                            }
-                                        ),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                    if (enabled) betaCode = ""
-                                }
-                            ) {
-                                Text(text = stringResource(R.string.more_beta_mode_activate))
-                            }
-                            TextButton(
-                                onClick = {
-                                    EditionConfig.revertToLite(context)
-                                    betaCode = ""
-                                }
-                            ) {
-                                Text(text = stringResource(R.string.more_beta_mode_back_to_freemium))
-                            }
-                        }
                     }
 
                     HorizontalDivider(color = Color(0xFF262626))
