@@ -21,12 +21,20 @@ Ce document ne décrit pas une implémentation particulière. Il complète
 
 ## 1. Principe fondamental
 
-Toute donnée utilisateur persistante appartient obligatoirement à un seul des
-trois périmètres suivants :
+Toute donnée persistante faisant partie de la bibliothèque SMP appartient
+obligatoirement à un seul des trois périmètres suivants :
 
 1. **Famille SongUnit** ;
 2. **État global de bibliothèque** ;
 3. **Manifest**.
+
+Les préférences d'appareil, de présentation et de session sont extérieures au
+modèle de persistance de la bibliothèque. Elles ne constituent pas un quatrième
+périmètre SMP.
+
+Par exemple, le pitch ou un Arrangement décrit le morceau et appartient à la
+Famille SongUnit. Le mode d'affichage des paroles ou le zoom de la Waveform
+décrit le confort d'utilisation sur un appareil et reste une préférence locale.
 
 Une donnée ne peut jamais être possédée simultanément par plusieurs périmètres.
 Un périmètre peut référencer l'identité d'un autre périmètre, mais cette
@@ -81,8 +89,13 @@ Il est interdit d'utiliser comme identité :
 
 ### 2.3 Données appartenant à la Famille
 
-Appartient à la Famille SongUnit toute donnée dont le sens dépend d'un
-`songId`, d'un `sourceSongId` ou du contenu musical du parent ou d'une variante.
+Appartient à la Famille SongUnit toute donnée dont le sens fonctionnel dépend du
+contenu musical, de l'identité ou de l'exécution du parent ou d'une variante.
+
+Être indexé par un `songId` ne suffit pas à rendre une donnée propriétaire de la
+Famille. La classification dépend de sa signification fonctionnelle. Une
+préférence locale peut utiliser un `songId` pour mémoriser un confort propre à
+un morceau sans devenir pour autant une donnée transportable de sa Famille.
 
 Cela comprend notamment :
 
@@ -300,7 +313,9 @@ Formule officielle :
 
 > Bibliothèque persistante = Familles SongUnit + État global + Manifest
 
-Aucun quatrième périmètre persistant implicite n'est autorisé.
+Aucun quatrième périmètre persistant implicite de bibliothèque n'est autorisé.
+Les préférences locales restent hors de ce modèle, comme défini au principe
+fondamental.
 
 ---
 
@@ -338,7 +353,7 @@ la Famille SongUnit ou dans l'État global.
 6. Une modification d'un membre ou d'un contenu modifie la Famille entière.
 7. L'État global référence les SongUnit sans posséder leurs contenus.
 8. Le Manifest décrit la sauvegarde sans posséder de données utilisateur.
-9. Toute donnée persistante possède un périmètre unique.
+9. Toute donnée persistante de la bibliothèque possède un périmètre unique.
 10. Toute donnée reconstructible reste hors du modèle persistant.
 11. Une bibliothèque restaurable contient les Familles, l'État global et son
     Manifest.
@@ -370,7 +385,9 @@ doivent tous respecter le même modèle de propriété.
 ## 9. Règle d'évolution
 
 Avant toute fonctionnalité future créant ou modifiant une donnée persistante,
-la documentation d'architecture doit préciser :
+la documentation d'architecture doit d'abord préciser si cette donnée appartient
+à la bibliothèque SMP ou si elle reste une préférence locale. Pour une donnée
+de bibliothèque, elle doit ensuite préciser :
 
 - son périmètre unique ;
 - son propriétaire ;
@@ -388,7 +405,7 @@ L'ajout d'un nouveau format physique ne crée jamais un nouveau périmètre.
 
 ## 10. Principe final
 
-> Toute donnée persistante possède un propriétaire unique.
+> Toute donnée persistante de la bibliothèque possède un propriétaire unique.
 
 > Le parent et ses variantes forment une seule unité de sauvegarde.
 
