@@ -80,6 +80,8 @@ class ArrangementVariantsArchiveCodecTest {
         assertEquals(null, decoded.variants.single().lyricsLineColors)
         assertEquals(null, decoded.variants.single().timeline)
         assertEquals(null, decoded.variants.single().annotations)
+        assertEquals(null, decoded.variants.single().midiCues)
+        assertEquals(null, decoded.variants.single().dmxCues)
         assertEquals(null, decoded.selectedVariantId)
     }
 

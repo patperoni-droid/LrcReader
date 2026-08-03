@@ -11,7 +11,9 @@ internal data class ArrangementVariantArchiveEntry(
     val chords: String? = null,
     val lyricsLineColors: Map<String, Int>? = null,
     val timeline: String? = null,
-    val annotations: String? = null
+    val annotations: String? = null,
+    val midiCues: String? = null,
+    val dmxCues: String? = null
 )
 
 internal data class ArrangementVariantsArchive(
@@ -31,6 +33,8 @@ internal object ArrangementVariantsArchiveCodec {
     private const val MAX_CHORDS_BYTES = 1024 * 1024
     private const val MAX_TIMELINE_BYTES = 1024 * 1024
     private const val MAX_ANNOTATIONS_BYTES = 1024 * 1024
+    private const val MAX_MIDI_CUES_BYTES = 1024 * 1024
+    private const val MAX_DMX_CUES_BYTES = 1024 * 1024
     private const val MAX_LYRICS_LINE_COLORS = 10_000
     private val SAFE_ID = Regex("[A-Za-z0-9._-]+")
 
@@ -114,7 +118,9 @@ internal object ArrangementVariantsArchiveCodec {
                         chords = assets?.chords,
                         lyricsLineColors = assets?.lyricsLineColors,
                         timeline = assets?.timeline,
-                        annotations = assets?.annotations
+                        annotations = assets?.annotations,
+                        midiCues = assets?.midiCues,
+                        dmxCues = assets?.dmxCues
                     )
                 )
             }
@@ -157,7 +163,9 @@ internal object ArrangementVariantsArchiveCodec {
         val chords: String?,
         val lyricsLineColors: Map<String, Int>?,
         val timeline: String?,
-        val annotations: String?
+        val annotations: String?,
+        val midiCues: String?,
+        val dmxCues: String?
     )
 
     private fun encodeAssets(variant: ArrangementVariantArchiveEntry): JSONObject? {
@@ -166,12 +174,16 @@ internal object ArrangementVariantsArchiveCodec {
         val lyricsLineColors = variant.lyricsLineColors?.also(::validateLyricsLineColors)
         val timeline = variant.timeline?.also(::validateTimeline)
         val annotations = variant.annotations?.also(::validateAnnotations)
+        val midiCues = variant.midiCues?.also(::validateMidiCues)
+        val dmxCues = variant.dmxCues?.also(::validateDmxCues)
         if (
             lyrics == null &&
             chords == null &&
             lyricsLineColors == null &&
             timeline == null &&
-            annotations == null
+            annotations == null &&
+            midiCues == null &&
+            dmxCues == null
         ) {
             return null
         }
@@ -180,6 +192,8 @@ internal object ArrangementVariantsArchiveCodec {
             chords?.let { put("chords", it) }
             timeline?.let { put("timeline", it) }
             annotations?.let { put("annotations", it) }
+            midiCues?.let { put("midiCues", it) }
+            dmxCues?.let { put("dmxCues", it) }
             lyricsLineColors?.let { colors ->
                 put(
                     "lyricsLineColors",
@@ -223,12 +237,24 @@ internal object ArrangementVariantsArchiveCodec {
         } else {
             null
         }
+        val midiCues = if (json.has("midiCues") && !json.isNull("midiCues")) {
+            json.getString("midiCues").also(::validateMidiCues)
+        } else {
+            null
+        }
+        val dmxCues = if (json.has("dmxCues") && !json.isNull("dmxCues")) {
+            json.getString("dmxCues").also(::validateDmxCues)
+        } else {
+            null
+        }
         return VariantAssets(
             lyrics = lyrics,
             chords = chords,
             lyricsLineColors = lyricsLineColors,
             timeline = timeline,
-            annotations = annotations
+            annotations = annotations,
+            midiCues = midiCues,
+            dmxCues = dmxCues
         )
     }
 
@@ -253,6 +279,18 @@ internal object ArrangementVariantsArchiveCodec {
     private fun validateAnnotations(annotations: String) {
         require(annotations.toByteArray(Charsets.UTF_8).size <= MAX_ANNOTATIONS_BYTES) {
             "Arrangement variant annotations are too large"
+        }
+    }
+
+    private fun validateMidiCues(midiCues: String) {
+        require(midiCues.toByteArray(Charsets.UTF_8).size <= MAX_MIDI_CUES_BYTES) {
+            "Arrangement variant MIDI cues are too large"
+        }
+    }
+
+    private fun validateDmxCues(dmxCues: String) {
+        require(dmxCues.toByteArray(Charsets.UTF_8).size <= MAX_DMX_CUES_BYTES) {
+            "Arrangement variant DMX cues are too large"
         }
     }
 

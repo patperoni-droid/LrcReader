@@ -406,6 +406,16 @@ object SmpExporter {
                 SmpTimelineStore.awaitIdle(timelineFile)
                 val annotationsFile = File(variantDir, SmpAnnotationsStore.ANNOTATIONS_FILE_NAME)
                 SmpAnnotationsStore.awaitIdle(annotationsFile)
+                val midiCuesFile = variant.midiPath
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(::File)
+                    ?.takeIf(File::isFile)
+                    ?: File(variantDir, SmpMidiCuesStore.MIDI_CUES_FILE_NAME)
+                val dmxCuesFile = variant.dmxPath
+                    ?.takeIf(String::isNotBlank)
+                    ?.let(::File)
+                    ?.takeIf(File::isFile)
+                    ?: File(variantDir, SmpLightCueStore.LIGHT_CUES_FILE_NAME)
                 ArrangementVariantArchiveEntry(
                     id = variant.id,
                     title = variant.title,
@@ -420,6 +430,12 @@ object SmpExporter {
                         .takeIf(File::isFile)
                         ?.readText(Charsets.UTF_8),
                     annotations = annotationsFile
+                        .takeIf(File::isFile)
+                        ?.readText(Charsets.UTF_8),
+                    midiCues = midiCuesFile
+                        .takeIf(File::isFile)
+                        ?.readText(Charsets.UTF_8),
+                    dmxCues = dmxCuesFile
                         .takeIf(File::isFile)
                         ?.readText(Charsets.UTF_8),
                     lyricsLineColors = File(variantDir, CONFIG_ENTRY_NAME)

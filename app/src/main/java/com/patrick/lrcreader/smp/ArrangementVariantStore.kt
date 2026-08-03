@@ -234,7 +234,9 @@ object ArrangementVariantStore {
                     archivedChords = variant.chords,
                     archivedLyricsLineColors = variant.lyricsLineColors,
                     archivedTimeline = variant.timeline,
-                    archivedAnnotations = variant.annotations
+                    archivedAnnotations = variant.annotations,
+                    archivedMidiCues = variant.midiCues,
+                    archivedDmxCues = variant.dmxCues
                 )
                 pending += PendingVariant(
                     id = variant.id,
@@ -309,7 +311,9 @@ object ArrangementVariantStore {
         archivedChords: String? = null,
         archivedLyricsLineColors: Map<String, Int>? = null,
         archivedTimeline: String? = null,
-        archivedAnnotations: String? = null
+        archivedAnnotations: String? = null,
+        archivedMidiCues: String? = null,
+        archivedDmxCues: String? = null
     ) {
         existingVariantDir
             ?.takeIf(File::isDirectory)
@@ -378,6 +382,18 @@ object ArrangementVariantStore {
         archivedAnnotations?.let { annotations ->
             File(targetDir, SmpAnnotationsStore.ANNOTATIONS_FILE_NAME).writeText(
                 annotations,
+                Charsets.UTF_8
+            )
+        }
+        archivedMidiCues?.let { midiCues ->
+            File(targetDir, SmpMidiCuesStore.MIDI_CUES_FILE_NAME).writeText(
+                midiCues,
+                Charsets.UTF_8
+            )
+        }
+        archivedDmxCues?.let { dmxCues ->
+            File(targetDir, SmpLightCueStore.LIGHT_CUES_FILE_NAME).writeText(
+                dmxCues,
                 Charsets.UTF_8
             )
         }
