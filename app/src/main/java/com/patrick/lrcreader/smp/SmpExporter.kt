@@ -402,6 +402,8 @@ object SmpExporter {
                         error
                     )
                 }
+                val timelineFile = File(variantDir, SmpTimelineStore.TIMELINE_FILE_NAME)
+                SmpTimelineStore.awaitIdle(timelineFile)
                 ArrangementVariantArchiveEntry(
                     id = variant.id,
                     title = variant.title,
@@ -410,6 +412,9 @@ object SmpExporter {
                         .takeIf(File::isFile)
                         ?.readText(Charsets.UTF_8),
                     chords = File(variantDir, "chords.lrc")
+                        .takeIf(File::isFile)
+                        ?.readText(Charsets.UTF_8),
+                    timeline = timelineFile
                         .takeIf(File::isFile)
                         ?.readText(Charsets.UTF_8),
                     lyricsLineColors = File(variantDir, CONFIG_ENTRY_NAME)

@@ -17,6 +17,10 @@ class ArrangementVariantAssetPreservationTest {
             val target = root.resolve("target").apply { mkdirs() }
             existing.resolve("lyrics.lrc").writeText("[00:01.00] Ligne", Charsets.UTF_8)
             existing.resolve("chords.lrc").writeText("[00:01.00] Am", Charsets.UTF_8)
+            existing.resolve(SmpTimelineStore.TIMELINE_FILE_NAME).writeText(
+                """[{"timeMs":1000,"label":"Repère local"}]""",
+                Charsets.UTF_8
+            )
             existing.resolve("config.json").writeText(
                 JSONObject()
                     .put("version", 1)
@@ -44,6 +48,10 @@ class ArrangementVariantAssetPreservationTest {
 
             assertEquals("[00:01.00] Ligne", target.resolve("lyrics.lrc").readText(Charsets.UTF_8))
             assertEquals("[00:01.00] Am", target.resolve("chords.lrc").readText(Charsets.UTF_8))
+            assertEquals(
+                """[{"timeMs":1000,"label":"Repère local"}]""",
+                target.resolve(SmpTimelineStore.TIMELINE_FILE_NAME).readText(Charsets.UTF_8)
+            )
             assertTrue(target.resolve("arrangement.json").readText().contains("\"sourceSongId\": \"parent\""))
             val config = JSONObject(target.resolve("config.json").readText(Charsets.UTF_8))
             assertEquals("Nouveau titre", config.getString("title"))

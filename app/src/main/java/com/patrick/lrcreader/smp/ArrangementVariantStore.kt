@@ -232,7 +232,8 @@ object ArrangementVariantStore {
                     existingVariantDir = targetDir.takeIf(File::isDirectory),
                     archivedLyrics = variant.lyrics,
                     archivedChords = variant.chords,
-                    archivedLyricsLineColors = variant.lyricsLineColors
+                    archivedLyricsLineColors = variant.lyricsLineColors,
+                    archivedTimeline = variant.timeline
                 )
                 pending += PendingVariant(
                     id = variant.id,
@@ -305,7 +306,8 @@ object ArrangementVariantStore {
         existingVariantDir: File? = null,
         archivedLyrics: String? = null,
         archivedChords: String? = null,
-        archivedLyricsLineColors: Map<String, Int>? = null
+        archivedLyricsLineColors: Map<String, Int>? = null,
+        archivedTimeline: String? = null
     ) {
         existingVariantDir
             ?.takeIf(File::isDirectory)
@@ -364,6 +366,12 @@ object ArrangementVariantStore {
         }
         archivedChords?.let { chords ->
             File(targetDir, CHORDS_FILE_NAME).writeText(chords, Charsets.UTF_8)
+        }
+        archivedTimeline?.let { timeline ->
+            File(targetDir, SmpTimelineStore.TIMELINE_FILE_NAME).writeText(
+                timeline,
+                Charsets.UTF_8
+            )
         }
     }
 }
