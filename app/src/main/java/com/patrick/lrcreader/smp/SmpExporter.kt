@@ -438,6 +438,9 @@ object SmpExporter {
                     dmxCues = dmxCuesFile
                         .takeIf(File::isFile)
                         ?.readText(Charsets.UTF_8),
+                    grid = File(variantDir, GRID_ENTRY_NAME)
+                        .takeIf(File::isFile)
+                        ?.readText(Charsets.UTF_8),
                     lyricsLineColors = File(variantDir, CONFIG_ENTRY_NAME)
                         .takeIf(File::isFile)
                         ?.let { configFile ->

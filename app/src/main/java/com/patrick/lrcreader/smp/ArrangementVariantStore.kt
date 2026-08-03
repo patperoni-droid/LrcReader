@@ -14,6 +14,7 @@ object ArrangementVariantStore {
     private const val ARRANGEMENT_FILE_NAME = "arrangement.json"
     private const val LYRICS_FILE_NAME = "lyrics.lrc"
     private const val CHORDS_FILE_NAME = "chords.lrc"
+    private const val GRID_FILE_NAME = "grid.json"
 
     internal data class RestoreResult(
         val restoredVariantIds: List<String>,
@@ -236,7 +237,8 @@ object ArrangementVariantStore {
                     archivedTimeline = variant.timeline,
                     archivedAnnotations = variant.annotations,
                     archivedMidiCues = variant.midiCues,
-                    archivedDmxCues = variant.dmxCues
+                    archivedDmxCues = variant.dmxCues,
+                    archivedGrid = variant.grid
                 )
                 pending += PendingVariant(
                     id = variant.id,
@@ -313,7 +315,8 @@ object ArrangementVariantStore {
         archivedTimeline: String? = null,
         archivedAnnotations: String? = null,
         archivedMidiCues: String? = null,
-        archivedDmxCues: String? = null
+        archivedDmxCues: String? = null,
+        archivedGrid: String? = null
     ) {
         existingVariantDir
             ?.takeIf(File::isDirectory)
@@ -396,6 +399,9 @@ object ArrangementVariantStore {
                 dmxCues,
                 Charsets.UTF_8
             )
+        }
+        archivedGrid?.let { grid ->
+            File(targetDir, GRID_FILE_NAME).writeText(grid, Charsets.UTF_8)
         }
     }
 }

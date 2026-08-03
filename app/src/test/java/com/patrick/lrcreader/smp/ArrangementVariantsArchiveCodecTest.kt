@@ -82,6 +82,7 @@ class ArrangementVariantsArchiveCodecTest {
         assertEquals(null, decoded.variants.single().annotations)
         assertEquals(null, decoded.variants.single().midiCues)
         assertEquals(null, decoded.variants.single().dmxCues)
+        assertEquals(null, decoded.variants.single().grid)
         assertEquals(null, decoded.selectedVariantId)
     }
 
