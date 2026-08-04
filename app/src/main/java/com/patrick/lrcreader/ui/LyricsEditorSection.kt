@@ -385,14 +385,9 @@ fun LyricsEditorSection(
     fun switchEditTab(targetTab: Int) {
         if (targetTab == currentEditTab) return
 
-        when (targetTab) {
-            2 -> {
-                val normalizedLines = buildLinesFromRawDraft()
-                applyEditingLinesWithUndo(normalizedLines, updateRawDraft = false)
-            }
-            0, 1 -> {
-                applyLinesToRawDraft(editingLines)
-            }
+        if (targetTab == 2) {
+            val normalizedLines = buildLinesFromRawDraft()
+            applyEditingLinesWithUndo(normalizedLines, updateRawDraft = false)
         }
 
         onCurrentEditTabChange(targetTab)
