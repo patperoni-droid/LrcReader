@@ -148,6 +148,18 @@ internal fun shouldExpandTabletArrangementPane(
     arrangementPlaylistVisible: Boolean
 ): Boolean = focusMode == TabletPlayerFocusMode.ARRANGEMENT && !arrangementPlaylistVisible
 
+internal fun editorRawTextAfterPersistence(
+    persistedMode: LyricsViewMode,
+    activeMode: LyricsViewMode,
+    activeRawText: String,
+    lyricsDraftRawText: String,
+    chordsDraftRawText: String
+): String = when {
+    persistedMode == activeMode -> activeRawText
+    persistedMode == LyricsViewMode.CHORDS -> chordsDraftRawText
+    else -> lyricsDraftRawText
+}
+
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is android.content.ContextWrapper -> baseContext.findActivity()
@@ -1704,7 +1716,13 @@ fun PlayerScreen(
         }
 
     fun markEditorModePersisted(mode: LyricsViewMode, lines: List<LrcLine>) {
-        val rawText = editorLyricsText(lines)
+        val rawText = editorRawTextAfterPersistence(
+            persistedMode = mode,
+            activeMode = editingTargetMode,
+            activeRawText = rawLyricsText,
+            lyricsDraftRawText = lyricsDraftRawText,
+            chordsDraftRawText = chordsDraftRawText
+        )
         setSongEditorDraft(
             mode = mode,
             rawText = rawText,
@@ -2826,12 +2844,19 @@ fun PlayerScreen(
                     closeLyricsEditorImmediately()
                 },
                 onPersistSucceeded = { persisted ->
-                    rawLyricsText = editorLyricsText(persisted)
+                    val preservedRawText = editorRawTextAfterPersistence(
+                        persistedMode = editingTargetMode,
+                        activeMode = editingTargetMode,
+                        activeRawText = rawLyricsText,
+                        lyricsDraftRawText = lyricsDraftRawText,
+                        chordsDraftRawText = chordsDraftRawText
+                    )
+                    rawLyricsText = preservedRawText
                     editingLines = persisted
                     editingLinesDirty = false
                     setSongEditorDraft(
                         mode = editingTargetMode,
-                        rawText = rawLyricsText,
+                        rawText = preservedRawText,
                         lines = persisted,
                         dirty = false
                     )
