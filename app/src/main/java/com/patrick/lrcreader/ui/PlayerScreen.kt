@@ -2919,6 +2919,10 @@ fun PlayerScreen(
                 val trackUri = currentTrackUri ?: return@onPrev
                 if (durationMs <= 0) return@onPrev
                 seekToMs(0L)
+                positionMs = 0
+                currentLrcIndex = 0
+                lastLyricsAutoCenterIndex = -1
+                lyricsAutoCenterJob?.cancel()
                 timelineLightPreviewPositionMs = null
                 if (hasLightCues) {
                     LightCueDispatcher.syncToPosition(
@@ -3174,6 +3178,10 @@ fun PlayerScreen(
                             val trackUri = currentTrackUri ?: return@onPrev
                             if (durationMs <= 0) return@onPrev
                             seekToMs(0L)
+                            positionMs = 0
+                            currentLrcIndex = 0
+                            lastLyricsAutoCenterIndex = -1
+                            lyricsAutoCenterJob?.cancel()
                             timelineLightPreviewPositionMs = null
                             if (hasLightCues) {
                                 LightCueDispatcher.syncToPosition(
