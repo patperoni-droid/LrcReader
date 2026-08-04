@@ -115,7 +115,9 @@ import com.patrick.lrcreader.smp.SongUnit
 import com.patrick.lrcreader.smp.TimelineMarker
 import com.patrick.lrcreader.smp.TimelineMarkerKind
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -159,6 +161,27 @@ internal fun editorRawTextAfterPersistence(
     persistedMode == LyricsViewMode.CHORDS -> chordsDraftRawText
     else -> lyricsDraftRawText
 }
+
+internal fun editorRawTextForLoad(persistedRawText: String?, fallbackText: String): String =
+    persistedRawText ?: fallbackText
+
+internal fun shouldRequestLyricsAutoCenter(
+    targetIndex: Int,
+    lastRequestedIndex: Int,
+    listReady: Boolean,
+    isPlaying: Boolean,
+    userScrolling: Boolean,
+    isDragging: Boolean,
+    equivalentRequestInProgress: Boolean,
+    force: Boolean = false
+): Boolean =
+    targetIndex >= 0 &&
+        listReady &&
+        isPlaying &&
+        !userScrolling &&
+        !isDragging &&
+        !equivalentRequestInProgress &&
+        (force || targetIndex != lastRequestedIndex)
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
@@ -726,6 +749,11 @@ fun PlayerScreen(
 
     var lastMidiIndex by remember(currentTrackUri) { mutableStateOf(-1) }
     var userScrolling by remember { mutableStateOf(false) }
+    var lyricsAutoCenterJob by remember(currentTrackUri) { mutableStateOf<Job?>(null) }
+    var lyricsAutoCenterTargetIndex by remember(currentTrackUri) { mutableIntStateOf(-1) }
+    var lastLyricsAutoCenterIndex by remember(currentTrackUri) { mutableIntStateOf(-1) }
+    var lyricsProgrammaticScrollInProgress by remember(currentTrackUri) { mutableStateOf(false) }
+    var lyricsAutoCenterGeneration by remember(currentTrackUri) { mutableIntStateOf(0) }
 
     var durationMs by remember(currentTrackUri) { mutableStateOf(0) }
     var positionMs by remember(currentTrackUri) { mutableStateOf(0) }
@@ -804,6 +832,9 @@ fun PlayerScreen(
         currentTrackUri
     }
     var rawLyricsText by remember(lyricsEditorSessionKey) { mutableStateOf("") }
+    var persistedLyricsEditorRawText by remember(lyricsEditorSessionKey) {
+        mutableStateOf<String?>(null)
+    }
     var editingLines by remember(lyricsEditorSessionKey) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var editingLinesDirty by remember(lyricsEditorSessionKey) { mutableStateOf(false) }
     var lyricsDraftRawText by remember(lyricsEditorSessionKey) { mutableStateOf("") }
@@ -818,6 +849,14 @@ fun PlayerScreen(
     var showUnsavedLyricsDialog by remember { mutableStateOf(false) }
     var saveAndCloseRequestToken by remember { mutableIntStateOf(0) }
     val inlineLrcTimeTagRegex = remember { Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""") }
+
+    LaunchedEffect(currentTrackUri) {
+        persistedLyricsEditorRawText = currentTrackUri?.let { trackUri ->
+            withContext(Dispatchers.IO) {
+                LrcStorage.loadEditorRawForTrack(context, trackUri)
+            }
+        }
+    }
 
     LaunchedEffect(lyricsEditorSessionKey) {
         isEditingLyrics = false
@@ -881,7 +920,10 @@ fun PlayerScreen(
     fun initializeSongEditorDrafts() {
         setSongEditorDraft(
             mode = LyricsViewMode.LYRICS,
-            rawText = editorLyricsText(parsedLines),
+            rawText = editorRawTextForLoad(
+                persistedRawText = persistedLyricsEditorRawText,
+                fallbackText = editorLyricsText(parsedLines)
+            ),
             lines = parsedLines,
             dirty = false
         )
@@ -1364,7 +1406,7 @@ fun PlayerScreen(
         return true
     }
 
-    suspend fun persistEditorLyricsLines(lines: List<LrcLine>): Boolean {
+    suspend fun persistEditorLyricsLines(lines: List<LrcLine>, editorRawText: String): Boolean {
         currentTrackUri?.let { trackUri ->
             val preferredAtSave = resolvedLyricsLrcFileName
             val saveStartMs = android.os.SystemClock.elapsedRealtime()
@@ -1433,6 +1475,13 @@ fun PlayerScreen(
                         Log.e(
                             LYRICS_PIPELINE_TRACE_TAG,
                             "SAVE_FAIL songId=${currentSongId ?: targetTrackUri} error=LrcStorage.saveForTrack_false"
+                        )
+                        return@runCatching null
+                    }
+                    if (!LrcStorage.saveEditorRawForTrack(context, targetTrackUri, editorRawText)) {
+                        Log.e(
+                            LYRICS_PIPELINE_TRACE_TAG,
+                            "SAVE_FAIL songId=${currentSongId ?: targetTrackUri} error=raw_editor_text_save_failed"
                         )
                         return@runCatching null
                     }
@@ -1508,6 +1557,7 @@ fun PlayerScreen(
             }
 
             saveOutcome.migration?.let { onTrackPromotedToSmp(it) }
+            persistedLyricsEditorRawText = editorRawText
 
             if (
                 !saveOutcome.resolvedFileName.isNullOrBlank() &&
@@ -1537,6 +1587,34 @@ fun PlayerScreen(
                 "SAVE_SUCCESS songId=${currentSongId ?: saveOutcome.trackUriString} path=${saveOutcome.debugPath.orEmpty()} fileSize=${saveOutcome.reloadedText.length} lineCount=${lines.size} colorCount=${lines.count { it.colorArgb != null }}"
             )
         }
+        return true
+    }
+
+    suspend fun persistEditorRawOnly(rawText: String): Boolean {
+        val trackUri = currentTrackUri ?: return false
+        val effectiveTrackUri = LrcStorage.resolveRuntimeAlias(context, trackUri)
+        val isAlreadySmpTrack = LrcStorage.isSmpRuntimeTrack(context, effectiveTrackUri)
+        val outcome = withContext(Dispatchers.IO) {
+            runCatching {
+                val migration = if (isAlreadySmpTrack) {
+                    null
+                } else {
+                    ensureSmpTrackForLyricsSave(effectiveTrackUri)
+                }
+                migration?.let {
+                    LrcStorage.rememberRuntimeAlias(context, trackUri, it.trackUriString)
+                }
+                val targetTrackUri = migration?.trackUriString ?: effectiveTrackUri
+                val lyricsDeleted = LrcStorage.deleteForTrack(context, targetTrackUri)
+                val rawSaved = LrcStorage.saveEditorRawForTrack(context, targetTrackUri, rawText)
+                if (!lyricsDeleted || !rawSaved) null else migration to targetTrackUri
+            }.getOrNull()
+        } ?: return false
+
+        outcome.first?.let { onTrackPromotedToSmp(it) }
+        persistedLyricsEditorRawText = rawText
+        onParsedLinesChange(emptyList())
+        hasLyricsSource = false
         return true
     }
 
@@ -1687,23 +1765,33 @@ fun PlayerScreen(
             val deleted = withContext(Dispatchers.IO) {
                 runCatching {
                     Log.d(PLAYER_LRC_TAG, "delete_lyrics trackUri=$trackUri")
-                    LrcStorage.deleteForTrack(context, trackUri)
+                    val lyricsDeleted = LrcStorage.deleteForTrack(context, trackUri)
+                    val rawDeleted = LrcStorage.deleteEditorRawForTrack(context, trackUri)
                     TrackSettingsStore.clearLyricsLineColorsByUri(context, trackUri)
-                    LrcStorage.loadForTrack(context, trackUri).isNullOrBlank()
+                    lyricsDeleted && rawDeleted &&
+                        LrcStorage.loadForTrack(context, trackUri).isNullOrBlank() &&
+                        LrcStorage.loadEditorRawForTrack(context, trackUri) == null
                 }.getOrDefault(false)
             }
             if (deleted && latestCurrentTrackUri == trackUri) {
                 updateResolvedLyricsFileName(null, "source=LYRICS_DELETE")
+                persistedLyricsEditorRawText = null
             }
             return deleted
         }
         return true
     }
 
-    suspend fun persistEditorLinesForMode(mode: LyricsViewMode, lines: List<LrcLine>): Boolean =
+    suspend fun persistEditorLinesForMode(
+        mode: LyricsViewMode,
+        lines: List<LrcLine>,
+        rawText: String
+    ): Boolean =
         if (lines.isEmpty()) {
             if (mode == LyricsViewMode.CHORDS) {
                 deleteEditorChordLines()
+            } else if (rawText.isNotEmpty()) {
+                persistEditorRawOnly(rawText)
             } else {
                 deleteEditorLyricsLines()
             }
@@ -1711,7 +1799,7 @@ fun PlayerScreen(
             if (mode == LyricsViewMode.CHORDS) {
                 persistEditorChordLines(lines)
             } else {
-                persistEditorLyricsLines(lines)
+                persistEditorLyricsLines(lines, rawText)
             }
         }
 
@@ -1751,6 +1839,7 @@ fun PlayerScreen(
     suspend fun saveSongEditorSession(
         activeMode: LyricsViewMode,
         activeLines: List<LrcLine>,
+        activeRawText: String,
         closeAfterSave: Boolean
     ): Boolean {
         val activeDirty = editingLinesDirty || when (activeMode) {
@@ -1759,20 +1848,30 @@ fun PlayerScreen(
         }
         setSongEditorDraft(
             mode = activeMode,
-            rawText = rawLyricsText,
+            rawText = activeRawText,
             lines = activeLines,
             dirty = activeDirty
         )
 
         if (lyricsDraftDirty) {
-            if (!persistEditorLinesForMode(LyricsViewMode.LYRICS, lyricsDraftLines)) {
+            if (!persistEditorLinesForMode(
+                    LyricsViewMode.LYRICS,
+                    lyricsDraftLines,
+                    lyricsDraftRawText
+                )
+            ) {
                 return false
             }
             markEditorModePersisted(LyricsViewMode.LYRICS, lyricsDraftLines)
         }
 
         if (chordsDraftDirty) {
-            if (!persistEditorLinesForMode(LyricsViewMode.CHORDS, chordsDraftLines)) {
+            if (!persistEditorLinesForMode(
+                    LyricsViewMode.CHORDS,
+                    chordsDraftLines,
+                    chordsDraftRawText
+                )
+            ) {
                 return false
             }
             markEditorModePersisted(LyricsViewMode.CHORDS, chordsDraftLines)
@@ -2393,33 +2492,94 @@ fun PlayerScreen(
         recomputeCurrentIndexForActiveView()
     }
 
-    LaunchedEffect(currentTrackUri) {
-        currentLrcIndex = 0
-        if (selectedViewMode == LyricsViewMode.LYRICS) {
-            runCatching { listState.scrollToItem(0) }
-        }
-    }
-
-    fun centerCurrentLineLazy(state: LazyListState) {
+    fun centerCurrentLineLazy(state: LazyListState, force: Boolean = true) {
         if (selectedViewMode != LyricsViewMode.LYRICS) return
         if (activeDisplayLines.isEmpty()) return
         val targetScrollIndex = currentLrcIndex.coerceIn(0, activeDisplayLines.lastIndex)
-        scope.launch {
-            val visible = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetScrollIndex }
-            if (visible == null) state.scrollToItem(targetScrollIndex)
+        val equivalentRequestInProgress =
+            lyricsAutoCenterJob?.isActive == true &&
+                lyricsAutoCenterTargetIndex == targetScrollIndex
+        if (!shouldRequestLyricsAutoCenter(
+                targetIndex = targetScrollIndex,
+                lastRequestedIndex = lastLyricsAutoCenterIndex,
+                listReady = lyricsBoxHeightPx > 0,
+                isPlaying = isPlaying || force,
+                userScrolling = userScrolling,
+                isDragging = isDragging,
+                equivalentRequestInProgress = equivalentRequestInProgress,
+                force = force
+            )
+        ) {
+            return
+        }
 
-            val info = state.layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetScrollIndex }
-            if (info != null) {
-                val start = state.layoutInfo.viewportStartOffset
-                val end = state.layoutInfo.viewportEndOffset
-                val bias = ((end - start) * 0.08f).toInt()
-                val viewportCenter = (start + end) / 2 - bias
+        if (
+            lyricsAutoCenterJob?.isActive == true &&
+            lyricsAutoCenterTargetIndex != targetScrollIndex
+        ) {
+            lyricsAutoCenterJob?.cancel()
+        }
 
-                val itemCenter = info.offset + info.size / 2
-                val delta = itemCenter - viewportCenter
-                if (abs(delta) > 1) state.scrollBy(delta.toFloat())
+        val visibleInfo = state.layoutInfo.visibleItemsInfo.firstOrNull {
+            it.index == targetScrollIndex
+        }
+        if (visibleInfo != null) {
+            val start = state.layoutInfo.viewportStartOffset
+            val end = state.layoutInfo.viewportEndOffset
+            val bias = ((end - start) * 0.08f).toInt()
+            val viewportCenter = (start + end) / 2 - bias
+            val itemCenter = visibleInfo.offset + visibleInfo.size / 2
+            if (abs(itemCenter - viewportCenter) <= 1) {
+                lastLyricsAutoCenterIndex = targetScrollIndex
+                return
             }
         }
+
+        lyricsAutoCenterJob?.cancel()
+        lyricsAutoCenterTargetIndex = targetScrollIndex
+        lastLyricsAutoCenterIndex = targetScrollIndex
+        lyricsAutoCenterGeneration += 1
+        val requestGeneration = lyricsAutoCenterGeneration
+        lyricsAutoCenterJob = scope.launch {
+            lyricsProgrammaticScrollInProgress = true
+            try {
+                val visible = state.layoutInfo.visibleItemsInfo.firstOrNull {
+                    it.index == targetScrollIndex
+                }
+                if (visible == null) state.scrollToItem(targetScrollIndex)
+
+                val info = state.layoutInfo.visibleItemsInfo.firstOrNull {
+                    it.index == targetScrollIndex
+                }
+                if (info != null) {
+                    val start = state.layoutInfo.viewportStartOffset
+                    val end = state.layoutInfo.viewportEndOffset
+                    val bias = ((end - start) * 0.08f).toInt()
+                    val viewportCenter = (start + end) / 2 - bias
+
+                    val itemCenter = info.offset + info.size / 2
+                    val delta = itemCenter - viewportCenter
+                    if (abs(delta) > 1) state.scrollBy(delta.toFloat())
+                }
+            } finally {
+                if (requestGeneration == lyricsAutoCenterGeneration) {
+                    lyricsProgrammaticScrollInProgress = false
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(currentTrackUri) {
+        currentLrcIndex = 0
+        lastLyricsAutoCenterIndex = -1
+        lyricsAutoCenterJob?.cancel()
+        if (selectedViewMode == LyricsViewMode.LYRICS && activeDisplayLines.isNotEmpty()) {
+            centerCurrentLineLazy(listState)
+        }
+    }
+
+    DisposableEffect(currentTrackUri) {
+        onDispose { lyricsAutoCenterJob?.cancel() }
     }
 
     fun selectLyricsViewMode(mode: LyricsViewMode) {
@@ -2625,22 +2785,37 @@ fun PlayerScreen(
     }
 
     // ---------- Suivi scroll user ----------
-    LaunchedEffect(listState) {
-        while (true) {
-            userScrolling = listState.isScrollInProgress
-            delay(80)
+    LaunchedEffect(listState, isPlaying, isDragging) {
+        snapshotFlow { listState.isScrollInProgress }.collect { scrolling ->
+            val wasScrolling = userScrolling
+            userScrolling = scrolling
+            if (
+                wasScrolling &&
+                !scrolling &&
+                isPlaying &&
+                !isDragging &&
+                !lyricsProgrammaticScrollInProgress
+            ) {
+                centerCurrentLineLazy(listState)
+            }
         }
     }
 
     // ---------- Auto-centering ----------
-    LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, lyricsBoxHeightPx, currentLrcIndex, isManualTransitionActive) {
+    LaunchedEffect(
+        isPlaying,
+        activeDisplayLines,
+        selectedViewMode,
+        lyricsBoxHeightPx,
+        currentLrcIndex,
+        userScrolling,
+        isDragging,
+        isManualTransitionActive
+    ) {
         if (isManualTransitionActive) return@LaunchedEffect
         if (selectedViewMode != LyricsViewMode.LYRICS) return@LaunchedEffect
         if (activeDisplayLines.isEmpty() || lyricsBoxHeightPx == 0) return@LaunchedEffect
-        while (true) {
-            if (isPlaying && !userScrolling && !isDragging) centerCurrentLineLazy(listState)
-            delay(120)
-        }
+        centerCurrentLineLazy(listState, force = false)
     }
 
     val backgroundBrush = Brush.verticalGradient(
@@ -2873,11 +3048,11 @@ fun PlayerScreen(
                         hasLyricsSource = persisted.isNotEmpty()
                     }
                 },
-                onPersistLines = { lines ->
-                    persistEditorLinesForMode(editingTargetMode, lines)
+                onPersistLines = { lines, rawText ->
+                    persistEditorLinesForMode(editingTargetMode, lines, rawText)
                 },
                 onDeletePersisted = {
-                    persistEditorLinesForMode(editingTargetMode, emptyList())
+                    persistEditorLinesForMode(editingTargetMode, emptyList(), "")
                 },
                 onDraftLinesPrepared = { mode, lines ->
                     val draftDirty = if (mode == LyricsViewMode.CHORDS) {
@@ -2892,10 +3067,11 @@ fun PlayerScreen(
                         dirty = draftDirty
                     )
                 },
-                onSaveEditorSession = { activeMode, activeLines, closeAfterSave ->
+                onSaveEditorSession = { activeMode, activeLines, activeRawText, closeAfterSave ->
                     saveSongEditorSession(
                         activeMode = activeMode,
                         activeLines = activeLines,
+                        activeRawText = activeRawText,
                         closeAfterSave = closeAfterSave
                     )
                 },

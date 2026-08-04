@@ -48,6 +48,7 @@ object LrcStorage {
     private const val CANONICAL_PREF = "lrc_storage_canonical"
     private const val SMP_ALIAS_PREF = "lrc_storage_smp_alias"
     private const val RECENT_ORIGIN_CACHE_MAX = 32
+    internal const val LYRICS_EDITOR_RAW_FILE_NAME = "lyrics_editor.txt"
 
     private val lyricsFolderSpec = WorkspaceFolderSpec(
         preferredName = "Lyrics",
@@ -187,6 +188,51 @@ object LrcStorage {
         clearRecentResolvedOrigin(trackUriString)
         Log.d(TAG, "mode INTERNAL SPL load miss")
         return null
+    }
+
+    fun loadEditorRawForTrack(context: Context, trackUriString: String): String? {
+        if (trackUriString.isBlank()) return null
+        val effectiveTrackUriString = resolveRuntimeAlias(context, trackUriString)
+        val songDir = resolveSmpRuntimeSongDir(context, effectiveTrackUriString) ?: return null
+        return loadEditorRawFromSongDir(songDir)
+    }
+
+    fun saveEditorRawForTrack(
+        context: Context,
+        trackUriString: String,
+        rawText: String
+    ): Boolean {
+        if (trackUriString.isBlank()) return false
+        val effectiveTrackUriString = resolveRuntimeAlias(context, trackUriString)
+        val songDir = resolveSmpRuntimeSongDir(context, effectiveTrackUriString) ?: return false
+        return saveEditorRawToSongDir(songDir, rawText)
+    }
+
+    fun deleteEditorRawForTrack(context: Context, trackUriString: String): Boolean {
+        if (trackUriString.isBlank()) return true
+        val effectiveTrackUriString = resolveRuntimeAlias(context, trackUriString)
+        val songDir = resolveSmpRuntimeSongDir(context, effectiveTrackUriString) ?: return true
+        return deleteEditorRawFromSongDir(songDir)
+    }
+
+    internal fun loadEditorRawFromSongDir(songDir: File): String? {
+        val file = File(songDir, LYRICS_EDITOR_RAW_FILE_NAME)
+        if (!file.isFile) return null
+        return runCatching { file.readText(Charsets.UTF_8) }.getOrNull()
+    }
+
+    internal fun saveEditorRawToSongDir(songDir: File, rawText: String): Boolean {
+        return writeTextAtomically(
+            target = File(songDir, LYRICS_EDITOR_RAW_FILE_NAME),
+            text = rawText,
+            lineCount = if (rawText.isEmpty()) 0 else rawText.count { it == '\n' } + 1,
+            logDiagnostics = false
+        )
+    }
+
+    internal fun deleteEditorRawFromSongDir(songDir: File): Boolean {
+        val file = File(songDir, LYRICS_EDITOR_RAW_FILE_NAME)
+        return !file.exists() || file.delete()
     }
 
     fun resolveOriginForTrack(context: Context, trackUriString: String): TrackLrcOrigin? {
@@ -1752,16 +1798,19 @@ object LrcStorage {
     private fun writeTextAtomically(
         target: File,
         text: String,
-        lineCount: Int
+        lineCount: Int,
+        logDiagnostics: Boolean = true
     ): Boolean {
         val parent = target.parentFile ?: return false
         if (!parent.exists() && !parent.mkdirs()) return false
         val tmp = File(parent, "${target.name}.tmp")
         return runCatching {
-            Log.d(
-                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
-                "AUTOSAVE_WRITE_START filePath=${target.absolutePath}"
-            )
+            if (logDiagnostics) {
+                Log.d(
+                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                    "AUTOSAVE_WRITE_START filePath=${target.absolutePath}"
+                )
+            }
             val bytes = text.toByteArray(Charsets.UTF_8)
             FileOutputStream(tmp, false).use { output ->
                 output.write(bytes)
@@ -1774,18 +1823,22 @@ object LrcStorage {
                 if (target.exists() && !target.delete()) throw it
                 if (!tmp.renameTo(target)) throw it
             }
-            Log.d(
-                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
-                "AUTOSAVE_WRITE_OK fileSize=${target.length()} lineCount=$lineCount"
-            )
+            if (logDiagnostics) {
+                Log.d(
+                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                    "AUTOSAVE_WRITE_OK fileSize=${target.length()} lineCount=$lineCount"
+                )
+            }
             true
         }.onFailure { error ->
             runCatching { tmp.delete() }
-            Log.e(
-                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
-                "AUTOSAVE_WRITE_FAIL exception=${error.message}",
-                error
-            )
+            if (logDiagnostics) {
+                Log.e(
+                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                    "AUTOSAVE_WRITE_FAIL exception=${error.message}",
+                    error
+                )
+            }
         }.getOrDefault(false)
     }
 

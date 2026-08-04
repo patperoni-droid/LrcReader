@@ -89,7 +89,7 @@ class LyricsEditorBlankLinesInstrumentedTest {
                     seekToMs = {},
                     onSaveSortedLines = {},
                     onPersistSucceeded = {},
-                    onPersistLines = { true },
+                    onPersistLines = { _, _ -> true },
                     onDeletePersisted = { true },
                     compactEditorTabs = compactEditorTabs,
                     tabletFocusEditingMode = tabletFocusEditingMode

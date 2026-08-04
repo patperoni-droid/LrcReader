@@ -81,6 +81,21 @@ private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
 private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
 private const val LYRICS_AUTOSAVE_CRASH_DIAG_TAG = "LYRICS_AUTOSAVE_CRASH_DIAG"
 
+internal fun lyricsPersistenceSignature(rawText: String, lines: List<LrcLine>): String =
+    buildString {
+        append(rawText.length)
+        append('\u0000')
+        append(rawText)
+        lines.forEach { line ->
+            append('\u0001')
+            append(line.timeMs)
+            append('\u0001')
+            append(line.colorArgb ?: "")
+            append('\u0001')
+            append(line.text)
+        }
+    }
+
 private object LyricsEditorHintPrefs {
     private const val PREFS_NAME = "lyrics_editor_hint_prefs"
     private const val KEY_DISMISSED = "lyrics_editor_hint_dismissed"
@@ -127,14 +142,14 @@ fun LyricsEditorSection(
     // ✅ callback sauvegarde
     onSaveSortedLines: (List<LrcLine>) -> Unit,
     onPersistSucceeded: (List<LrcLine>) -> Unit,
-    onPersistLines: suspend (List<LrcLine>) -> Boolean,
+    onPersistLines: suspend (List<LrcLine>, String) -> Boolean,
     onDeletePersisted: suspend () -> Boolean,
     onDraftLinesPrepared: (LyricsViewMode, List<LrcLine>) -> Unit = { _, _ -> },
-    onSaveEditorSession: suspend (LyricsViewMode, List<LrcLine>, Boolean) -> Boolean = { _, lines, closeAfterSave ->
+    onSaveEditorSession: suspend (LyricsViewMode, List<LrcLine>, String, Boolean) -> Boolean = { _, lines, rawText, closeAfterSave ->
         val persisted = if (lines.isEmpty()) {
             onDeletePersisted()
         } else {
-            onPersistLines(lines)
+            onPersistLines(lines, rawText)
         }
         if (persisted) {
             if (closeAfterSave) {
@@ -377,11 +392,6 @@ fun LyricsEditorSection(
         }
     }
 
-    fun lyricsSignature(lines: List<LrcLine>): String =
-        lines.joinToString(separator = "\n") { line ->
-            "${line.timeMs}\u0001${line.colorArgb ?: ""}\u0001${line.text}"
-        }
-
     fun switchEditTab(targetTab: Int) {
         if (targetTab == currentEditTab) return
 
@@ -447,7 +457,7 @@ fun LyricsEditorSection(
                 }
                 scope.launch {
                     yield()
-                    if (onPersistLines(updated)) {
+                    if (onPersistLines(updated, rawTextFieldValue.text)) {
                         onPersistSucceeded(updated)
                     }
                 }
@@ -472,7 +482,7 @@ fun LyricsEditorSection(
             scope.launch {
                 // Let Compose render the new tag first, then persist.
                 yield()
-                if (onPersistLines(updated)) {
+                if (onPersistLines(updated, rawTextFieldValue.text)) {
                     onPersistSucceeded(updated)
                 }
             }
@@ -630,6 +640,7 @@ fun LyricsEditorSection(
 
     suspend fun persistCurrentDraft(closeAfterSave: Boolean) {
         val finalLines = buildPersistableLinesForCurrentDraft()
+        val finalRawText = rawTextFieldValue.text
         if (!showChordPalette) {
             Log.d(
                 LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
@@ -660,10 +671,17 @@ fun LyricsEditorSection(
         isPersistBusy = true
         try {
             if (finalLines.isEmpty()) {
-                val saved = onSaveEditorSession(currentContentMode, finalLines, closeAfterSave)
+                val saved = onSaveEditorSession(
+                    currentContentMode,
+                    finalLines,
+                    finalRawText,
+                    closeAfterSave
+                )
                 if (!saved) return
                 previousEditingLines = editingLines.map { it.copy() }
-                rawTextFieldValue = TextFieldValue("", TextRange(0))
+                if (finalRawText.isEmpty()) {
+                    rawTextFieldValue = TextFieldValue("", TextRange(0))
+                }
                 if (!showChordPalette) {
                     Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_OK")
                 }
@@ -682,7 +700,12 @@ fun LyricsEditorSection(
                 )
             }
 
-            val persisted = onSaveEditorSession(currentContentMode, finalLines, closeAfterSave)
+            val persisted = onSaveEditorSession(
+                currentContentMode,
+                finalLines,
+                finalRawText,
+                closeAfterSave
+            )
             if (!persisted) {
                 if (!showChordPalette) {
                     Log.e(
@@ -723,8 +746,8 @@ fun LyricsEditorSection(
     ) {
         if (showChordPalette) emptyList() else buildPersistableLinesForCurrentDraft()
     }
-    val autoSaveLyricsSignature = remember(autoSaveLyricsLines) {
-        lyricsSignature(autoSaveLyricsLines)
+    val autoSaveLyricsSignature = remember(autoSaveLyricsLines, rawTextFieldValue.text) {
+        lyricsPersistenceSignature(rawTextFieldValue.text, autoSaveLyricsLines)
     }
 
     LaunchedEffect(currentTrackUri, showChordPalette, autoSaveLyricsSignature) {
@@ -758,18 +781,18 @@ fun LyricsEditorSection(
         }
 
         val finalLines = buildPersistableLinesForCurrentDraft()
-        val finalSignature = lyricsSignature(finalLines)
+        val finalRawText = rawTextFieldValue.text
+        val finalSignature = lyricsPersistenceSignature(finalRawText, finalLines)
         if (lastAutoSavedLyricsSignature == finalSignature) return@LaunchedEffect
 
         isPersistBusy = true
         try {
             if (finalLines.isEmpty()) {
-                val deleted = onDeletePersisted()
-                if (!deleted) return@LaunchedEffect
+                val persisted = onPersistLines(finalLines, finalRawText)
+                if (!persisted) return@LaunchedEffect
                 previousEditingLines = editingLines.map { it.copy() }
                 onEditingLinesChange(emptyList())
-                onRawLyricsTextChange("")
-                rawTextFieldValue = TextFieldValue("", TextRange(0))
+                onRawLyricsTextChange(finalRawText)
                 onPersistSucceeded(emptyList())
                 lastAutoSavedLyricsSignature = finalSignature
                 return@LaunchedEffect
@@ -784,7 +807,7 @@ fun LyricsEditorSection(
                 LYRICS_PLAYER_SYNC_DIAG_TAG,
                 "AUTOSAVE_START reason=editor_change songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
             )
-            val persisted = onPersistLines(finalLines)
+            val persisted = onPersistLines(finalLines, finalRawText)
             if (!persisted) {
                 Log.e(
                     LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
@@ -1125,7 +1148,7 @@ fun LyricsEditorSection(
                                     selectedSyncLineIndices = emptySet()
                                     scope.launch {
                                         yield()
-                                        if (onPersistLines(cleared)) {
+                                        if (onPersistLines(cleared, rawTextFieldValue.text)) {
                                             onPersistSucceeded(cleared)
                                         }
                                     }
