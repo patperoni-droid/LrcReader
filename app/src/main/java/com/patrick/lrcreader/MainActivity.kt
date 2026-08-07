@@ -5717,8 +5717,7 @@ class MainActivity : AppCompatActivity() {
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled,
                                         livePlaylistSelectionMode = adaptiveTokens.tabletMode &&
-                                            tabletExperimentalModeEnabled,
-                                        enableSlowAutoScroll = true
+                                            tabletExperimentalModeEnabled
                                     )
                                 }
 

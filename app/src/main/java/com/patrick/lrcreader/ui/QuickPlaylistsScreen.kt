@@ -23,7 +23,6 @@ import androidx.compose.ui.res.stringResource
 import android.net.Uri
 import com.patrick.lrcreader.core.LibraryIndexCache
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -40,11 +39,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
-import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -148,8 +143,6 @@ private data class QuickPlaylistUiSnapshot(
 )
 
 private const val DEMO_TITLES_TAG = "DEMO_TITLES"
-private const val TABLET_AUTO_SCROLL_STEP_DURATION_MS = 1_200
-private const val TABLET_AUTO_SCROLL_TICK_MS = 100
 
 private object QuickPlaylistsUiCache {
     private val snapshots = mutableMapOf<String, QuickPlaylistUiSnapshot>()
@@ -205,8 +198,7 @@ fun QuickPlaylistsScreen(
     smpSongsCache: Map<String, com.patrick.lrcreader.smp.SongUnit> = emptyMap(),
     indexAll: List<LibraryIndexCache.CachedEntry> = emptyList(), // ✅ propre + default
     compactTabletLayout: Boolean = false,
-    livePlaylistSelectionMode: Boolean = false,
-    enableSlowAutoScroll: Boolean = false
+    livePlaylistSelectionMode: Boolean = false
 ) {
 
     val context = LocalContext.current
@@ -373,13 +365,6 @@ fun QuickPlaylistsScreen(
             firstVisibleItemScrollOffset = cachedPlaylistSnapshot?.firstVisibleItemScrollOffset ?: 0
         )
     }
-    var autoScrollStoppedByUser by remember(
-        isPlaying,
-        currentPlayingUri,
-        resolvedPlaylistSelection
-    ) {
-        mutableStateOf(false)
-    }
     val searchFocusRequester = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val adaptiveTokens = rememberSmpAdaptiveTokens()
@@ -401,7 +386,6 @@ fun QuickPlaylistsScreen(
     val searchFieldHeight = if (compactTabletLayout) 44.dp else 56.dp
     val searchTextSize = if (compactTabletLayout) 13.sp else 16.sp
     val rowHeightPx = with(LocalDensity.current) { rowHeight.toPx() }
-    val tabletAutoScrollStepPx = with(LocalDensity.current) { 12.dp.toPx() }
     val headerDropPaddingPx = with(LocalDensity.current) { 12.dp.toPx() }
     val sequentialNavigationBottomSafetyPx = with(LocalDensity.current) {
         if (compactTabletLayout) 70.dp.toPx().toInt() else 0
@@ -1184,40 +1168,6 @@ fun QuickPlaylistsScreen(
             )
         }
     }
-
-    LaunchedEffect(
-        enableSlowAutoScroll,
-        isPlaying,
-        autoScrollStoppedByUser,
-        resolvedPlaylistSelection,
-        visibleRows.size
-    ) {
-        if (!enableSlowAutoScroll || !isPlaying || autoScrollStoppedByUser) {
-            return@LaunchedEffect
-        }
-
-        var direction = 1f
-        while (true) {
-            if (!listState.canScrollForward && !listState.canScrollBackward) {
-                delay(TABLET_AUTO_SCROLL_STEP_DURATION_MS.toLong())
-                continue
-            }
-            if (direction > 0f && !listState.canScrollForward) {
-                direction = -1f
-            } else if (direction < 0f && !listState.canScrollBackward) {
-                direction = 1f
-            }
-
-            val tickDistance = tabletAutoScrollStepPx *
-                TABLET_AUTO_SCROLL_TICK_MS / TABLET_AUTO_SCROLL_STEP_DURATION_MS
-            val consumedDistance = listState.scrollBy(direction * tickDistance)
-            if (kotlin.math.abs(consumedDistance) < tickDistance * 0.5f) {
-                direction = -direction
-            }
-            delay(TABLET_AUTO_SCROLL_TICK_MS.toLong())
-        }
-    }
-
     LaunchedEffect(isSearchVisible, internalSelected) {
         if (isSearchVisible) {
             searchFocusRequester.requestFocus()
@@ -1769,22 +1719,6 @@ fun QuickPlaylistsScreen(
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
-                            .then(
-                                if (enableSlowAutoScroll) {
-                                    Modifier.pointerInput(isPlaying, currentPlayingUri) {
-                                        awaitEachGesture {
-                                            val down = awaitFirstDown(requireUnconsumed = false)
-                                            awaitTouchSlopOrCancellation(down.id) { _, _ ->
-                                                if (isPlaying) {
-                                                    autoScrollStoppedByUser = true
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    Modifier
-                                }
-                            )
                             .semantics { testTag = "quick_playlists_list" },
                         state = listState
                     ) {
@@ -1937,7 +1871,6 @@ fun QuickPlaylistsScreen(
                                                 .weight(1f)
                                                 .clickable {
                                                     if (livePlaylistSelectionMode) {
-                                                        autoScrollStoppedByUser = true
                                                         prepareLivePlaylistSelection(uriString)
                                                         return@clickable
                                                     }
@@ -2793,7 +2726,6 @@ fun QuickPlaylistsScreen(
                                         .combinedClickable(
                                             onClick = {
                                                 if (livePlaylistSelectionMode) {
-                                                    autoScrollStoppedByUser = true
                                                     prepareLivePlaylistSelection(uriString)
                                                     return@combinedClickable
                                                 }
