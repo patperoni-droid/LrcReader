@@ -11,7 +11,6 @@ import kotlinx.coroutines.withContext
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -41,7 +40,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -79,7 +82,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -147,6 +149,7 @@ private data class QuickPlaylistUiSnapshot(
 
 private const val DEMO_TITLES_TAG = "DEMO_TITLES"
 private const val TABLET_AUTO_SCROLL_STEP_DURATION_MS = 1_200
+private const val TABLET_AUTO_SCROLL_TICK_MS = 100
 
 private object QuickPlaylistsUiCache {
     private val snapshots = mutableMapOf<String, QuickPlaylistUiSnapshot>()
@@ -1205,16 +1208,13 @@ fun QuickPlaylistsScreen(
                 direction = 1f
             }
 
-            val consumedDistance = listState.animateScrollBy(
-                value = direction * tabletAutoScrollStepPx,
-                animationSpec = tween(
-                    durationMillis = TABLET_AUTO_SCROLL_STEP_DURATION_MS,
-                    easing = LinearEasing
-                )
-            )
-            if (kotlin.math.abs(consumedDistance) < tabletAutoScrollStepPx * 0.5f) {
+            val tickDistance = tabletAutoScrollStepPx *
+                TABLET_AUTO_SCROLL_TICK_MS / TABLET_AUTO_SCROLL_STEP_DURATION_MS
+            val consumedDistance = listState.scrollBy(direction * tickDistance)
+            if (kotlin.math.abs(consumedDistance) < tickDistance * 0.5f) {
                 direction = -direction
             }
+            delay(TABLET_AUTO_SCROLL_TICK_MS.toLong())
         }
     }
 
@@ -1772,15 +1772,10 @@ fun QuickPlaylistsScreen(
                             .then(
                                 if (enableSlowAutoScroll) {
                                     Modifier.pointerInput(isPlaying, currentPlayingUri) {
-                                        awaitPointerEventScope {
-                                            while (true) {
-                                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                                if (
-                                                    isPlaying &&
-                                                    event.changes.any { change ->
-                                                        change.pressed && !change.previousPressed
-                                                    }
-                                                ) {
+                                        awaitEachGesture {
+                                            val down = awaitFirstDown(requireUnconsumed = false)
+                                            awaitTouchSlopOrCancellation(down.id) { _, _ ->
+                                                if (isPlaying) {
                                                     autoScrollStoppedByUser = true
                                                 }
                                             }
@@ -1942,6 +1937,7 @@ fun QuickPlaylistsScreen(
                                                 .weight(1f)
                                                 .clickable {
                                                     if (livePlaylistSelectionMode) {
+                                                        autoScrollStoppedByUser = true
                                                         prepareLivePlaylistSelection(uriString)
                                                         return@clickable
                                                     }
@@ -2797,6 +2793,7 @@ fun QuickPlaylistsScreen(
                                         .combinedClickable(
                                             onClick = {
                                                 if (livePlaylistSelectionMode) {
+                                                    autoScrollStoppedByUser = true
                                                     prepareLivePlaylistSelection(uriString)
                                                     return@combinedClickable
                                                 }
