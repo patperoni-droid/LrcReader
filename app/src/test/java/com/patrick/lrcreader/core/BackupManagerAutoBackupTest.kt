@@ -2,14 +2,31 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import org.mockito.MockedStatic
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.mockStatic
 import org.mockito.Mockito.`when`
 
 class BackupManagerAutoBackupTest {
+
+    private lateinit var androidLog: MockedStatic<Log>
+
+    @Before
+    fun setUp() {
+        androidLog = mockStatic(Log::class.java)
+    }
+
+    @After
+    fun tearDown() {
+        androidLog.close()
+    }
 
     @Test
     fun autoSave_returnsFailedNoWorkspace_whenWorkspaceIsNotUsable() {
@@ -28,7 +45,8 @@ class BackupManagerAutoBackupTest {
                 rootUri = null
             ),
             writer = writer,
-            jsonOverride = "{}"
+            jsonOverride = "{}",
+            elapsedRealtime = { 0L }
         )
 
         assertEquals(BackupManager.AutoBackupCode.FAILED_NO_WORKSPACE, result.code)
@@ -57,7 +75,8 @@ class BackupManagerAutoBackupTest {
                 rootUri = rootUri
             ),
             writer = writer,
-            jsonOverride = "{}"
+            jsonOverride = "{}",
+            elapsedRealtime = { 0L }
         )
 
         assertTrue(writer.wasCalled)
@@ -85,7 +104,8 @@ class BackupManagerAutoBackupTest {
                 rootUri = rootUri
             ),
             writer = writer,
-            jsonOverride = "{}"
+            jsonOverride = "{}",
+            elapsedRealtime = { 0L }
         )
 
         assertEquals(BackupManager.AutoBackupCode.FAILED_CREATE_FILE, result.code)
@@ -113,7 +133,8 @@ class BackupManagerAutoBackupTest {
                 rootUri = rootUri
             ),
             writer = writer,
-            jsonOverride = "{}"
+            jsonOverride = "{}",
+            elapsedRealtime = { 0L }
         )
 
         assertEquals(BackupManager.AutoBackupCode.FAILED_OPEN_STREAM, result.code)

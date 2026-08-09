@@ -977,14 +977,15 @@ object BackupManager {
         context: Context,
         snapshotOverride: WorkspaceResolver.Snapshot?,
         writer: AutoBackupWriter,
-        jsonOverride: String? = null
+        jsonOverride: String? = null,
+        elapsedRealtime: () -> Long = SystemClock::elapsedRealtime
     ): AutoBackupResult {
-        val startMs = SystemClock.elapsedRealtime()
+        val startMs = elapsedRealtime()
         val threadName = Thread.currentThread().name
         Log.e(ANR_BACKUP_TAG, "autosave:start thread=$threadName")
-        val resolveStartMs = SystemClock.elapsedRealtime()
+        val resolveStartMs = elapsedRealtime()
         val snapshot = snapshotOverride ?: WorkspaceResolver.resolve(context)
-        val resolveDurationMs = SystemClock.elapsedRealtime() - resolveStartMs
+        val resolveDurationMs = elapsedRealtime() - resolveStartMs
         logAutoBackupInfo(
             "step=start workspaceStatus=${snapshot.status} workspaceRoot=${snapshot.workspaceRootUri} setupTree=${snapshot.setupTreeUri}"
         )
@@ -1001,25 +1002,25 @@ object BackupManager {
             )
             Log.e(
                 ANR_BACKUP_TAG,
-                "autosave:end durationMs=${SystemClock.elapsedRealtime() - startMs} thread=$threadName result=${failure.code}"
+                "autosave:end durationMs=${elapsedRealtime() - startMs} thread=$threadName result=${failure.code}"
             )
             return failure
         }
 
-        val exportStartMs = SystemClock.elapsedRealtime()
+        val exportStartMs = elapsedRealtime()
         val json = jsonOverride ?: exportState(
             context = context,
             lastPlayer = null,
             libraryFolders = emptyList()
         )
-        val exportDurationMs = SystemClock.elapsedRealtime() - exportStartMs
+        val exportDurationMs = elapsedRealtime() - exportStartMs
         Log.e(
             ANR_BACKUP_TAG,
             "autosave:export_done durationMs=$exportDurationMs thread=$threadName jsonLength=${json.length}"
         )
 
         val rootUri = snapshot.workspaceRootUri
-        val writeStartMs = SystemClock.elapsedRealtime()
+        val writeStartMs = elapsedRealtime()
         val result = when (rootUri.scheme) {
             "content" -> writer.writeSaf(
                 context = context,
@@ -1044,7 +1045,7 @@ object BackupManager {
         }
         Log.e(
             ANR_BACKUP_TAG,
-            "autosave:end durationMs=${SystemClock.elapsedRealtime() - startMs} resolveDurationMs=$resolveDurationMs exportDurationMs=$exportDurationMs writeDurationMs=${SystemClock.elapsedRealtime() - writeStartMs} thread=$threadName result=${result.code}"
+            "autosave:end durationMs=${elapsedRealtime() - startMs} resolveDurationMs=$resolveDurationMs exportDurationMs=$exportDurationMs writeDurationMs=${elapsedRealtime() - writeStartMs} thread=$threadName result=${result.code}"
         )
         return result
     }
