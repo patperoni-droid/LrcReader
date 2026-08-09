@@ -197,7 +197,8 @@ object ArrangementVariantStore {
             val id: String,
             val targetDir: File,
             val tempDir: File,
-            val backupDir: File
+            val backupDir: File,
+            val customTitle: SmpConfig.CustomTitleContract?
         )
 
         val pending = mutableListOf<PendingVariant>()
@@ -253,7 +254,8 @@ object ArrangementVariantStore {
                     id = variant.id,
                     targetDir = targetDir,
                     tempDir = tempDir,
-                    backupDir = backupDir
+                    backupDir = backupDir,
+                    customTitle = variant.customTitle
                 )
             } catch (error: Throwable) {
                 tempDir.deleteRecursively()
@@ -262,6 +264,7 @@ object ArrangementVariantStore {
         }
 
         val published = mutableListOf<PendingVariant>()
+        val previousCustomTitles = mutableListOf<Pair<String, SmpConfig.CustomTitleContract>>()
         try {
             pending.forEach { item ->
                 if (item.targetDir.exists() && !item.targetDir.renameTo(item.backupDir)) {
@@ -275,7 +278,22 @@ object ArrangementVariantStore {
                 }
                 published += item
             }
+            published.forEach { item ->
+                val incomingCustomTitle = item.customTitle ?: return@forEach
+                val previousCustomTitle = captureCustomTitleContract(context, item.id)
+                if (!applyCustomTitleContract(context, item.id, incomingCustomTitle)) {
+                    throw IOException("Unable to restore Arrangement variant custom title: ${item.id}")
+                }
+                previousCustomTitles += item.id to previousCustomTitle
+            }
         } catch (error: Throwable) {
+            previousCustomTitles.asReversed().forEach { (songId, previousCustomTitle) ->
+                if (!applyCustomTitleContract(context, songId, previousCustomTitle)) {
+                    error.addSuppressed(
+                        IOException("Unable to rollback Arrangement variant custom title: $songId")
+                    )
+                }
+            }
             published.asReversed().forEach { item ->
                 item.targetDir.deleteRecursively()
                 if (item.backupDir.exists()) {

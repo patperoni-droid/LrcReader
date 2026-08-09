@@ -163,6 +163,7 @@ class SmpImporter(private val context: Context) {
         }
 
         var importedDir: File? = null
+        var parentCustomTitleRollback: Pair<String, SmpConfig.CustomTitleContract>? = null
 
         try {
             val extractStartMs = SystemClock.elapsedRealtime()
@@ -289,6 +290,13 @@ class SmpImporter(private val context: Context) {
             if (!SmpMetaStore.write(songUnit)) {
                 Log.w(TAG, "Ecriture meta.json impossible après import songId=$songId dir=${destinationDir.absolutePath}")
             }
+            config.customTitle?.let { incomingCustomTitle ->
+                val previousCustomTitle = captureCustomTitleContract(context, songId)
+                if (!applyCustomTitleContract(context, songId, incomingCustomTitle)) {
+                    throw IOException("Impossible de restaurer le titre personnalisé du parent: $songId")
+                }
+                parentCustomTitleRollback = songId to previousCustomTitle
+            }
             extracted.arrangementVariants?.let { variantsArchive ->
                 val restoreResult = ArrangementVariantStore.restoreFromArchive(
                     context = context,
@@ -314,9 +322,20 @@ class SmpImporter(private val context: Context) {
                             )
                         }
                     }
+                    parentCustomTitleRollback?.let { (rollbackSongId, previousCustomTitle) ->
+                        if (!applyCustomTitleContract(context, rollbackSongId, previousCustomTitle)) {
+                            Log.e(
+                                TAG,
+                                "Rollback du titre personnalisé parent impossible songId=$rollbackSongId"
+                            )
+                        }
+                        parentCustomTitleRollback = null
+                    }
                     return null
                 }
             }
+
+            parentCustomTitleRollback = null
 
             Log.d(
                 TAG,
@@ -332,6 +351,15 @@ class SmpImporter(private val context: Context) {
             )
             return songUnit
         } catch (e: Exception) {
+            parentCustomTitleRollback?.let { (rollbackSongId, previousCustomTitle) ->
+                if (!applyCustomTitleContract(context, rollbackSongId, previousCustomTitle)) {
+                    Log.e(
+                        TAG,
+                        "Rollback du titre personnalisé parent impossible songId=$rollbackSongId"
+                    )
+                }
+                parentCustomTitleRollback = null
+            }
             lastFailureReason = "exception pendant l'import"
             Log.e(TAG, "Erreur pendant l'import du .smp name=$displayName uri=$uri", e)
             Log.e(TRACE_TAG, "step=import_failed uri=$uri reason=exception", e)

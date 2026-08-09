@@ -453,6 +453,7 @@ object SmpExporter {
                     lyricsEditorRaw = resolveLyricsEditorRawPathForExport(variant)
                         ?.let(::File)
                         ?.readText(Charsets.UTF_8),
+                    customTitle = captureCustomTitleContract(context, variant.id),
                     lyricsLineColors = File(variantDir, CONFIG_ENTRY_NAME)
                         .takeIf(File::isFile)
                         ?.let { configFile ->

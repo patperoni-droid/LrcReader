@@ -2543,9 +2543,9 @@ fun QuickPlaylistsScreen(
                                 }
                             } else {
                                 if (smpSongId != null) {
-                                    smpCustomTitle
+                                    smpAliasTitle
+                                        ?: smpCustomTitle
                                         ?: smpLibraryTitle
-                                        ?: smpAliasTitle
                                         ?: stringResource(R.string.quickplaylists_missing_title)
                                 } else {
                                     // 👉 Audio normal (alias global)
@@ -4569,9 +4569,9 @@ private fun buildQuickPlaylistSearchTitle(
 
     val smpSongId = getSmpSongId(item)
     if (smpSongId != null) {
-        return cleanQuickPlaylistTitle(PlaylistRepository.getAnyCustomTitleForUri(item))
+        return cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, buildSmpItem(smpSongId)))
+            ?: cleanQuickPlaylistTitle(PlaylistRepository.getAnyCustomTitleForUri(item))
             ?: cleanQuickPlaylistTitle(smpTitleById[smpSongId])
-            ?: cleanQuickPlaylistTitle(TitleAliasesStore.getTitleForTrack(context, buildSmpItem(smpSongId)))
             ?: context.getString(R.string.quickplaylists_missing_title)
     }
 

@@ -17,8 +17,27 @@ data class SmpConfig(
     val id: String?,
     val files: FilesConfig? = null,
     val playback: PlaybackConfig? = null,
-    val lyricsLineColors: Map<String, Int>? = null
+    val lyricsLineColors: Map<String, Int>? = null,
+    val customTitle: CustomTitleContract? = null
 ) {
+    data class CustomTitleContract(
+        val value: String?
+    ) {
+        internal fun encodeInto(json: JSONObject, key: String) {
+            json.put(key, value ?: JSONObject.NULL)
+        }
+
+        companion object {
+            internal fun decodeFrom(json: JSONObject, key: String): CustomTitleContract? {
+                if (!json.has(key)) return null
+                if (json.isNull(key)) return CustomTitleContract(value = null)
+                return CustomTitleContract(
+                    value = json.optString(key).trim().ifBlank { null }
+                )
+            }
+        }
+    }
+
     data class FilesConfig(
         val audio: String?,
         val lyrics: String?,
@@ -194,6 +213,7 @@ data class SmpConfig(
                 }
                 put("lyricsLineColors", colorsJson)
             }
+            customTitle?.encodeInto(this, "customTitle")
         }
     }
 
@@ -214,7 +234,8 @@ data class SmpConfig(
                     context = context,
                     songUnit = songUnit
                 ),
-                lyricsLineColors = readLyricsLineColorsFromSongUnit(songUnit)
+                lyricsLineColors = readLyricsLineColorsFromSongUnit(songUnit),
+                customTitle = captureCustomTitleContract(context, songUnit.id)
             )
         }
 
@@ -235,7 +256,8 @@ data class SmpConfig(
                     id = json.optString("id").trim().ifBlank { null },
                     files = parseFiles(json),
                     playback = parsePlayback(json),
-                    lyricsLineColors = parseLyricsLineColors(json)
+                    lyricsLineColors = parseLyricsLineColors(json),
+                    customTitle = CustomTitleContract.decodeFrom(json, "customTitle")
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Impossible de parser config.json", e)

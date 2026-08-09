@@ -2835,7 +2835,8 @@ class MainActivity : AppCompatActivity() {
                         allowPlayerOpen = openPlayerScreen || preparedArrangement != null
                     )
 
-                    val backingTitle = playbackTitle
+                    val backingTitle = TitleAliasesStore.getTitleForTrack(ctx, playbackIdentity)
+                        ?: playbackTitle
                         ?: TitleAliasesStore.getTitleForTrack(ctx, uriString)
                         ?: indexAll.firstOrNull { it.uriString == uriString }?.name
                         ?: Uri.parse(uriString).lastPathSegment
@@ -3337,30 +3338,6 @@ class MainActivity : AppCompatActivity() {
                         SMP_PLAY_TRACE_TAG,
                         "RESOLVE_SMP ok songId=${song.id} resolvedUri=$resolvedUri playlist=$playlistName"
                     )
-                    runCatching {
-                        val loadedTitle = sanitizeDisplayTrackTitle(song.title)
-                        Log.d(
-                            "PLAYER_DIAG",
-                            "loadedTitle=${loadedTitle ?: "null"} songId=${song.id} uri=$resolvedUri"
-                        )
-                        if (
-                            loadedTitle != null &&
-                            sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, resolvedUri)) == null
-                        ) {
-                            TitleAliasesStore.setTitleForTrack(ctx, resolvedUri, song.title)
-                            Log.d(
-                                "PLAYER_DIAG",
-                                "updatedLibraryTitle=$loadedTitle songId=${song.id} uri=$resolvedUri"
-                            )
-                        }
-                    }.onFailure { error ->
-                        Log.w(
-                            "SMP",
-                            "Alias SMP non enregistré: songId=${song.id} uri=$resolvedUri",
-                            error
-                        )
-                    }
-
                     Log.i(
                         "SMP",
                         "Lecture SMP résolue: songId=${song.id} title=${song.title} uri=$resolvedUri playlist=$playlistName"

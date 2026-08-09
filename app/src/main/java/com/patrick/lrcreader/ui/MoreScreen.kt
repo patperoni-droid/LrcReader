@@ -100,7 +100,6 @@ import com.patrick.lrcreader.core.TabletExperimentalModePrefs
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.UiEntryPrefs
 import com.patrick.lrcreader.core.WorkspaceResolver
-import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.backup.BackupBundleImportedSong
 import com.patrick.lrcreader.core.backup.BackupStateRemapResult
 import com.patrick.lrcreader.core.backup.BackupStateRemapper
@@ -109,7 +108,6 @@ import com.patrick.lrcreader.core.isGroupEnd
 import com.patrick.lrcreader.core.isGroupHeader
 import com.patrick.lrcreader.core.isPrompterItem
 import com.patrick.lrcreader.core.config.PlaylistStateStore
-import com.patrick.lrcreader.core.config.TitleAliasesStore
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
@@ -2672,20 +2670,6 @@ private fun restoreLibraryFromBackupFolder(
                 importedCount += 1
                 lastImportedSongId = importedSong.id
                 importedOrExistingSongIds += importedSong.id
-                val cleanImportedTitle = importedSong.title
-                    .trim()
-                    .takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
-                if (cleanImportedTitle != null) {
-                    TitleAliasesStore.setTitleForTrack(
-                        context = context,
-                        trackUriString = buildSmpItem(importedSong.id),
-                        newTitle = cleanImportedTitle
-                    )
-                    Log.d(
-                        RESTORE_DIAG_TAG,
-                        "libraryRegister songId=${importedSong.id} updatedLibraryTitle=$cleanImportedTitle"
-                    )
-                }
                 Log.d(
                     RESTORE_DIAG_TAG,
                     "libraryRegister songId=${importedSong.id}"

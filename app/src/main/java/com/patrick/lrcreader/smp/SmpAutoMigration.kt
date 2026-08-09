@@ -49,6 +49,7 @@ class SmpAutoMigration(private val context: Context) {
             Log.w(TAG, "Migration SMP ignorée: URI non supportée trackUri=$trackUriString")
             return@withContext null
         }
+        val legacyCustomTitle = TitleAliasesStore.getTitleForTrack(context, trackUriString)
 
         val tempArchiveFile = if (isolatedDocument) {
             converter.convertSingleToTempArchive(sourceUri).getOrNull()
@@ -83,14 +84,16 @@ class SmpAutoMigration(private val context: Context) {
             }
 
             val resolvedTrackUri = Uri.fromFile(File(audioPath)).toString()
-            runCatching {
-                TitleAliasesStore.setTitleForTrack(context, resolvedTrackUri, importedSong.title)
-            }.onFailure { error ->
-                Log.w(
-                    TAG,
-                    "Alias titre SMP non enregistré songId=${importedSong.id} uri=$resolvedTrackUri",
-                    error
-                )
+            legacyCustomTitle?.let { customTitle ->
+                runCatching {
+                    TitleAliasesStore.setTitleForTrack(context, resolvedTrackUri, customTitle)
+                }.onFailure { error ->
+                    Log.w(
+                        TAG,
+                        "Alias titre SMP non enregistré songId=${importedSong.id} uri=$resolvedTrackUri",
+                        error
+                    )
+                }
             }
 
             Log.i(
