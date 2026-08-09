@@ -441,6 +441,7 @@ object SmpExporter {
                     grid = File(variantDir, GRID_ENTRY_NAME)
                         .takeIf(File::isFile)
                         ?.readText(Charsets.UTF_8),
+                    prompter = resolveVariantPrompterForExport(variant),
                     lyricsLineColors = File(variantDir, CONFIG_ENTRY_NAME)
                         .takeIf(File::isFile)
                         ?.let { configFile ->
@@ -459,6 +460,25 @@ object SmpExporter {
             sourceSongId = sourceSong.id,
             variants = variants,
             selectedVariantId = selectedVariantId
+        )
+    }
+
+    internal fun resolveVariantPrompterForExport(
+        variant: SongUnit
+    ): ArrangementVariantPrompterArchiveAsset? {
+        val prompterFile = variant.prompterPath
+            ?.takeIf(String::isNotBlank)
+            ?.let(::File)
+            ?.takeIf(File::isFile)
+            ?: return null
+        val format = when (prompterFile.extension.lowercase()) {
+            "txt" -> "txt"
+            "json" -> "json"
+            else -> return null
+        }
+        return ArrangementVariantPrompterArchiveAsset(
+            format = format,
+            content = prompterFile.readText(Charsets.UTF_8)
         )
     }
 

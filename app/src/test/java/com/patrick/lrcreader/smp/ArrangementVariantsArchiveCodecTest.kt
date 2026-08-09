@@ -39,6 +39,10 @@ class ArrangementVariantsArchiveCodecTest {
                     chords = "[00:01.00]Am\n[00:03.00]G",
                     lyricsLineColors = mapOf(
                         "1000|Première ligne" to 0x123456
+                    ),
+                    prompter = ArrangementVariantPrompterArchiveAsset(
+                        format = "txt",
+                        content = "Couplet écouté\n\nRefrain"
                     )
                 )
             )
@@ -69,6 +73,13 @@ class ArrangementVariantsArchiveCodecTest {
             mapOf("1000|Première ligne" to 0x123456),
             decoded.variants.single().lyricsLineColors
         )
+        assertEquals(
+            ArrangementVariantPrompterArchiveAsset(
+                format = "txt",
+                content = "Couplet écouté\n\nRefrain"
+            ),
+            decoded.variants.single().prompter
+        )
     }
 
     @Test
@@ -83,6 +94,7 @@ class ArrangementVariantsArchiveCodecTest {
         assertEquals(null, decoded.variants.single().midiCues)
         assertEquals(null, decoded.variants.single().dmxCues)
         assertEquals(null, decoded.variants.single().grid)
+        assertEquals(null, decoded.variants.single().prompter)
         assertEquals(null, decoded.selectedVariantId)
     }
 

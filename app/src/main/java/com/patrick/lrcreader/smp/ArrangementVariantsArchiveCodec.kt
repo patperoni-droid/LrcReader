@@ -14,7 +14,13 @@ internal data class ArrangementVariantArchiveEntry(
     val annotations: String? = null,
     val midiCues: String? = null,
     val dmxCues: String? = null,
-    val grid: String? = null
+    val grid: String? = null,
+    val prompter: ArrangementVariantPrompterArchiveAsset? = null
+)
+
+internal data class ArrangementVariantPrompterArchiveAsset(
+    val format: String,
+    val content: String
 )
 
 internal data class ArrangementVariantsArchive(
@@ -37,6 +43,7 @@ internal object ArrangementVariantsArchiveCodec {
     private const val MAX_MIDI_CUES_BYTES = 1024 * 1024
     private const val MAX_DMX_CUES_BYTES = 1024 * 1024
     private const val MAX_GRID_BYTES = 64 * 1024
+    internal const val MAX_PROMPTER_BYTES = 1024 * 1024
     private const val MAX_LYRICS_LINE_COLORS = 10_000
     private val SAFE_ID = Regex("[A-Za-z0-9._-]+")
 
@@ -123,7 +130,8 @@ internal object ArrangementVariantsArchiveCodec {
                         annotations = assets?.annotations,
                         midiCues = assets?.midiCues,
                         dmxCues = assets?.dmxCues,
-                        grid = assets?.grid
+                        grid = assets?.grid,
+                        prompter = assets?.prompter
                     )
                 )
             }
@@ -169,7 +177,8 @@ internal object ArrangementVariantsArchiveCodec {
         val annotations: String?,
         val midiCues: String?,
         val dmxCues: String?,
-        val grid: String?
+        val grid: String?,
+        val prompter: ArrangementVariantPrompterArchiveAsset?
     )
 
     private fun encodeAssets(variant: ArrangementVariantArchiveEntry): JSONObject? {
@@ -181,6 +190,7 @@ internal object ArrangementVariantsArchiveCodec {
         val midiCues = variant.midiCues?.also(::validateMidiCues)
         val dmxCues = variant.dmxCues?.also(::validateDmxCues)
         val grid = variant.grid?.also(::validateGrid)
+        val prompter = variant.prompter?.also(::validatePrompter)
         if (
             lyrics == null &&
             chords == null &&
@@ -189,7 +199,8 @@ internal object ArrangementVariantsArchiveCodec {
             annotations == null &&
             midiCues == null &&
             dmxCues == null &&
-            grid == null
+            grid == null &&
+            prompter == null
         ) {
             return null
         }
@@ -201,6 +212,14 @@ internal object ArrangementVariantsArchiveCodec {
             midiCues?.let { put("midiCues", it) }
             dmxCues?.let { put("dmxCues", it) }
             grid?.let { put("grid", it) }
+            prompter?.let { asset ->
+                put(
+                    "prompter",
+                    JSONObject()
+                        .put("format", asset.format)
+                        .put("content", asset.content)
+                )
+            }
             lyricsLineColors?.let { colors ->
                 put(
                     "lyricsLineColors",
@@ -259,6 +278,15 @@ internal object ArrangementVariantsArchiveCodec {
         } else {
             null
         }
+        val prompter = if (json.has("prompter") && !json.isNull("prompter")) {
+            val prompterJson = json.getJSONObject("prompter")
+            ArrangementVariantPrompterArchiveAsset(
+                format = prompterJson.getString("format"),
+                content = prompterJson.getString("content")
+            ).also(::validatePrompter)
+        } else {
+            null
+        }
         return VariantAssets(
             lyrics = lyrics,
             chords = chords,
@@ -267,7 +295,8 @@ internal object ArrangementVariantsArchiveCodec {
             annotations = annotations,
             midiCues = midiCues,
             dmxCues = dmxCues,
-            grid = grid
+            grid = grid,
+            prompter = prompter
         )
     }
 
@@ -310,6 +339,15 @@ internal object ArrangementVariantsArchiveCodec {
     private fun validateGrid(grid: String) {
         require(grid.toByteArray(Charsets.UTF_8).size <= MAX_GRID_BYTES) {
             "Arrangement variant grid is too large"
+        }
+    }
+
+    private fun validatePrompter(prompter: ArrangementVariantPrompterArchiveAsset) {
+        require(prompter.format == "txt" || prompter.format == "json") {
+            "Unsupported Arrangement variant prompter format"
+        }
+        require(prompter.content.toByteArray(Charsets.UTF_8).size <= MAX_PROMPTER_BYTES) {
+            "Arrangement variant prompter is too large"
         }
     }
 

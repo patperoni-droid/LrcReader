@@ -15,6 +15,12 @@ object ArrangementVariantStore {
     private const val LYRICS_FILE_NAME = "lyrics.lrc"
     private const val CHORDS_FILE_NAME = "chords.lrc"
     private const val GRID_FILE_NAME = "grid.json"
+    private val PROMPTER_FILE_NAMES = listOf(
+        "prompteur.txt",
+        "prompteur.json",
+        "prompter.txt",
+        "prompter.json"
+    )
 
     internal data class RestoreResult(
         val restoredVariantIds: List<String>,
@@ -238,7 +244,8 @@ object ArrangementVariantStore {
                     archivedAnnotations = variant.annotations,
                     archivedMidiCues = variant.midiCues,
                     archivedDmxCues = variant.dmxCues,
-                    archivedGrid = variant.grid
+                    archivedGrid = variant.grid,
+                    archivedPrompter = variant.prompter
                 )
                 pending += PendingVariant(
                     id = variant.id,
@@ -316,7 +323,8 @@ object ArrangementVariantStore {
         archivedAnnotations: String? = null,
         archivedMidiCues: String? = null,
         archivedDmxCues: String? = null,
-        archivedGrid: String? = null
+        archivedGrid: String? = null,
+        archivedPrompter: ArrangementVariantPrompterArchiveAsset? = null
     ) {
         existingVariantDir
             ?.takeIf(File::isDirectory)
@@ -402,6 +410,18 @@ object ArrangementVariantStore {
         }
         archivedGrid?.let { grid ->
             File(targetDir, GRID_FILE_NAME).writeText(grid, Charsets.UTF_8)
+        }
+        archivedPrompter?.let { prompter ->
+            PROMPTER_FILE_NAMES.forEach { fileName ->
+                val aliasFile = File(targetDir, fileName)
+                if (aliasFile.exists() && !aliasFile.deleteRecursively()) {
+                    throw IOException("Unable to replace Arrangement variant prompter: $fileName")
+                }
+            }
+            File(targetDir, "prompter.${prompter.format}").writeText(
+                prompter.content,
+                Charsets.UTF_8
+            )
         }
     }
 }
