@@ -3,6 +3,7 @@ package com.patrick.lrcreader.smp
 import android.content.Context
 import android.os.Environment
 import android.util.Log
+import com.patrick.lrcreader.core.LrcStorage
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -111,6 +112,13 @@ object SmpExporter {
                     label = "lyrics",
                     sourcePath = exportSong.lyricsPath,
                     entryName = config.files?.lyrics,
+                    ignoredFiles = ignoredFiles
+                )
+                exportedFiles += writeAssetEntry(
+                    zipOutput = zipOutput,
+                    label = "lyricsEditorRaw",
+                    sourcePath = resolveLyricsEditorRawPathForExport(exportSong),
+                    entryName = LrcStorage.LYRICS_EDITOR_RAW_FILE_NAME,
                     ignoredFiles = ignoredFiles
                 )
                 exportedFiles += writeAssetEntry(
@@ -442,6 +450,9 @@ object SmpExporter {
                         .takeIf(File::isFile)
                         ?.readText(Charsets.UTF_8),
                     prompter = resolveVariantPrompterForExport(variant),
+                    lyricsEditorRaw = resolveLyricsEditorRawPathForExport(variant)
+                        ?.let(::File)
+                        ?.readText(Charsets.UTF_8),
                     lyricsLineColors = File(variantDir, CONFIG_ENTRY_NAME)
                         .takeIf(File::isFile)
                         ?.let { configFile ->
@@ -480,6 +491,21 @@ object SmpExporter {
             format = format,
             content = prompterFile.readText(Charsets.UTF_8)
         )
+    }
+
+    internal fun resolveLyricsEditorRawPathForExport(songUnit: SongUnit): String? {
+        val songDir = songUnit.storageFolder
+            ?.takeIf(String::isNotBlank)
+            ?.let(::File)
+            ?.takeIf(File::isDirectory)
+            ?: return null
+        val rawFile = File(songDir, LrcStorage.LYRICS_EDITOR_RAW_FILE_NAME)
+            .takeIf(File::isFile)
+            ?: return null
+        require(rawFile.length() <= ArrangementVariantsArchiveCodec.MAX_LYRICS_EDITOR_RAW_BYTES) {
+            "Raw lyrics draft is too large"
+        }
+        return rawFile.absolutePath
     }
 
     internal fun resolveExportRequest(

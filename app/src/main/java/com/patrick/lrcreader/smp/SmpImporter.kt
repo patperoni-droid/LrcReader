@@ -7,6 +7,7 @@ import android.os.SystemClock
 import android.provider.OpenableColumns
 import android.util.Log
 import com.patrick.lrcreader.core.EditSoundPrefs
+import com.patrick.lrcreader.core.LrcStorage
 import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -392,6 +393,12 @@ class SmpImporter(private val context: Context) {
                                                 maximumBytes = ArrangementVariantsArchiveCodec.MAX_ARCHIVE_BYTES
                                             )
                                             rawArrangementVariants = String(bytes, Charsets.UTF_8)
+                                        } else if (canonicalName == LrcStorage.LYRICS_EDITOR_RAW_FILE_NAME) {
+                                            val bytes = readEntryBytes(
+                                                zipInputStream = zipInputStream,
+                                                maximumBytes = ArrangementVariantsArchiveCodec.MAX_LYRICS_EDITOR_RAW_BYTES
+                                            )
+                                            writeBytes(destination, bytes)
                                         } else {
                                             writeEntry(zipInputStream, destination)
                                         }
@@ -515,6 +522,7 @@ class SmpImporter(private val context: Context) {
             fileName == CONFIG_FILE_NAME -> CONFIG_FILE_NAME
             isAudioFile(fileName) -> fileName
             fileName == "lyrics.lrc" -> fileName
+            fileName == LrcStorage.LYRICS_EDITOR_RAW_FILE_NAME -> fileName
             fileName == "chords.lrc" -> fileName
             fileName == SmpTimelineStore.TIMELINE_FILE_NAME -> fileName
             fileName == WAVEFORM_FILE_NAME -> fileName
@@ -829,6 +837,8 @@ class SmpImporter(private val context: Context) {
             private set
         var lyricsFileName: String? = null
             private set
+        var lyricsEditorRawFileName: String? = null
+            private set
         var chordsFileName: String? = null
             private set
         var timelineFileName: String? = null
@@ -851,6 +861,7 @@ class SmpImporter(private val context: Context) {
                 fileName == CONFIG_FILE_NAME -> hasConfig = true
                 isAudioFile(fileName) -> audioFileName = fileName
                 fileName == "lyrics.lrc" -> lyricsFileName = fileName
+                fileName == LrcStorage.LYRICS_EDITOR_RAW_FILE_NAME -> lyricsEditorRawFileName = fileName
                 fileName == "chords.lrc" -> chordsFileName = fileName
                 fileName == SmpTimelineStore.TIMELINE_FILE_NAME -> timelineFileName = fileName
                 fileName == WAVEFORM_FILE_NAME -> waveformFileName = fileName
@@ -865,6 +876,7 @@ class SmpImporter(private val context: Context) {
         fun hasImportableContent(): Boolean {
             return audioFileName != null ||
                 lyricsFileName != null ||
+                lyricsEditorRawFileName != null ||
                 chordsFileName != null ||
                 timelineFileName != null ||
                 waveformFileName != null ||

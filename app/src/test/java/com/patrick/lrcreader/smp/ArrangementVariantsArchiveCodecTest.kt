@@ -43,7 +43,8 @@ class ArrangementVariantsArchiveCodecTest {
                     prompter = ArrangementVariantPrompterArchiveAsset(
                         format = "txt",
                         content = "Couplet écouté\n\nRefrain"
-                    )
+                    ),
+                    lyricsEditorRaw = "\n  Couplet écouté  \n\n\tRefrain\n"
                 )
             )
         )
@@ -80,6 +81,10 @@ class ArrangementVariantsArchiveCodecTest {
             ),
             decoded.variants.single().prompter
         )
+        assertEquals(
+            "\n  Couplet écouté  \n\n\tRefrain\n",
+            decoded.variants.single().lyricsEditorRaw
+        )
     }
 
     @Test
@@ -95,6 +100,7 @@ class ArrangementVariantsArchiveCodecTest {
         assertEquals(null, decoded.variants.single().dmxCues)
         assertEquals(null, decoded.variants.single().grid)
         assertEquals(null, decoded.variants.single().prompter)
+        assertEquals(null, decoded.variants.single().lyricsEditorRaw)
         assertEquals(null, decoded.selectedVariantId)
     }
 

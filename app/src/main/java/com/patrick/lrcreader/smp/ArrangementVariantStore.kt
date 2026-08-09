@@ -1,6 +1,7 @@
 package com.patrick.lrcreader.smp
 
 import android.content.Context
+import com.patrick.lrcreader.core.LrcStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -245,7 +246,8 @@ object ArrangementVariantStore {
                     archivedMidiCues = variant.midiCues,
                     archivedDmxCues = variant.dmxCues,
                     archivedGrid = variant.grid,
-                    archivedPrompter = variant.prompter
+                    archivedPrompter = variant.prompter,
+                    archivedLyricsEditorRaw = variant.lyricsEditorRaw
                 )
                 pending += PendingVariant(
                     id = variant.id,
@@ -324,7 +326,8 @@ object ArrangementVariantStore {
         archivedMidiCues: String? = null,
         archivedDmxCues: String? = null,
         archivedGrid: String? = null,
-        archivedPrompter: ArrangementVariantPrompterArchiveAsset? = null
+        archivedPrompter: ArrangementVariantPrompterArchiveAsset? = null,
+        archivedLyricsEditorRaw: String? = null
     ) {
         existingVariantDir
             ?.takeIf(File::isDirectory)
@@ -380,6 +383,21 @@ object ArrangementVariantStore {
         )
         archivedLyrics?.let { lyrics ->
             File(targetDir, LYRICS_FILE_NAME).writeText(lyrics, Charsets.UTF_8)
+        }
+        when {
+            archivedLyricsEditorRaw != null -> {
+                File(targetDir, LrcStorage.LYRICS_EDITOR_RAW_FILE_NAME).writeText(
+                    archivedLyricsEditorRaw,
+                    Charsets.UTF_8
+                )
+            }
+
+            archivedLyrics != null -> {
+                val existingRaw = File(targetDir, LrcStorage.LYRICS_EDITOR_RAW_FILE_NAME)
+                if (existingRaw.exists() && !existingRaw.delete()) {
+                    throw IOException("Unable to clear stale Arrangement variant raw lyrics draft")
+                }
+            }
         }
         archivedChords?.let { chords ->
             File(targetDir, CHORDS_FILE_NAME).writeText(chords, Charsets.UTF_8)

@@ -15,7 +15,8 @@ internal data class ArrangementVariantArchiveEntry(
     val midiCues: String? = null,
     val dmxCues: String? = null,
     val grid: String? = null,
-    val prompter: ArrangementVariantPrompterArchiveAsset? = null
+    val prompter: ArrangementVariantPrompterArchiveAsset? = null,
+    val lyricsEditorRaw: String? = null
 )
 
 internal data class ArrangementVariantPrompterArchiveAsset(
@@ -44,6 +45,7 @@ internal object ArrangementVariantsArchiveCodec {
     private const val MAX_DMX_CUES_BYTES = 1024 * 1024
     private const val MAX_GRID_BYTES = 64 * 1024
     internal const val MAX_PROMPTER_BYTES = 1024 * 1024
+    internal const val MAX_LYRICS_EDITOR_RAW_BYTES = 1024 * 1024
     private const val MAX_LYRICS_LINE_COLORS = 10_000
     private val SAFE_ID = Regex("[A-Za-z0-9._-]+")
 
@@ -131,7 +133,8 @@ internal object ArrangementVariantsArchiveCodec {
                         midiCues = assets?.midiCues,
                         dmxCues = assets?.dmxCues,
                         grid = assets?.grid,
-                        prompter = assets?.prompter
+                        prompter = assets?.prompter,
+                        lyricsEditorRaw = assets?.lyricsEditorRaw
                     )
                 )
             }
@@ -178,7 +181,8 @@ internal object ArrangementVariantsArchiveCodec {
         val midiCues: String?,
         val dmxCues: String?,
         val grid: String?,
-        val prompter: ArrangementVariantPrompterArchiveAsset?
+        val prompter: ArrangementVariantPrompterArchiveAsset?,
+        val lyricsEditorRaw: String?
     )
 
     private fun encodeAssets(variant: ArrangementVariantArchiveEntry): JSONObject? {
@@ -191,6 +195,7 @@ internal object ArrangementVariantsArchiveCodec {
         val dmxCues = variant.dmxCues?.also(::validateDmxCues)
         val grid = variant.grid?.also(::validateGrid)
         val prompter = variant.prompter?.also(::validatePrompter)
+        val lyricsEditorRaw = variant.lyricsEditorRaw?.also(::validateLyricsEditorRaw)
         if (
             lyrics == null &&
             chords == null &&
@@ -200,7 +205,8 @@ internal object ArrangementVariantsArchiveCodec {
             midiCues == null &&
             dmxCues == null &&
             grid == null &&
-            prompter == null
+            prompter == null &&
+            lyricsEditorRaw == null
         ) {
             return null
         }
@@ -220,6 +226,7 @@ internal object ArrangementVariantsArchiveCodec {
                         .put("content", asset.content)
                 )
             }
+            lyricsEditorRaw?.let { put("lyricsEditorRaw", it) }
             lyricsLineColors?.let { colors ->
                 put(
                     "lyricsLineColors",
@@ -287,6 +294,11 @@ internal object ArrangementVariantsArchiveCodec {
         } else {
             null
         }
+        val lyricsEditorRaw = if (json.has("lyricsEditorRaw") && !json.isNull("lyricsEditorRaw")) {
+            json.getString("lyricsEditorRaw").also(::validateLyricsEditorRaw)
+        } else {
+            null
+        }
         return VariantAssets(
             lyrics = lyrics,
             chords = chords,
@@ -296,7 +308,8 @@ internal object ArrangementVariantsArchiveCodec {
             midiCues = midiCues,
             dmxCues = dmxCues,
             grid = grid,
-            prompter = prompter
+            prompter = prompter,
+            lyricsEditorRaw = lyricsEditorRaw
         )
     }
 
@@ -348,6 +361,12 @@ internal object ArrangementVariantsArchiveCodec {
         }
         require(prompter.content.toByteArray(Charsets.UTF_8).size <= MAX_PROMPTER_BYTES) {
             "Arrangement variant prompter is too large"
+        }
+    }
+
+    private fun validateLyricsEditorRaw(rawText: String) {
+        require(rawText.toByteArray(Charsets.UTF_8).size <= MAX_LYRICS_EDITOR_RAW_BYTES) {
+            "Arrangement variant raw lyrics draft is too large"
         }
     }
 
