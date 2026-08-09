@@ -454,6 +454,11 @@ object SmpExporter {
                         ?.let(::File)
                         ?.readText(Charsets.UTF_8),
                     customTitle = captureCustomTitleContract(context, variant.id),
+                    playback = SmpVariantPlayback.resolveProfile(
+                        context = context,
+                        variant = variant,
+                        parent = sourceSong
+                    ),
                     lyricsLineColors = File(variantDir, CONFIG_ENTRY_NAME)
                         .takeIf(File::isFile)
                         ?.let { configFile ->

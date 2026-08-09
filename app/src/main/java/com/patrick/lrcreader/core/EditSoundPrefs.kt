@@ -6,6 +6,7 @@ import android.provider.DocumentsContract
 import android.util.Log
 import com.patrick.lrcreader.core.config.ConfigJsonAtomicFileIo
 import com.patrick.lrcreader.smp.SmpConfig
+import com.patrick.lrcreader.smp.SmpVariantPlayback
 import org.json.JSONObject
 import java.io.File
 
@@ -263,22 +264,18 @@ object EditSoundPrefs {
         val tmpFile = File(songDir, "$SMP_CONFIG_FILE_NAME.tmp")
 
         runCatching {
-            val currentConfig = SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
-                ?: return
-            val nextPlayback = SmpConfig.PlaybackConfig.fromStoredValues(
+            val rawJson = SmpVariantPlayback.mergeProfileUpdate(context, configFile) { current ->
+                current?.copy(
+                    trimStartMs = startMs.toLong(),
+                    trimEndMs = endMs.toLong().takeIf { it > 0L }
+                ) ?: SmpConfig.PlaybackConfig.fromStoredValues(
                 startMs = startMs.toLong(),
                 endMs = endMs.toLong(),
-                tempo = currentConfig.playback?.tempo,
-                pitchSemi = currentConfig.playback?.pitchSemi,
-                volumeDb = currentConfig.playback?.volumeDb,
-                volumeSource = currentConfig.playback?.volumeSource,
-                lufsMeasured = currentConfig.playback?.lufsMeasured,
-                lufsTarget = currentConfig.playback?.lufsTarget,
-                lufsAutoDb = currentConfig.playback?.lufsAutoDb,
-                lufsManualDb = currentConfig.playback?.lufsManualDb
-            )
-            val nextConfig = currentConfig.copy(playback = nextPlayback)
-            val rawJson = nextConfig.toJsonString()
+                tempo = null,
+                pitchSemi = null,
+                volumeDb = null
+                )
+            } ?: return
 
             songDir.mkdirs()
             tmpFile.writeText(rawJson, Charsets.UTF_8)
@@ -297,6 +294,10 @@ object EditSoundPrefs {
     }
 
     private fun resolveInternalSmpConfigFile(context: Context, uri: Uri): File? {
+        getSmpSongId(uri.toString())?.let { songId ->
+            return File(File(File(context.filesDir, TRACKS_DIR_NAME), songId), SMP_CONFIG_FILE_NAME)
+                .takeIf(File::isFile)
+        }
         if (uri.scheme != "file") return null
 
         val audioPath = uri.path?.takeIf { it.isNotBlank() } ?: return null

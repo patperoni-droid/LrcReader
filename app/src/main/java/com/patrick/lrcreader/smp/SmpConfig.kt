@@ -399,6 +399,7 @@ data class SmpConfig(
         }
 
         fun writeTrimPlaybackToSongUnit(
+            context: Context,
             songUnit: SongUnit,
             startMs: Int,
             endMs: Int
@@ -413,31 +414,39 @@ data class SmpConfig(
 
             val tmpFile = File(songDir, "config.json.tmp")
             return runCatching {
-                val currentConfig = fromJsonOrNull(configFile.readText(Charsets.UTF_8))
-                    ?: SmpConfig(
-                        title = songUnit.title.takeIf { it.isNotBlank() },
-                        id = songUnit.id.takeIf { it.isNotBlank() },
-                        files = FilesConfig.fromSongUnit(songUnit)
+                val rawJson = if (SmpVariantPlayback.isVariantConfig(configFile)) {
+                    SmpVariantPlayback.mergeProfileUpdate(context, configFile) { current ->
+                        current?.copy(
+                            trimStartMs = startMs.toLong(),
+                            trimEndMs = endMs.toLong().takeIf { it > 0L }
+                        )
+                    } ?: return false
+                } else {
+                    val currentConfig = fromJsonOrNull(configFile.readText(Charsets.UTF_8))
+                        ?: SmpConfig(
+                            title = songUnit.title.takeIf { it.isNotBlank() },
+                            id = songUnit.id.takeIf { it.isNotBlank() },
+                            files = FilesConfig.fromSongUnit(songUnit)
+                        )
+                    val nextPlayback = PlaybackConfig.fromStoredValues(
+                        startMs = startMs.toLong(),
+                        endMs = endMs.toLong(),
+                        tempo = currentConfig.playback?.tempo,
+                        pitchSemi = currentConfig.playback?.pitchSemi,
+                        volumeDb = currentConfig.playback?.volumeDb,
+                        volumeSource = currentConfig.playback?.volumeSource,
+                        lufsMeasured = currentConfig.playback?.lufsMeasured,
+                        lufsTarget = currentConfig.playback?.lufsTarget,
+                        lufsAutoDb = currentConfig.playback?.lufsAutoDb,
+                        lufsManualDb = currentConfig.playback?.lufsManualDb
                     )
-                val nextPlayback = PlaybackConfig.fromStoredValues(
-                    startMs = startMs.toLong(),
-                    endMs = endMs.toLong(),
-                    tempo = currentConfig.playback?.tempo,
-                    pitchSemi = currentConfig.playback?.pitchSemi,
-                    volumeDb = currentConfig.playback?.volumeDb,
-                    volumeSource = currentConfig.playback?.volumeSource,
-                    lufsMeasured = currentConfig.playback?.lufsMeasured,
-                    lufsTarget = currentConfig.playback?.lufsTarget,
-                    lufsAutoDb = currentConfig.playback?.lufsAutoDb,
-                    lufsManualDb = currentConfig.playback?.lufsManualDb
-                )
-                val nextConfig = currentConfig.copy(
-                    title = currentConfig.title ?: songUnit.title.takeIf { it.isNotBlank() },
-                    id = currentConfig.id ?: songUnit.id.takeIf { it.isNotBlank() },
-                    files = currentConfig.files ?: FilesConfig.fromSongUnit(songUnit),
-                    playback = nextPlayback
-                )
-                val rawJson = nextConfig.toJsonString()
+                    currentConfig.copy(
+                        title = currentConfig.title ?: songUnit.title.takeIf { it.isNotBlank() },
+                        id = currentConfig.id ?: songUnit.id.takeIf { it.isNotBlank() },
+                        files = currentConfig.files ?: FilesConfig.fromSongUnit(songUnit),
+                        playback = nextPlayback
+                    ).toJsonString()
+                }
                 tmpFile.writeText(rawJson, Charsets.UTF_8)
                 if (configFile.exists() && !configFile.delete()) {
                     Log.w(TAG, "writeTrimPlaybackToSongUnit delete failed path=${configFile.absolutePath}")

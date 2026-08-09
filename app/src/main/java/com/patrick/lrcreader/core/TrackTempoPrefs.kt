@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.smp.SmpConfig
+import com.patrick.lrcreader.smp.SmpVariantPlayback
 import java.io.File
 
 object TrackTempoPrefs {
@@ -29,7 +30,7 @@ object TrackTempoPrefs {
 
     fun saveTempo(context: Context, uri: String, tempo: Float) {
         val smpSaved = resolveInternalSmpConfigFile(context, uri)?.let { configFile ->
-            writeSmpTempo(configFile, tempo)
+            writeSmpTempo(context, configFile, tempo)
         }
         if (smpSaved == true) {
             return
@@ -52,6 +53,7 @@ object TrackTempoPrefs {
         }
 
         return runCatching {
+            SmpVariantPlayback.readExplicitProfile(configFile)?.tempo?.let { return@runCatching it }
             SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
                 ?.playback
                 ?.tempo
@@ -61,27 +63,20 @@ object TrackTempoPrefs {
         }
     }
 
-    private fun writeSmpTempo(configFile: File, tempo: Float): Boolean {
+    private fun writeSmpTempo(context: Context, configFile: File, tempo: Float): Boolean {
         val songDir = configFile.parentFile ?: return false
         val tmpFile = File(songDir, "$SMP_CONFIG_FILE_NAME.tmp")
 
         return runCatching {
-            val currentConfig = SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
-                ?: return false
-            val nextPlayback = SmpConfig.PlaybackConfig.fromStoredValues(
-                startMs = currentConfig.playback?.trimStartMs,
-                endMs = currentConfig.playback?.trimEndMs,
+            val rawJson = SmpVariantPlayback.mergeProfileUpdate(context, configFile) { current ->
+                current?.copy(tempo = tempo) ?: SmpConfig.PlaybackConfig.fromStoredValues(
+                startMs = null,
+                endMs = null,
                 tempo = tempo,
-                pitchSemi = currentConfig.playback?.pitchSemi,
-                volumeDb = currentConfig.playback?.volumeDb,
-                volumeSource = currentConfig.playback?.volumeSource,
-                lufsMeasured = currentConfig.playback?.lufsMeasured,
-                lufsTarget = currentConfig.playback?.lufsTarget,
-                lufsAutoDb = currentConfig.playback?.lufsAutoDb,
-                lufsManualDb = currentConfig.playback?.lufsManualDb
-            )
-            val nextConfig = currentConfig.copy(playback = nextPlayback)
-            val rawJson = nextConfig.toJsonString()
+                pitchSemi = null,
+                volumeDb = null
+                )
+            } ?: return false
 
             songDir.mkdirs()
             tmpFile.writeText(rawJson, Charsets.UTF_8)
@@ -102,6 +97,10 @@ object TrackTempoPrefs {
     }
 
     private fun resolveInternalSmpConfigFile(context: Context, uriString: String): File? {
+        getSmpSongId(uriString)?.let { songId ->
+            return File(File(File(context.filesDir, TRACKS_DIR_NAME), songId), SMP_CONFIG_FILE_NAME)
+                .takeIf(File::isFile)
+        }
         val trackUri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return null
         if (trackUri.scheme != "file") return null
 

@@ -17,7 +17,8 @@ internal data class ArrangementVariantArchiveEntry(
     val grid: String? = null,
     val prompter: ArrangementVariantPrompterArchiveAsset? = null,
     val lyricsEditorRaw: String? = null,
-    val customTitle: SmpConfig.CustomTitleContract? = null
+    val customTitle: SmpConfig.CustomTitleContract? = null,
+    val playback: SmpConfig.PlaybackConfig? = null
 )
 
 internal data class ArrangementVariantPrompterArchiveAsset(
@@ -70,6 +71,9 @@ internal object ArrangementVariantsArchiveCodec {
                         .put("title", title)
                         .put("arrangement", ArrangementJsonCodec.encode(variant.arrangement))
                 variant.customTitle?.encodeInto(variantJson, "customTitle")
+                variant.playback?.let { playback ->
+                    variantJson.put("playback", SmpVariantPlayback.encode(playback))
+                }
                 encodeAssets(variant)?.let { assets ->
                     variantJson.put("assets", assets)
                 }
@@ -140,7 +144,9 @@ internal object ArrangementVariantsArchiveCodec {
                         customTitle = SmpConfig.CustomTitleContract.decodeFrom(
                             item,
                             "customTitle"
-                        )
+                        ),
+                        playback = item.optJSONObject("playback")
+                            ?.let(SmpVariantPlayback::decode)
                     )
                 )
             }

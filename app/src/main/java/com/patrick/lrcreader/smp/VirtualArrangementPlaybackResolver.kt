@@ -12,6 +12,7 @@ data class PreparedVirtualArrangementPlayback(
     val title: String,
     val sourceSongId: String,
     val sourceAudioUri: String,
+    val playbackProfile: SmpConfig.PlaybackConfig?,
     val mediaItems: List<MediaItem>,
     val livePlan: LiveArrangementPlan
 ) {
@@ -83,6 +84,11 @@ object VirtualArrangementPlaybackResolver {
             title = variantSong.title,
             sourceSongId = sourceSongId,
             sourceAudioUri = sourceUri.toString(),
+            playbackProfile = SmpVariantPlayback.resolveProfile(
+                context = context,
+                variant = variantSong,
+                parent = sourceSong
+            ),
             mediaItems = mediaItems,
             livePlan = livePlan
         )

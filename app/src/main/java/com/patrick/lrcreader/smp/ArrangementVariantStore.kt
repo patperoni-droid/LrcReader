@@ -52,6 +52,7 @@ object ArrangementVariantStore {
             }
 
             val variantId = "arrangement_${UUID.randomUUID()}"
+            val initialPlayback = SmpVariantPlayback.initialProfileFromParent(context, sourceSong)
             val targetDir = File(tracksRoot, variantId)
             val tempDir = File(tracksRoot, ".$variantId.tmp")
             if (!tempDir.mkdirs()) {
@@ -74,6 +75,7 @@ object ArrangementVariantStore {
                             JSONObject()
                                 .put("sourceSongId", cleanSourceSongId)
                         )
+                        .put("playback", SmpVariantPlayback.encode(initialPlayback))
                         .toString(2),
                     Charsets.UTF_8
                 )
@@ -248,7 +250,8 @@ object ArrangementVariantStore {
                     archivedDmxCues = variant.dmxCues,
                     archivedGrid = variant.grid,
                     archivedPrompter = variant.prompter,
-                    archivedLyricsEditorRaw = variant.lyricsEditorRaw
+                    archivedLyricsEditorRaw = variant.lyricsEditorRaw,
+                    archivedPlayback = variant.playback
                 )
                 pending += PendingVariant(
                     id = variant.id,
@@ -345,7 +348,8 @@ object ArrangementVariantStore {
         archivedDmxCues: String? = null,
         archivedGrid: String? = null,
         archivedPrompter: ArrangementVariantPrompterArchiveAsset? = null,
-        archivedLyricsEditorRaw: String? = null
+        archivedLyricsEditorRaw: String? = null,
+        archivedPlayback: SmpConfig.PlaybackConfig? = null
     ) {
         existingVariantDir
             ?.takeIf(File::isDirectory)
@@ -390,6 +394,9 @@ object ArrangementVariantStore {
                     }
                 }
             )
+        }
+        archivedPlayback?.let { playback ->
+            configJson.put("playback", SmpVariantPlayback.encode(playback))
         }
         File(targetDir, CONFIG_FILE_NAME).writeText(
             configJson.toString(2),

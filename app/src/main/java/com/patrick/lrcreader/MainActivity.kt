@@ -1404,26 +1404,36 @@ class MainActivity : AppCompatActivity() {
                     resolveSessionSongIdFromTrackUri(currentPlayingUri)
                 }
 
-                fun effectiveMainPlaybackPositionMs(): Long {
-                    val arrangement = activeVirtualArrangementPlayback ?: return exoPlayer.currentPosition
-                    val currentMediaId = exoPlayer.currentMediaItem?.mediaId.orEmpty()
+                fun effectiveArrangementPlaybackPositionMs(
+                    player: ExoPlayer,
+                    arrangement: PreparedVirtualArrangementPlayback
+                ): Long {
+                    val currentMediaId = player.currentMediaItem?.mediaId.orEmpty()
                     val currentIndex = arrangement.livePlan.occurrences
                         .indexOfFirst { occurrence -> occurrence.key == currentMediaId }
                         .takeIf { it >= 0 }
-                        ?: exoPlayer.currentMediaItemIndex.coerceAtLeast(0)
+                        ?: player.currentMediaItemIndex.coerceAtLeast(0)
                     val elapsedBefore = arrangement.occurrenceDurationsMs
                         .take(currentIndex)
                         .fold(0L) { total, duration ->
                             if (duration > Long.MAX_VALUE - total) Long.MAX_VALUE else total + duration
                         }
-                    return (elapsedBefore + exoPlayer.currentPosition.coerceAtLeast(0L))
+                    return (elapsedBefore + player.currentPosition.coerceAtLeast(0L))
                         .coerceIn(0L, arrangement.durationMs)
                 }
 
-                fun seekMainPlaybackToMs(positionMs: Long) {
-                    val arrangement = activeVirtualArrangementPlayback
-                    if (arrangement == null || arrangement.occurrenceDurationsMs.isEmpty()) {
-                        exoPlayer.seekTo(positionMs)
+                fun effectiveMainPlaybackPositionMs(): Long {
+                    val arrangement = activeVirtualArrangementPlayback ?: return exoPlayer.currentPosition
+                    return effectiveArrangementPlaybackPositionMs(exoPlayer, arrangement)
+                }
+
+                fun seekArrangementPlaybackToMs(
+                    player: ExoPlayer,
+                    arrangement: PreparedVirtualArrangementPlayback,
+                    positionMs: Long
+                ) {
+                    if (arrangement.occurrenceDurationsMs.isEmpty()) {
+                        player.seekTo(positionMs)
                         return
                     }
                     armedVirtualArrangementOccurrenceIndex = null
@@ -1432,7 +1442,11 @@ class MainActivity : AppCompatActivity() {
                     var targetIndex = arrangement.occurrenceDurationsMs.lastIndex
                     var targetOffsetMs = arrangement.occurrenceDurationsMs.last().coerceAtLeast(0L)
                     for ((index, durationMs) in arrangement.occurrenceDurationsMs.withIndex()) {
-                        val nextElapsedMs = (elapsedMs + durationMs).coerceAtMost(arrangement.durationMs)
+                        val nextElapsedMs = if (durationMs > Long.MAX_VALUE - elapsedMs) {
+                            arrangement.durationMs
+                        } else {
+                            (elapsedMs + durationMs).coerceAtMost(arrangement.durationMs)
+                        }
                         if (safePositionMs < nextElapsedMs || index == arrangement.occurrenceDurationsMs.lastIndex) {
                             targetIndex = index
                             targetOffsetMs = (safePositionMs - elapsedMs).coerceIn(0L, durationMs)
@@ -1444,19 +1458,28 @@ class MainActivity : AppCompatActivity() {
                         .getOrNull(targetIndex)
                         ?.key
                     val queuedTargetIndex = targetMediaId?.let { mediaId ->
-                        (0 until exoPlayer.mediaItemCount)
-                            .firstOrNull { index -> exoPlayer.getMediaItemAt(index).mediaId == mediaId }
+                        (0 until player.mediaItemCount)
+                            .firstOrNull { index -> player.getMediaItemAt(index).mediaId == mediaId }
                     }
                     if (queuedTargetIndex != null) {
-                        exoPlayer.seekTo(queuedTargetIndex, targetOffsetMs)
+                        player.seekTo(queuedTargetIndex, targetOffsetMs)
                     } else {
-                        exoPlayer.setMediaItems(
+                        player.setMediaItems(
                             arrangement.mediaItems,
                             targetIndex,
                             targetOffsetMs
                         )
-                        exoPlayer.prepare()
+                        player.prepare()
                     }
+                }
+
+                fun seekMainPlaybackToMs(positionMs: Long) {
+                    val arrangement = activeVirtualArrangementPlayback
+                    if (arrangement == null) {
+                        exoPlayer.seekTo(positionMs)
+                        return
+                    }
+                    seekArrangementPlaybackToMs(exoPlayer, arrangement, positionMs)
                 }
 
                 fun arrangementEntryKeyOf(occurrenceKey: String): String? {
@@ -2406,8 +2429,47 @@ class MainActivity : AppCompatActivity() {
 	                    )
 	                }
 
+                fun resolveArrangementTrimConfig(
+                    playbackIdentity: String,
+                    arrangement: PreparedVirtualArrangementPlayback
+                ): TrimConfig {
+                    val profile = arrangement.playbackProfile ?: return TrimConfig(
+                        key = playbackIdentity,
+                        store = "arrangement-legacy",
+                        entryMs = 0L,
+                        exitMs = null,
+                        mode = "none"
+                    )
+                    val durationMs = arrangement.durationMs.coerceAtLeast(0L)
+                    val entryMs = (profile.trimStartMs ?: 0L).coerceIn(0L, durationMs)
+                    val exitMs = profile.trimEndMs
+                        ?.coerceIn(0L, durationMs)
+                        ?.takeIf { it > 0L }
+                    if (exitMs != null && exitMs <= entryMs) {
+                        return TrimConfig(
+                            key = playbackIdentity,
+                            store = "arrangement-profile",
+                            entryMs = 0L,
+                            exitMs = null,
+                            mode = "none"
+                        )
+                    }
+                    return TrimConfig(
+                        key = playbackIdentity,
+                        store = "arrangement-profile",
+                        entryMs = entryMs,
+                        exitMs = exitMs,
+                        mode = if (entryMs > 0L || exitMs != null) "seek-stop" else "none"
+                    )
+                }
+
                 fun resolveEffectiveDurationMs(requestedUri: String?, activeUri: String?): Long {
-                    activeVirtualArrangementPlayback?.let { return it.durationMs }
+                    activeVirtualArrangementPlayback?.let { arrangement ->
+                        return resolveArrangementTrimConfig(
+                            playbackIdentity = requestedUri.orEmpty(),
+                            arrangement = arrangement
+                        ).exitMs ?: arrangement.durationMs
+                    }
                     val effectiveRequestedUri = requestedUri?.takeIf { it.isNotBlank() }
                         ?: activeUri?.takeIf { it.isNotBlank() }
                         ?: return exoPlayer.duration
@@ -2890,12 +2952,19 @@ class MainActivity : AppCompatActivity() {
 
                     SmpLaunchTiming.markConfigLoadStart(uriString)
                     val loadedTrackMixSettings = withContext(Dispatchers.IO) {
-                        LoadedTrackMixSettings(
-                            gainDb = clampTrackDb(TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB),
-                            volumeSource = TrackVolumePrefs.getSource(ctx, uriString),
-                            tempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f,
-                            pitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
-                        )
+                        preparedArrangement?.playbackProfile?.let { profile ->
+                            LoadedTrackMixSettings(
+                                gainDb = clampTrackDb(profile.volumeDb ?: DEFAULT_TRACK_GAIN_DB),
+                                volumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL,
+                                tempo = profile.tempo ?: 1f,
+                                pitchSemi = profile.pitchSemi ?: 0
+                            )
+                        } ?: LoadedTrackMixSettings(
+                                gainDb = clampTrackDb(TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB),
+                                volumeSource = TrackVolumePrefs.getSource(ctx, uriString),
+                                tempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f,
+                                pitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
+                            )
                     }
                     currentTrackGainDb = loadedTrackMixSettings.gainDb
                     currentTrackVolumeSource = loadedTrackMixSettings.volumeSource
@@ -3105,12 +3174,9 @@ class MainActivity : AppCompatActivity() {
                                         activeUri = activeUri
                                     )
                                 } else {
-                                    TrimConfig(
-                                        key = playbackIdentity,
-                                        store = "arrangement",
-                                        entryMs = 0L,
-                                        exitMs = null,
-                                        mode = "none"
+                                    resolveArrangementTrimConfig(
+                                        playbackIdentity = playbackIdentity,
+                                        arrangement = preparedArrangement
                                     )
                                 }
                                 if (BuildConfig.DEBUG) {
@@ -3121,14 +3187,28 @@ class MainActivity : AppCompatActivity() {
                                 }
                                 if (!trimAppliedForThisTrack) {
                                     if (trimConfig.entryMs > 0L) {
-                                        runCatching { playbackPlayer.seekTo(trimConfig.entryMs) }
+                                        runCatching {
+                                            if (preparedArrangement != null) {
+                                                seekArrangementPlaybackToMs(
+                                                    player = playbackPlayer,
+                                                    arrangement = preparedArrangement,
+                                                    positionMs = trimConfig.entryMs
+                                                )
+                                            } else {
+                                                playbackPlayer.seekTo(trimConfig.entryMs)
+                                            }
+                                        }
                                     }
                                     trimAppliedForThisTrack = true
                                 }
                                 startPositionMs?.let { requestedStartMs ->
                                     runCatching {
-                                        if (preparedArrangement != null && playbackPlayer === exoPlayer) {
-                                            seekMainPlaybackToMs(requestedStartMs.coerceAtLeast(0L))
+                                        if (preparedArrangement != null) {
+                                            seekArrangementPlaybackToMs(
+                                                player = playbackPlayer,
+                                                arrangement = preparedArrangement,
+                                                positionMs = requestedStartMs.coerceAtLeast(0L)
+                                            )
                                         } else {
                                             playbackPlayer.seekTo(requestedStartMs.coerceAtLeast(0L))
                                         }
@@ -3138,7 +3218,16 @@ class MainActivity : AppCompatActivity() {
                                 if (trimConfig.mode == "seek-stop" && trimExitMs != null && trimExitMs > 0L) {
                                     trimStopJob = scope.launch {
                                         while (currentPlayToken == myToken) {
-                                            val positionMs = runCatching { playbackPlayer.currentPosition }.getOrDefault(0L)
+                                            val positionMs = runCatching {
+                                                if (preparedArrangement != null) {
+                                                    effectiveArrangementPlaybackPositionMs(
+                                                        playbackPlayer,
+                                                        preparedArrangement
+                                                    )
+                                                } else {
+                                                    playbackPlayer.currentPosition
+                                                }
+                                            }.getOrDefault(0L)
                                             if (positionMs >= trimExitMs) {
                                                 runCatching { playbackPlayer.pause() }
                                                 onEnded.value.invoke()
@@ -5487,16 +5576,12 @@ class MainActivity : AppCompatActivity() {
                                 val waveformPane: @Composable (Modifier) -> Unit = { paneModifier ->
                                     val requestedWaveformSongId =
                                         quickPlaylistPreparedSelectionSongId ?: currentPlayingSongId
-                                    val waveformSongId = requestedWaveformSongId
-                                        ?.let(smpSongsById::get)
-                                        ?.arrangementSourceSongId
-                                        ?: requestedWaveformSongId
                                     WaveformPreviewScreen(
                                         modifier = paneModifier,
                                         onBack = {
                                             tabletRightPanel = TabletSplitRightPanel.LYRICS
                                         },
-                                        initialSongId = waveformSongId,
+                                        initialSongId = requestedWaveformSongId,
                                         isOfficialPlaybackPlaying = isPlaying,
                                         tabletLivePlaybackControl = true,
                                         currentTrackGainDb = currentTrackGainDb,

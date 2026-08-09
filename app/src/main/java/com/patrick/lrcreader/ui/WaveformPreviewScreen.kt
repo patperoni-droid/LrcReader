@@ -74,6 +74,7 @@ import com.patrick.lrcreader.core.EditSoundPrefs
 import com.patrick.lrcreader.core.EditionConfig
 import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.WaveformSessionPrefs
+import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.core.config.SongIdKeyResolver
 import com.patrick.lrcreader.core.waveform.WaveformExtractor
 import com.patrick.lrcreader.core.waveform.WaveformPeaksCache
@@ -82,6 +83,10 @@ import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.EditPrefs
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SmpVariantPlayback
+import com.patrick.lrcreader.smp.ArrangementStore
+import com.patrick.lrcreader.smp.prepareArrangementOccurrences
+import com.patrick.lrcreader.smp.toOccurrenceProjection
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -255,16 +260,57 @@ fun WaveformPreviewScreen(
             if (result.isSuccess) {
                 val (newPeaks, newDurationMs) = result.getOrNull() ?: (emptyList<Float>() to 0)
                 peaks = newPeaks
-                durationMs = newDurationMs.coerceAtLeast(0)
                 estimatedTrackLufs = estimateLufsFromPeaks(newPeaks.toFloatArray())
+                data class VariantPlaybackEditorState(
+                    val playback: SmpConfig.PlaybackConfig?,
+                    val isVariant: Boolean,
+                    val arrangementDurationMs: Long?
+                )
+                val editorState = withContext(Dispatchers.IO) {
+                    val song = smpLibraryScanner.findSongById(songId)
+                    val parentId = song?.arrangementSourceSongId
+                    if (song == null || parentId == null) {
+                        VariantPlaybackEditorState(
+                            playback = song?.let(SmpConfig::readPlaybackFromSongUnit),
+                            isVariant = false,
+                            arrangementDurationMs = null
+                        )
+                    } else {
+                        val parent = smpLibraryScanner.findSongById(parentId)
+                        val arrangementDurationMs = ArrangementStore.load(context, song.id)
+                            ?.toOccurrenceProjection()
+                            ?.let { projection ->
+                                prepareArrangementOccurrences(
+                                    segments = projection.segments,
+                                    structureSegmentIds = projection.structureSegmentIds,
+                                    entries = projection.entries,
+                                    useOccurrenceModel = projection.entries.isNotEmpty()
+                                ).fold(0L) { total, occurrence ->
+                                    if (occurrence.durationMs > Long.MAX_VALUE - total) {
+                                        Long.MAX_VALUE
+                                    } else {
+                                        total + occurrence.durationMs
+                                    }
+                                }
+                            }
+                        VariantPlaybackEditorState(
+                            playback = parent?.let { source ->
+                                SmpVariantPlayback.resolveProfile(context, song, source)
+                            },
+                            isVariant = true,
+                            arrangementDurationMs = arrangementDurationMs
+                        )
+                    }
+                }
+                durationMs = (editorState.arrangementDurationMs ?: newDurationMs.toLong())
+                    .coerceIn(0L, Int.MAX_VALUE.toLong())
+                    .toInt()
                 if (durationMs > 0) {
                     playheadMs = restoredPlayhead.coerceIn(0, durationMs)
                     WaveformSessionPrefs.savePlayhead(context, playheadMs)
-                    val savedConfigPlayback = selectedSongId
-                        ?.let { songId -> smpLibraryScanner.findSongById(songId) }
-                        ?.let(SmpConfig::readPlaybackFromSongUnit)
-                    val saved = EditSoundPrefs.get(context, uri)
-                    val legacySaved = if (saved == null) {
+                    val savedConfigPlayback = editorState.playback
+                    val saved = if (editorState.isVariant) null else EditSoundPrefs.get(context, uri)
+                    val legacySaved = if (!editorState.isVariant && saved == null) {
                         EditPrefs.getEdit(context, uri.toString())
                     } else {
                         null
@@ -315,7 +361,8 @@ fun WaveformPreviewScreen(
     suspend fun resolveSongTarget(songId: String): Pair<Uri, String>? = withContext(Dispatchers.IO) {
         val cleanSongId = songId.trim().ifBlank { return@withContext null }
         val song = smpLibraryScanner.findSongById(cleanSongId) ?: return@withContext null
-        val runtimeTrackUri = SongIdKeyResolver.resolveRuntimeTrackUri(appContext, cleanSongId)
+        val audioOwnerId = song.arrangementSourceSongId ?: cleanSongId
+        val runtimeTrackUri = SongIdKeyResolver.resolveRuntimeTrackUri(appContext, audioOwnerId)
             ?: return@withContext null
         val runtimeUri = runCatching { Uri.parse(runtimeTrackUri) }.getOrNull() ?: return@withContext null
         runtimeUri to song.title
@@ -459,6 +506,7 @@ fun WaveformPreviewScreen(
             val songUnit = smpLibraryScanner.findSongById(songId)
             val savedToSmp = songUnit?.let { song ->
                 SmpConfig.writeTrimPlaybackToSongUnit(
+                    context = appContext,
                     songUnit = song,
                     startMs = startMs,
                     endMs = endMs
@@ -472,17 +520,27 @@ fun WaveformPreviewScreen(
                 )
             }
             if (!savedToSmp) {
+                val fallbackUri = songUnit
+                    ?.arrangementSourceSongId
+                    ?.let { buildSmpItem(songId) }
+                    ?.let(Uri::parse)
+                    ?: sourceUri
                 EditSoundPrefs.save(
                     context = appContext,
-                    uri = sourceUri,
+                    uri = fallbackUri,
                     startMs = startMs,
                     endMs = endMs
                 )
             }
             if (persistVolume) {
+                val volumeIdentity = if (songUnit?.arrangementSourceSongId != null) {
+                    buildSmpItem(songId)
+                } else {
+                    sourceUri.toString()
+                }
                 TrackVolumePrefs.saveDb(
                     context = appContext,
-                    uri = sourceUri.toString(),
+                    uri = volumeIdentity,
                     db = volumeDb,
                     source = volumeSource ?: SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL
                 )

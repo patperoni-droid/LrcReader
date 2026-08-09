@@ -5,6 +5,7 @@ import android.net.Uri
 import android.util.Log
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.smp.SmpConfig
+import com.patrick.lrcreader.smp.SmpVariantPlayback
 import java.io.File
 
 object TrackVolumePrefs {
@@ -23,7 +24,7 @@ object TrackVolumePrefs {
     ) {
         val safeDb = db.coerceIn(MIN_DB, MAX_DB)
         val smpSaved = resolveInternalSmpConfigFile(context, uri)?.let { configFile ->
-            writeSmpVolumeDb(configFile, safeDb, source)
+            writeSmpVolumeDb(context, configFile, safeDb, source)
         }
         if (smpSaved == true) {
             return
@@ -52,6 +53,7 @@ object TrackVolumePrefs {
         val safeDb = db.coerceIn(MIN_DB, MAX_DB)
         val smpSaved = resolveInternalSmpConfigFile(context, uri)?.let { configFile ->
             writeSmpVolumeDb(
+                context = context,
                 configFile = configFile,
                 db = safeDb,
                 source = SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS,
@@ -95,6 +97,7 @@ object TrackVolumePrefs {
     fun getPlaybackConfig(context: Context, uri: String): SmpConfig.PlaybackConfig? {
         val configFile = resolveInternalSmpConfigFile(context, uri) ?: return null
         return runCatching {
+            SmpVariantPlayback.readExplicitProfile(configFile)?.let { return@runCatching it }
             SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))?.playback
         }.getOrElse { error ->
             Log.w(TAG, "getPlaybackConfig: SMP config read failed path=${configFile.absolutePath}", error)
@@ -108,6 +111,7 @@ object TrackVolumePrefs {
         }
 
         return runCatching {
+            SmpVariantPlayback.readExplicitProfile(configFile)?.volumeDb?.let { return@runCatching it }
             SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
                 ?.playback
                 ?.volumeDb
@@ -123,6 +127,7 @@ object TrackVolumePrefs {
         }
 
         return runCatching {
+            SmpVariantPlayback.readExplicitProfile(configFile)?.volumeSource?.let { return@runCatching it }
             SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
                 ?.playback
                 ?.volumeSource
@@ -134,6 +139,7 @@ object TrackVolumePrefs {
     }
 
     private fun writeSmpVolumeDb(
+        context: Context,
         configFile: File,
         db: Int,
         source: String,
@@ -146,22 +152,27 @@ object TrackVolumePrefs {
         val tmpFile = File(songDir, "$SMP_CONFIG_FILE_NAME.tmp")
 
         return runCatching {
-            val currentConfig = SmpConfig.fromJsonOrNull(configFile.readText(Charsets.UTF_8))
-                ?: return false
-            val nextPlayback = SmpConfig.PlaybackConfig.fromStoredValues(
-                startMs = currentConfig.playback?.trimStartMs,
-                endMs = currentConfig.playback?.trimEndMs,
-                tempo = currentConfig.playback?.tempo,
-                pitchSemi = currentConfig.playback?.pitchSemi,
+            val rawJson = SmpVariantPlayback.mergeProfileUpdate(context, configFile) { current ->
+                current?.copy(
+                    volumeDb = db,
+                    volumeSource = source,
+                    lufsMeasured = lufsMeasured ?: current.lufsMeasured,
+                    lufsTarget = lufsTarget ?: current.lufsTarget,
+                    lufsAutoDb = lufsAutoDb ?: current.lufsAutoDb,
+                    lufsManualDb = lufsManualDb ?: current.lufsManualDb
+                ) ?: SmpConfig.PlaybackConfig.fromStoredValues(
+                startMs = null,
+                endMs = null,
+                tempo = null,
+                pitchSemi = null,
                 volumeDb = db,
                 volumeSource = source,
-                lufsMeasured = lufsMeasured ?: currentConfig.playback?.lufsMeasured,
-                lufsTarget = lufsTarget ?: currentConfig.playback?.lufsTarget,
-                lufsAutoDb = lufsAutoDb ?: currentConfig.playback?.lufsAutoDb,
-                lufsManualDb = lufsManualDb ?: currentConfig.playback?.lufsManualDb
-            )
-            val nextConfig = currentConfig.copy(playback = nextPlayback)
-            val rawJson = nextConfig.toJsonString()
+                lufsMeasured = lufsMeasured,
+                lufsTarget = lufsTarget,
+                lufsAutoDb = lufsAutoDb,
+                lufsManualDb = lufsManualDb
+                )
+            } ?: return false
 
             songDir.mkdirs()
             tmpFile.writeText(rawJson, Charsets.UTF_8)
@@ -182,6 +193,10 @@ object TrackVolumePrefs {
     }
 
     private fun resolveInternalSmpConfigFile(context: Context, uriString: String): File? {
+        getSmpSongId(uriString)?.let { songId ->
+            return File(File(File(context.filesDir, TRACKS_DIR_NAME), songId), SMP_CONFIG_FILE_NAME)
+                .takeIf(File::isFile)
+        }
         val trackUri = runCatching { Uri.parse(uriString) }.getOrNull() ?: return null
         if (trackUri.scheme != "file") return null
 
