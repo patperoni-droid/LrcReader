@@ -1,12 +1,14 @@
 package com.patrick.lrcreader.ui
 
 import android.content.Context
+import android.content.ContextWrapper
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -45,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.lifecycleScope
 import com.patrick.lrcreader.core.ChordPaletteStore
 import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.core.FillerSoundManager
@@ -67,6 +70,8 @@ import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,6 +79,42 @@ import kotlinx.coroutines.yield
 
 private val INLINE_LRC_TIME_TAG_REGEX =
     Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
+
+internal fun shouldFlushLyricsDraftOnEditorDispose(
+    currentTrackUri: String?,
+    showChordPalette: Boolean,
+    lastPersistedSignature: String?,
+    currentSignature: String
+): Boolean = !showChordPalette &&
+    !currentTrackUri.isNullOrBlank() &&
+    lastPersistedSignature != null &&
+    lastPersistedSignature != currentSignature
+
+internal object LyricsEditorPersistenceBarrier {
+    private val pendingFlushes = linkedSetOf<Deferred<Boolean>>()
+
+    fun track(flush: Deferred<Boolean>) {
+        synchronized(pendingFlushes) { pendingFlushes += flush }
+    }
+
+    suspend fun awaitPending(): Boolean {
+        var allSucceeded = true
+        while (true) {
+            val flushes = synchronized(pendingFlushes) { pendingFlushes.toList() }
+            if (flushes.isEmpty()) return allSucceeded
+            flushes.forEach { flush ->
+                allSucceeded = runCatching { flush.await() }.getOrDefault(false) && allSucceeded
+            }
+            synchronized(pendingFlushes) { pendingFlushes.removeAll(flushes.toSet()) }
+        }
+    }
+}
+
+private tailrec fun Context.findComponentActivity(): ComponentActivity? = when (this) {
+    is ComponentActivity -> this
+    is ContextWrapper -> baseContext.findComponentActivity()
+    else -> null
+}
 private val LRC_TIMESTAMP_HINT_REGEX = Regex("""\[\d{1,2}:\d{2}""")
 private const val FIRST_CHORD_TIME_MS = 10L
 private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
@@ -638,7 +679,7 @@ fun LyricsEditorSection(
         updatePalette("", persist = false)
     }
 
-    suspend fun persistCurrentDraft(closeAfterSave: Boolean) {
+    suspend fun persistCurrentDraft(closeAfterSave: Boolean): Boolean {
         val finalLines = buildPersistableLinesForCurrentDraft()
         val finalRawText = rawTextFieldValue.text
         if (!showChordPalette) {
@@ -677,7 +718,7 @@ fun LyricsEditorSection(
                     finalRawText,
                     closeAfterSave
                 )
-                if (!saved) return
+                if (!saved) return false
                 previousEditingLines = editingLines.map { it.copy() }
                 if (finalRawText.isEmpty()) {
                     rawTextFieldValue = TextFieldValue("", TextRange(0))
@@ -685,7 +726,7 @@ fun LyricsEditorSection(
                 if (!showChordPalette) {
                     Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_OK")
                 }
-                return
+                return true
             }
 
             Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
@@ -717,7 +758,7 @@ fun LyricsEditorSection(
                         "AUTOSAVE_FAIL error=onPersistLines_false reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()}"
                     )
                 }
-                return
+                return false
             }
 
             previousEditingLines = null
@@ -731,6 +772,7 @@ fun LyricsEditorSection(
         } finally {
             isPersistBusy = false
         }
+        return true
     }
 
     // 🔹 Enregistrer
@@ -748,6 +790,30 @@ fun LyricsEditorSection(
     }
     val autoSaveLyricsSignature = remember(autoSaveLyricsLines, rawTextFieldValue.text) {
         lyricsPersistenceSignature(rawTextFieldValue.text, autoSaveLyricsLines)
+    }
+    val flushOnDisposeRequired by rememberUpdatedState(
+        shouldFlushLyricsDraftOnEditorDispose(
+            currentTrackUri = currentTrackUri,
+            showChordPalette = showChordPalette,
+            lastPersistedSignature = lastAutoSavedLyricsSignature,
+            currentSignature = autoSaveLyricsSignature
+        )
+    )
+    val persistLatestDraftOnDispose by rememberUpdatedState<suspend () -> Boolean>({
+        persistCurrentDraft(closeAfterSave = false)
+    })
+    val editorActivity = remember(context) { context.findComponentActivity() }
+
+    DisposableEffect(editorActivity, currentTrackUri, showChordPalette) {
+        onDispose {
+            if (flushOnDisposeRequired) {
+                val flush = editorActivity?.lifecycleScope?.async {
+                    yield()
+                    persistLatestDraftOnDispose()
+                }
+                flush?.let(LyricsEditorPersistenceBarrier::track)
+            }
+        }
     }
 
     LaunchedEffect(currentTrackUri, showChordPalette, autoSaveLyricsSignature) {

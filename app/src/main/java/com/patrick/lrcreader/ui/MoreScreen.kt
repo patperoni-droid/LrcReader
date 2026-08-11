@@ -549,6 +549,11 @@ private fun MoreRootScreen(
     var exportLiveSongsTotal by remember { mutableStateOf(0) }
     var exportLiveSongsCurrentTitle by remember { mutableStateOf<String?>(null) }
     var exportLiveSongsResultMessage by remember { mutableStateOf<String?>(null) }
+    var libraryUpdateReference by remember {
+        mutableStateOf(LibraryUpdateReferenceStore.load(context))
+    }
+    var isUpdatingLibrary by remember { mutableStateOf(false) }
+    var libraryUpdateResultMessage by remember { mutableStateOf<String?>(null) }
     var showExportLiveSongsNameDialog by remember { mutableStateOf(false) }
     var exportLiveSongsDefaultName by remember { mutableStateOf("") }
     var exportLiveSongsName by remember { mutableStateOf("") }
@@ -766,18 +771,20 @@ private fun MoreRootScreen(
             var successCount = 0
             var failureCount = 0
             var completedCount = 0
+            val exportedFamilyArchives = linkedMapOf<String, String>()
 
             runtimeSongs.forEach { song ->
                 exportLiveSongsCurrentTitle = song.title
-                val exported = withContext(Dispatchers.IO) {
+                val exportedArchiveUri = withContext(Dispatchers.IO) {
                     exportLiveSongToTree(
                         context = context.applicationContext,
                         exportDir = exportTarget,
                         songId = song.id
                     )
                 }
-                if (exported) {
+                if (exportedArchiveUri != null) {
                     successCount += 1
+                    exportedFamilyArchives[song.id] = exportedArchiveUri.toString()
                 } else {
                     failureCount += 1
                 }
@@ -843,6 +850,23 @@ private fun MoreRootScreen(
             }
             completedCount += 1
             exportLiveSongsDone = completedCount
+
+            val savedReference = withContext(Dispatchers.IO) {
+                registerSuccessfulLibraryBackupV0(
+                    treeUri = pickedUri.toString(),
+                    folderUri = exportTarget.uri.toString(),
+                    expectedFamilyCount = runtimeSongs.size,
+                    exportedArchivesBySongId = exportedFamilyArchives,
+                    failureCount = failureCount,
+                    saveReference = { reference ->
+                        LibraryUpdateReferenceStore.save(context.applicationContext, reference)
+                    }
+                )
+            }
+            libraryUpdateReference = libraryUpdateReferenceAfterBackup(
+                currentReference = libraryUpdateReference,
+                successfulBackupReference = savedReference
+            )
 
             exportLiveSongsCurrentTitle = null
             exportLiveSongsResultMessage = context.getString(
@@ -1067,6 +1091,81 @@ private fun MoreRootScreen(
                             showExportLiveSongsNameDialog = true
                         }
                     )
+                    libraryUpdateReference
+                        ?.takeIf { isLibraryUpdateAvailable(it) }
+                        ?.let { reference ->
+                        SettingsItem(
+                            icon = Icons.Filled.Sync,
+                            label = stringResource(R.string.more_item_update_library),
+                            onClick = {
+                                if (isExportingLiveSongs || isUpdatingLibrary) return@SettingsItem
+                                if (isLite) {
+                                    showExportProDialog = true
+                                    return@SettingsItem
+                                }
+                                scope.launch {
+                                    isUpdatingLibrary = true
+                                    isExportingLiveSongs = true
+                                    exportLiveSongsDone = 0
+                                    exportLiveSongsTotal = 0
+                                    exportLiveSongsCurrentTitle = null
+                                    if (!LyricsEditorPersistenceBarrier.awaitPending()) {
+                                        libraryUpdateResultMessage = context.getString(
+                                            R.string.more_library_update_result,
+                                            0,
+                                            0,
+                                            1
+                                        )
+                                        isExportingLiveSongs = false
+                                        isUpdatingLibrary = false
+                                        return@launch
+                                    }
+                                    val runtimeSongs = withContext(Dispatchers.IO) {
+                                        SmpLibraryScanner(context.applicationContext).listSongs()
+                                    }
+                                    exportLiveSongsTotal = runtimeSongs.count {
+                                        it.arrangementSourceSongId == null
+                                    }
+                                    val result = withContext(Dispatchers.IO) {
+                                        updateLibraryFamiliesV0(
+                                            reference = reference,
+                                            runtimeSongs = runtimeSongs,
+                                            gateway = SafLibraryUpdateArchiveGateway(
+                                                context.applicationContext
+                                            ),
+                                            saveReference = { updatedReference ->
+                                                LibraryUpdateReferenceStore.save(
+                                                    context.applicationContext,
+                                                    updatedReference
+                                                )
+                                            },
+                                            onProgress = { completed, total, title ->
+                                                scope.launch {
+                                                    exportLiveSongsDone = completed
+                                                    exportLiveSongsTotal = total
+                                                    exportLiveSongsCurrentTitle = title
+                                                }
+                                            }
+                                        )
+                                    }
+                                    libraryUpdateReference = result.reference
+                                    libraryUpdateResultMessage = if (result.folderInaccessible) {
+                                        context.getString(R.string.more_library_update_inaccessible)
+                                    } else {
+                                        context.getString(
+                                            R.string.more_library_update_result,
+                                            result.updatedCount,
+                                            result.addedCount,
+                                            result.failedCount
+                                        )
+                                    }
+                                    exportLiveSongsCurrentTitle = null
+                                    isExportingLiveSongs = false
+                                    isUpdatingLibrary = false
+                                }
+                            }
+                        )
+                    }
                     val restoreLibraryLabel = stringResource(R.string.more_item_restore_library)
                     SettingsItem(
                         icon = Icons.Filled.Restore,
@@ -1497,7 +1596,15 @@ private fun MoreRootScreen(
         AlertDialog(
             onDismissRequest = {},
             title = {
-                Text(text = stringResource(R.string.more_live_songs_export_title))
+                Text(
+                    text = stringResource(
+                        if (isUpdatingLibrary) {
+                            R.string.more_item_update_library
+                        } else {
+                            R.string.more_live_songs_export_title
+                        }
+                    )
+                )
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1578,6 +1685,19 @@ private fun MoreRootScreen(
             },
             confirmButton = {
                 TextButton(onClick = { exportLiveSongsResultMessage = null }) {
+                    Text(text = stringResource(R.string.common_close))
+                }
+            }
+        )
+    }
+
+    libraryUpdateResultMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = { libraryUpdateResultMessage = null },
+            title = { Text(text = stringResource(R.string.more_item_update_library)) },
+            text = { Text(text = message) },
+            confirmButton = {
+                TextButton(onClick = { libraryUpdateResultMessage = null }) {
                     Text(text = stringResource(R.string.common_close))
                 }
             }
@@ -2227,25 +2347,30 @@ private fun exportLiveSongToTree(
     context: Context,
     exportDir: DocumentFile,
     songId: String
-): Boolean {
-    val song = SmpLibraryScanner(context).findSongById(songId) ?: return false
-    val cacheFile = SmpExporter.exportSongUnitToCacheSmp(context, song) ?: return false
+): Uri? {
+    val song = SmpLibraryScanner(context).findSongById(songId) ?: return null
+    val cacheFile = SmpExporter.exportSongUnitToCacheSmp(context, song) ?: return null
     return try {
         val targetName = resolveAvailableBackupExportName(
             exportDir = exportDir,
             desiredName = cacheFile.name.ifBlank { "${song.title}.smp" }
         )
         val targetFile = exportDir.createFile("application/octet-stream", targetName)
-            ?: return false
+            ?: return null
         context.contentResolver.openOutputStream(targetFile.uri, "w")?.use { output ->
             cacheFile.inputStream().use { input ->
                 input.copyTo(output)
             }
             output.flush()
-        } ?: return false
-        true
+        } ?: return null
+        if (SmpArchiveSongIdResolver.readStableSongId(context, targetFile.uri) == songId) {
+            targetFile.uri
+        } else {
+            runCatching { targetFile.delete() }
+            null
+        }
     } catch (_: Throwable) {
-        false
+        null
     } finally {
         runCatching { cacheFile.delete() }
     }
@@ -2497,7 +2622,7 @@ private fun scanLibraryRestoreFolder(
     )
 }
 
-private fun isMacBackupNoiseFile(name: String): Boolean {
+internal fun isMacBackupNoiseFile(name: String): Boolean {
     val cleanName = name.trim()
     return cleanName.equals(".DS_Store", ignoreCase = true) ||
         cleanName.startsWith("._") ||

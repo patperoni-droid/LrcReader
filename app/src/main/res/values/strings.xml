@@ -1209,6 +1209,9 @@
     <string name="more_live_songs_export_result">Sauvegarde terminée : %1$d réussi(s), %2$d échoué(s)\nDossier : %3$s</string>
     <string name="more_live_songs_export_no_songs">Aucun morceau à sauvegarder</string>
     <string name="more_live_songs_export_failed">Impossible de lancer la sauvegarde</string>
+    <string name="more_item_update_library">Mettre à jour la bibliothèque</string>
+    <string name="more_library_update_result">Mise à jour terminée : %1$d Famille(s) mise(s) à jour, %2$d ajoutée(s), %3$d échec(s)</string>
+    <string name="more_library_update_inaccessible">Le dossier de sauvegarde n’est plus accessible en écriture. Refaites une sauvegarde complète pour choisir un dossier disponible.</string>
     <string name="more_library_restore_title">Restaurer ma bibliothèque</string>
     <string name="more_library_restore_progress">Restauration en cours : %1$d / %2$d</string>
     <string name="more_library_restore_preparing">Préparation de la restauration…</string>

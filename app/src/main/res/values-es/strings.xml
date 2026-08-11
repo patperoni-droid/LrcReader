@@ -1126,6 +1126,9 @@
     <string name="more_live_songs_export_result">Copia de seguridad terminada: %1$d correctas, %2$d fallidas\nCarpeta: %3$s</string>
     <string name="more_live_songs_export_no_songs">No hay canciones para guardar</string>
     <string name="more_live_songs_export_failed">No se pudo iniciar la copia de seguridad</string>
+    <string name="more_item_update_library">Actualizar la biblioteca</string>
+    <string name="more_library_update_result">Actualización terminada: %1$d familia(s) actualizada(s), %2$d añadida(s), %3$d error(es)</string>
+    <string name="more_library_update_inaccessible">La carpeta de copia de seguridad ya no permite escritura. Cree una nueva copia completa para elegir una carpeta disponible.</string>
     <string name="more_library_restore_title">Restaurar mi biblioteca</string>
     <string name="more_library_restore_progress">Restauración en curso: %1$d / %2$d</string>
     <string name="more_library_restore_preparing">Preparando la restauración…</string>

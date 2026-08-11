@@ -1,0 +1,70 @@
+package com.patrick.lrcreader.ui
+
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class LyricsEditorDisposePersistenceTest {
+
+    @Test
+    fun changedLyricsAreFlushedWhenEditorLeavesComposition() {
+        assertTrue(
+            shouldFlushLyricsDraftOnEditorDispose(
+                currentTrackUri = "file:///runtime/tracks/song/audio.mp3",
+                showChordPalette = false,
+                lastPersistedSignature = "old",
+                currentSignature = "new"
+            )
+        )
+    }
+
+    @Test
+    fun unchangedLyricsAndChordEditorDoNotTriggerExtraFlush() {
+        assertFalse(
+            shouldFlushLyricsDraftOnEditorDispose(
+                currentTrackUri = "file:///runtime/tracks/song/audio.mp3",
+                showChordPalette = false,
+                lastPersistedSignature = "same",
+                currentSignature = "same"
+            )
+        )
+        assertFalse(
+            shouldFlushLyricsDraftOnEditorDispose(
+                currentTrackUri = "file:///runtime/tracks/song/audio.mp3",
+                showChordPalette = true,
+                lastPersistedSignature = "old",
+                currentSignature = "new"
+            )
+        )
+    }
+
+    @Test
+    fun libraryUpdateWaitsForTrackedEditorFlush() = runBlocking {
+        val flush = CompletableDeferred<Boolean>()
+        LyricsEditorPersistenceBarrier.track(flush)
+        var updateMayScanRuntime = false
+        val updateWaiter = launch {
+            updateMayScanRuntime = LyricsEditorPersistenceBarrier.awaitPending()
+        }
+
+        yield()
+        assertFalse(updateMayScanRuntime)
+        flush.complete(true)
+        updateWaiter.join()
+
+        assertTrue(updateMayScanRuntime)
+    }
+
+    @Test
+    fun failedEditorFlushPreventsLibraryUpdateScan() = runBlocking {
+        val flush = CompletableDeferred<Boolean>()
+        LyricsEditorPersistenceBarrier.track(flush)
+        flush.complete(false)
+
+        assertFalse(LyricsEditorPersistenceBarrier.awaitPending())
+    }
+}
