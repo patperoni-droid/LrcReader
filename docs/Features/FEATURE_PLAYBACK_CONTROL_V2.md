@@ -158,7 +158,7 @@ Déploiement tablette réalisé et validé dans :
 - Player ;
 - Fond sonore, pour le contrôle du Playback principal en complément des commandes locales du Fond sonore ;
 - Bus Principal ;
-- Bibliothèque : SONGS, LISTS, LYRICS et LEVEL ;
+- Bibliothèque : SONGS, LISTS, SCROLLING TEXTS et LEVEL ;
 - Accordeur ;
 - Waveform, avec suppression du lecteur d'aperçu secondaire ;
 - Track Console, avec suppression de l'ancien raccourci bas `TOUCH HERE TO RETURN` ;

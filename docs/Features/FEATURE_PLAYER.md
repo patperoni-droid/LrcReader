@@ -222,6 +222,42 @@ Phone UI:
 
 ⸻
 
+# STANDALONE SCROLLING-TEXT PROMPTER
+
+Standalone scrolling texts are separate from the Player's synchronized Lyrics / Chords layers.
+They contain free text without audio or `.lrc` timestamps and can be opened from the Library or
+from a playlist occurrence.
+
+Prompter controls:
+
+- Play / Pause starts or pauses continuous scrolling;
+- Previous / Next moves the text by a reading step;
+- the side speed control changes the scrolling speed and persists it for that text;
+- the tablet Split presentation also exposes Return to beginning;
+- supported hardware Previous / Next and Home / End actions continue to route to the text
+  prompter while it has focus.
+
+Tablet behavior:
+
+- when the modern tablet layout and Split-compatible Player or Playlist screen are active, the
+  playlist remains in the left pane and the scrolling text opens in the right pane;
+- the text prompter reuses the modern tablet screen structure instead of the former full-screen
+  tablet route;
+- its progress and transport block is constrained to the right pane and must never overlap the
+  playlist;
+- Play / Pause, speed and Return to beginning remain reachable inside that pane.
+
+Phone behavior:
+
+- the existing full-screen text prompter presentation remains unchanged;
+- tablet Split routing and tablet-only Return to beginning must not alter the phone layout.
+
+The visible terminology is `Textes défilants`, `Créer un texte défilant` and `Nouveau texte
+défilant` in French, with the corresponding localized terms in English and Spanish. The word
+Lyrics remains reserved here for synchronized song lyrics, not for this autonomous catalog.
+
+⸻
+
 # SONG EDITOR SAVE
 
 The unified song editor must preserve user work across its permanent tabs:
@@ -245,6 +281,11 @@ Rules:
 - auto-save must run only after real changes
 - pending changes must be flushed before returning to Player when needed
 - lyrics writes must be serialized and atomic when using runtime files
+- the editor's exact raw text draft, including blank lines, indentation and unsynchronized text,
+  must be preserved separately from normalized `.lrc` playback lines
+- switching between Lyrics editor tabs must not rebuild the raw draft from normalized lines
+- raw draft persistence and auto-centering work must run without blocking the UI or launching
+  competing scroll requests
 - editor exit must wait for the final editor-session save before returning to Player
 - lyrics and chords must use their official persistence paths and must never overwrite each other
 - priority: never lose user song-editor work
@@ -263,11 +304,15 @@ Runtime lyrics data is split by responsibility:
   - visual lyrics metadata
   - line colors
 
+- SongUnit `lyrics_editor.txt`
+  - exact editor draft used to preserve blank lines, spacing and text that has no valid timestamp
+
 Rules:
 - `songId` is the preferred stable identity
 - never depend only on `file://audio.mp3` when `songId` is available
 - never inject line colors into standard LRC text
 - do not create a second competing lyrics store
+- `lyrics_editor.txt` is an editor-preservation companion, never the synchronized playback source
 - import/export LRC compatibility must remain intact
 
 ⸻
@@ -839,6 +884,14 @@ Test at least:
 - compact Synchro line edit dialog
 - compact Synchro color palette
 - readability mode under outdoor conditions
+- preserve blank lines and spacing after changing editor tabs, saving, reopening and completing an
+  SMP export/import round-trip
+- return playback to the beginning and verify that the active lyric line and automatic centering
+  return to the first line immediately
+- open a standalone scrolling text from Library and from a playlist on phone and tablet
+- verify tablet Split layout, Play/Pause, speed and Return to beginning without overlap on the
+  playlist pane
+- verify that the phone text prompter layout remains unchanged
 
 👉 Real-device testing is mandatory.
 

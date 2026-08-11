@@ -2,7 +2,7 @@
 
 Référence unique des travaux volontairement laissés en attente.
 
-Dernier audit : **28 juillet 2026**
+Dernier audit : **11 août 2026**
 
 Ce document fixe la priorité des chantiers. Les documents `Features`, `roadmap`,
 `decisions` et SMP en décrivent le contexte ou les contraintes, mais ne changent
@@ -64,14 +64,19 @@ pas leur priorité.
 - **Risque** : permissions temporaires, Intent dupliqué ou import différent du parcours officiel.
 - **Références** : `FEATURE_LIBRARY.md`, `FEATURE_EXPORT_BACKUP.md`.
 
-### Backup V2 — synchroniser une sauvegarde existante
+### Finaliser la mise à jour d'une sauvegarde de bibliothèque
 
-- **But** : reconstruire explicitement une sauvegarde de travail existante depuis la Bibliothèque
-  interne, sans créer un nouveau dossier.
-- **Prérequis** : nouveau diagnostic du format actuel ; les anciennes hypothèses de nommage et de
-  sous-dossiers ne doivent pas être appliquées automatiquement.
-- **Risque** : suppression SAF hors du dossier Export ciblé.
-- **Référence** : `FEATURE_BACKUP_V2.md`.
+- **État livré** : après une sauvegarde complète réussie, l'action **Mettre à jour la
+  bibliothèque** republie les Familles SongUnit courantes dans le même dossier, vérifie leur
+  `songId`, remplace uniquement l'archive précédemment référencée et conserve cette référence.
+- **Reste à faire** : mettre à jour l'État global (`state.json`, playlists et textes défilants),
+  traiter explicitement les Familles supprimées, représenter l'état à jour / modifié et valider
+  le cycle complet sur une restauration réelle.
+- **Risque** : suppression SAF hors du dossier Export ciblé ou présentation trompeuse d'une mise
+  à jour partielle comme sauvegarde complète.
+- **Références** : [FEATURE_LIBRARY_BACKUP.md](Features/FEATURE_LIBRARY_BACKUP.md),
+  [FEATURE_EXPORT_BACKUP.md](Features/FEATURE_EXPORT_BACKUP.md) et
+  [SMP_PERSISTENCE_SPEC.md](SMP_PERSISTENCE_SPEC.md).
 
 ### SMP Sync — robustesse et simplification restantes
 
@@ -96,6 +101,19 @@ pas leur priorité.
 - **Risque** : crash ou dégradation de l'usage live.
 - **Référence** : `FEATURE_LIBRARY.md`.
 
+### Validation réelle des textes défilants
+
+- **But** : confirmer sur téléphone et tablette que la création, la persistance, l'ouverture et
+  le défilement restent fiables avec les dispositions réelles.
+- **Périmètre** : crayon de **Bibliothèque → Textes défilants**, création depuis une playlist,
+  absence d'affectation automatique à une playlist depuis la Bibliothèque, mode Split tablette,
+  commandes Démarrer/Pause, retour au début et réglage de vitesse.
+- **Risque** : débordement du bloc de commandes ou divergence entre le plein écran téléphone et
+  le panneau droit tablette.
+- **Références** : [FEATURE_LIBRARY.md](Features/FEATURE_LIBRARY.md),
+  [FEATURE_PLAYLISTS.md](Features/FEATURE_PLAYLISTS.md) et
+  [FEATURE_PLAYER.md](Features/FEATURE_PLAYER.md).
+
 ### Détail Waveform par plage visible
 
 - **But** : charger davantage de précision uniquement sur la zone fortement zoomée.
@@ -104,24 +122,18 @@ pas leur priorité.
 - **Risque** : double décodage lourd ou traitement pendant la lecture.
 - **Références** : `FEATURE_WAVEFORM.md`, `FEATURE_PLAYER.md`.
 
-### Réparer les tests unitaires hors périmètre Arrangement
-
-- **Constat du 28 juillet 2026** : la suite Labo exécute 347 tests ; 340 passent et 7
-  échouent dans `BackupManagerAutoBackupTest` et `PrompterKeyMappingTest`.
-- **Causes observées** : `SystemClock.elapsedRealtime()` non simulé dans quatre tests JVM ;
-  mappings de touches attendus mais non résolus dans trois tests Prompter.
-- **But** : restaurer une suite globale verte par un chantier séparé, sans mélanger ces
-  corrections à la clôture Arrangement.
-- **Risque** : masquer une vraie régression future si ces échecs restent tolérés.
-
 ## Faible priorité
 
 ### Données avancées propres aux variantes
 
-- **Annotations** : stockage runtime par `songId`, transport dans la valise du parent.
+- **État livré** : l'aller-retour SMP de la Famille préserve désormais Timeline, annotations,
+  MIDI, DMX, grille, contenu de prompteur lié au morceau, brouillon brut de paroles, titre
+  personnalisé et réglages de lecture propres à chaque variante.
+- **Annotations** : compléter les parcours d'édition et l'exploitation live par `songId`.
 - **Timeline** : projection dans le temps cumulé de la Structure.
 - **MIDI / DMX** : projection temporelle déterministe, sans dépendance UI.
-- **Réglages propres** : gain, pitch, speed et futures métadonnées, sans modifier le parent.
+- **Réglages propres** : étendre uniquement les réglages non encore transportés, sans modifier le
+  parent ; trim, gain manuel, pitch et vitesse sont déjà préservés.
 - **Risque** : confusion entre temps source et temps cumulé de la variante.
 - **Références** : `SMP_RULES.md`, `SMP_SPEC_AGENT.md`, `FEATURE_TIMELINE.md`.
 
@@ -144,7 +156,7 @@ pas leur priorité.
 
 - sauvegarde complète dans une archive unique ;
 - mode de restauration « me demander » fichier par fichier ;
-- bloc-notes et prompteurs dans SMP Sync.
+- bloc-notes et textes défilants dans SMP Sync.
 - **Références** : `FEATURE_EXPORT_BACKUP.md`, `FEATURE_SMP_SYNC.md`.
 
 ### Dette technique des grands orchestrateurs Compose

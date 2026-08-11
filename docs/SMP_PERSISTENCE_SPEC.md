@@ -10,7 +10,7 @@ Il définit le modèle conceptuel que doivent respecter :
 - l'export SMP ;
 - l'import SMP ;
 - la sauvegarde et la restauration de bibliothèque ;
-- la future fonction **Mettre à jour la bibliothèque** ;
+- la fonction **Mettre à jour la bibliothèque** et ses extensions futures ;
 - SMP Sync ;
 - toute future fonctionnalité persistante.
 
@@ -198,7 +198,7 @@ L'État global de bibliothèque comprend notamment :
 - les références de playlists vers les `songId` des parents et variantes ;
 - les familles de bibliothèque utilisées comme organisation utilisateur ;
 - les relations et choix actifs de ces familles de bibliothèque ;
-- les prompteurs globaux ;
+- les textes défilants autonomes ;
 - les notes globales ;
 - les réglages persistants qui concernent la bibliothèque entière ;
 - les autres éléments persistants de `state.json` qui décrivent l'état global
@@ -240,6 +240,28 @@ Une donnée réellement indépendante des morceaux appartient à l'État global.
 L'emplacement physique actuel ne décide donc pas du périmètre conceptuel. La
 propriété fonctionnelle de la donnée est la seule règle.
 
+### 3.6 Textes défilants autonomes — implémentation actuelle
+
+Les **textes défilants** du catalogue Bibliothèque sont des contenus globaux. Ils
+n'appartiennent pas à une Famille SongUnit et restent distincts :
+
+- des paroles synchronisées `lyrics.lrc`, possédées par une SongUnit ;
+- d'un fichier `prompter.txt` ou `prompter.json` lié à un parent ou une variante ;
+- d'une occurrence de playlist, qui ne possède que la référence vers le texte.
+
+Le catalogue portable courant est stocké dans `Config/text_songs.json`, sous la racine de
+bibliothèque configurée. Chaque entrée conserve un identifiant stable, un titre et son texte.
+La compatibilité avec l'ancien stockage SharedPreferences reste assurée par le repository
+existant.
+
+Une occurrence de playlist référence ce catalogue par l'adresse interne
+`prompter://<id>`. Cette adresse est un détail technique : elle ne doit jamais être exposée à
+l'utilisateur ni servir de nom visible.
+
+Créer depuis **Bibliothèque → Textes défilants** écrit dans le catalogue sans créer
+d'occurrence de playlist. Créer depuis une playlist écrit dans le même catalogue puis ajoute une
+occurrence à la playlist sélectionnée.
+
 ---
 
 ## 4. Périmètre 3 — Manifest
@@ -263,8 +285,9 @@ Le Manifest représente uniquement :
 - les empreintes nécessaires pour reconnaître les modifications pertinentes ;
 - les informations de format nécessaires pour interpréter la sauvegarde.
 
-Il devient la référence descriptive de la future fonction **Mettre à jour la
-bibliothèque**.
+Il constitue la cible descriptive de la fonction **Mettre à jour la bibliothèque**. Sa version
+minimale actuelle mémorise une référence par Famille SongUnit ; elle ne représente pas encore
+l'État global complet décrit par ce Manifest.
 
 ### 4.3 Limites
 
@@ -275,7 +298,7 @@ Le Manifest ne possède jamais :
 - les accords ;
 - les variantes ;
 - les playlists ;
-- les prompteurs ;
+- les textes défilants ;
 - les notes ;
 - les réglages utilisateur ;
 - toute autre donnée utilisateur.
@@ -303,7 +326,7 @@ Bibliothèque SMP
 ├── État global de bibliothèque
 │   ├── Playlists et groupes
 │   ├── Familles de bibliothèque
-│   ├── Prompteurs globaux
+│   ├── Textes défilants autonomes
 │   ├── Notes globales
 │   └── Réglages globaux persistants
 └── Manifest
@@ -370,8 +393,8 @@ Cette spécification doit être utilisée comme contrat commun par :
 - l'import, pour reconstruire cette Famille sans modifier son identité ;
 - la sauvegarde, pour protéger toutes les Familles et l'État global ;
 - la restauration, pour restituer les deux périmètres de données utilisateur ;
-- la future fonction **Mettre à jour la bibliothèque**, pour représenter la
-  bibliothèque actuelle dans la sauvegarde de référence ;
+- la fonction **Mettre à jour la bibliothèque**, dont la version minimale republie actuellement
+  les Familles SongUnit et dont les extensions devront représenter aussi l'État global ;
 - SMP Sync, pour considérer les mêmes propriétaires et les mêmes frontières ;
 - les diagnostics futurs, pour vérifier qu'aucune donnée persistante n'est
   oubliée ou dupliquée ;

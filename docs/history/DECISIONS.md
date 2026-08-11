@@ -11,6 +11,45 @@ Chaque nouvelle décision importante doit être ajoutée avec :
 
 ---
 
+# 11/08/2026
+
+## Contexte
+
+La Bibliothèque exposait sous le nom `Lyrics` un catalogue de textes autonomes destinés au
+défilement, alors que le mot Lyrics désigne déjà les paroles `.lrc` synchronisées avec l'audio.
+L'ouverture de ces textes utilisait aussi encore l'ancien parcours plein écran sur tablette.
+
+Le chantier de persistance précédent a par ailleurs rendu l'aller-retour SMP des Familles
+SongUnit beaucoup plus complet, et une première commande de mise à jour de sauvegarde a été
+livrée.
+
+## Décisions
+
+- la terminologie utilisateur officielle devient **Textes défilants**, **Créer un texte
+  défilant** et **Nouveau texte défilant** ;
+- un texte défilant autonome appartient au catalogue global et reste distinct des paroles `.lrc`
+  d'une SongUnit et des contenus de prompteur liés à un morceau ;
+- la création depuis la Bibliothèque n'affecte aucune playlist, tandis que la création depuis une
+  playlist ajoute une occurrence à cette playlist ;
+- sur tablette moderne, le texte défilant s'ouvre dans le panneau droit du mode Split, avec ses
+  commandes de défilement contraintes à ce panneau ; le plein écran téléphone reste inchangé ;
+- l'aller-retour SMP d'une Famille préserve toutes les données de variantes actuellement prises
+  en charge et est certifié par un test de famille complet ;
+- **Mettre à jour la bibliothèque** est livré comme une étape minimale limitée aux Familles
+  SongUnit et ne doit pas être présenté comme une reconstruction complète de l'État global.
+
+## Conséquences pratiques
+
+- toute documentation utilisateur doit réserver Lyrics / Paroles aux contenus synchronisés avec
+  l'audio ;
+- `Config/text_songs.json` et `prompter://` restent des détails internes documentés uniquement
+  dans la spécification de persistance ;
+- les futures extensions de mise à jour devront intégrer `state.json`, playlists, groupes,
+  textes défilants et suppressions avant de représenter une sauvegarde entièrement à jour ;
+- les évolutions tablette du prompteur texte ne doivent pas modifier la disposition téléphone.
+
+---
+
 # 28/07/2026
 
 ## Contexte

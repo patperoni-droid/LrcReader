@@ -50,7 +50,10 @@ Lecture depuis la Bibliothèque :
 - Play, Pause, Stop et retour au début utilisent le `Playback Control` officiel ;
 - position et durée sont exprimées dans le temps cumulé de l'Arrangement ;
 - les paroles et accords propres à la variante utilisent son `songId` et le temps cumulé de sa Structure ;
-- Timeline, annotations, réglages avancés, MIDI et DMX propres à la variante restent des chantiers futurs.
+- Timeline, annotations, MIDI, DMX, grille, contenu de prompteur lié au morceau et réglages de
+  lecture propres à la variante sont préservés lors de l'aller-retour SMP ; leur édition et leur
+  exécution avancées dans le temps cumulé de la Structure restent des chantiers futurs lorsqu'elles
+  ne disposent pas encore d'un parcours utilisateur complet.
 
 La variante peut être ajoutée à une playlist, regroupée avec d'autres SongUnits, modifiée,
 partagée, sauvegardée et restaurée sans dupliquer l'audio parent.
@@ -68,7 +71,10 @@ Règles de transport :
 - le `.smp` du morceau parent contient l'audio une seule fois ;
 - son éventuel projet de travail `arrangement.json` est exporté avec le parent ;
 - toutes ses variantes virtuelles sont regroupées dans `arrangement_variants.json` ;
-- chaque variante y conserve son identifiant, son titre et sa Structure complète ;
+- chaque variante y conserve son identifiant, son titre, son titre personnalisé, sa Structure
+  complète et ses données prises en charge : paroles, brouillon brut d'édition, accords, couleurs,
+  Timeline, annotations, MIDI/DMX, grille, contenu de prompteur lié au morceau, trim, vitesse,
+  pitch et gain manuel ;
 - aucun WAV, MP3 ou autre fichier audio supplémentaire n'est créé ;
 - l'export autonome d'une variante virtuelle est refusé afin de ne jamais produire une sauvegarde incomplète ;
 - une sauvegarde complète exporte uniquement le morceau parent, qui transporte automatiquement ses variantes.
@@ -103,6 +109,11 @@ Les validations suivantes ont ensuite confirmé toute la chaîne :
 La sauvegarde/restauration actuelle préserve les occurrences, l'ordre, les points IN / OUT,
 les répétitions, les mutes, les noms et les couleurs, et recrée les variantes virtuelles
 à partir du manifeste.
+
+Le test de Famille SongUnit complet ajouté le 10 août 2026 certifie également, après export,
+suppression du runtime, import et nouveau scan, l'égalité des paroles et brouillons bruts,
+accords, couleurs, Timeline, annotations, MIDI/DMX, grille, contenus de prompteur liés aux
+morceaux, titres personnalisés et réglages de lecture pris en charge du parent et de ses variantes.
 
 ### Réouvrir une variante comme projet éditable
 
@@ -143,7 +154,9 @@ Contrat fonctionnel :
 
 - une variante virtuelle ne peut exister que si son titre parent existe dans la Bibliothèque normalisée ;
 - le parent reste l'unique propriétaire du fichier audio ;
-- la variante possède son propre `songId`, son titre, sa Structure et pourra posséder ses propres paroles, accords, données Timeline, annotations et réglages ;
+- la variante possède son propre `songId`, son titre, sa Structure et peut posséder ses propres
+  paroles, accords, données Timeline, annotations, MIDI/DMX, grille, contenu de prompteur lié au
+  morceau et réglages de lecture ;
 - ces données propres à la variante sont stockées dans son dossier runtime, mais voyagent dans la « valise » `.smp` du parent ;
 - aucun `.smp` autonome incomplet ne doit être créé pour une variante.
 
@@ -160,7 +173,10 @@ Suppression dans une playlist :
 - retirer une variante d'une playlist ne retire ni le parent ni les autres variantes ;
 - une playlist peut contenir uniquement la variante, sans occurrence visible du parent, tant que le parent reste présent dans la Bibliothèque.
 
-**État d'implémentation :** la suppression en cascade parent → variantes, la préservation des assets lors d'une mise à jour Arrangement et le transport des paroles et accords propres aux variantes sont implémentés. Le transport des futurs autres assets propres aux variantes reste à implémenter.
+**État d'implémentation :** la suppression en cascade parent → variantes, la préservation des
+assets lors d'une mise à jour Arrangement et le transport de toutes les données de variante
+actuellement prises en charge sont implémentés. Les futurs formats devront être ajoutés au même
+contrat d'aller-retour avant d'être considérés comme persistants.
 
 ### Paroles propres à une variante
 
@@ -723,7 +739,9 @@ Pendant l’assemblage :
 
 - la sauvegarde complète reconstruit le `.smp` du parent depuis le runtime normalisé ;
 - ce `.smp` transporte l'audio une seule fois, le projet parent et ses variantes ;
-- les paroles, accords, couleurs et Structures propres aux variantes sont inclus ;
+- les données propres aux variantes actuellement prises en charge sont incluses : Structure,
+  paroles et brouillon brut, accords, couleurs, Timeline, annotations, MIDI/DMX, grille, contenu
+  de prompteur lié au morceau, titre personnalisé et réglages de lecture transportables ;
 - le nom de sauvegarde proposé est modifiable avant création ;
 - `state.json` transporte automatiquement les playlists, leurs groupes et leurs associations.
 

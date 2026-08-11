@@ -5,14 +5,34 @@
 Ce document formalise la philosophie produit et le cycle de vie cible de la
 sauvegarde globale de la bibliothèque SMP.
 
-Il s'agit d'une référence d'architecture et d'UX pour un chantier futur. Il ne
-décrit pas une fonctionnalité déjà entièrement implémentée.
+Depuis le 11 août 2026, une première version minimale de **Mettre à jour la
+bibliothèque** est livrée. Elle mémorise une sauvegarde complète réussie comme
+référence et peut republier les Familles SongUnit courantes dans le même dossier.
+Le cycle complet décrit par ce document n'est pas encore entièrement implémenté.
 
 Le comportement actuellement livré de l'export et de la restauration reste
-décrit dans `FEATURE_EXPORT_BACKUP.md`. Les hypothèses techniques historiques de
-`FEATURE_BACKUP_V2.md` devront être rediagnostiquées avant toute implémentation.
-Pour le futur cycle de vie utilisateur, le présent document remplace le libellé
+décrit dans [FEATURE_EXPORT_BACKUP.md](FEATURE_EXPORT_BACKUP.md). Les hypothèses
+techniques historiques de [FEATURE_BACKUP_V2.md](FEATURE_BACKUP_V2.md) devront
+être rediagnostiquées avant toute extension.
+Pour le cycle de vie utilisateur, le présent document remplace le libellé
 historique **Synchroniser la sauvegarde** par **Mettre à jour la bibliothèque**.
+
+### Périmètre de la version minimale actuelle
+
+La commande actuelle :
+
+- apparaît après une sauvegarde complète réussie et signale explicitement si son dossier n'est
+  plus accessible lors de la mise à jour ;
+- réexporte chaque Famille SongUnit courante, parent et variantes compris ;
+- vérifie l'identité `songId` avant de remplacer l'archive précédemment référencée ;
+- ajoute les nouvelles Familles et conserve la référence précédente en cas d'échec autant que
+  possible ;
+- attend la fin des écritures de l'éditeur de paroles avant l'export.
+
+Elle ne met pas encore à jour `state.json`, les playlists, les groupes ni les textes défilants
+autonomes, ne retire pas les Familles supprimées et ne calcule pas encore l'état
+« sauvegardée et à jour ». Une sauvegarde complète reste donc nécessaire pour protéger
+l'intégralité de l'État global de bibliothèque.
 
 ---
 
@@ -81,16 +101,18 @@ Cette action :
 
 ### Après la première sauvegarde
 
-Le menu affiche :
+La version minimale conserve l'action **Sauvegarder la bibliothèque**, qui permet de créer une
+nouvelle sauvegarde complète, et affiche en plus :
 
 > Mettre à jour la bibliothèque
 
-Cette action met à jour la sauvegarde de référence existante afin qu'elle
-représente l'état actuel de la bibliothèque.
+Dans la version minimale actuelle, cette action met à jour les Familles SongUnit de la sauvegarde
+de référence. La cible complète est qu'elle représente ensuite l'intégralité de l'état actuel de
+la bibliothèque.
 
-La première sauvegarde et les mises à jour suivantes doivent rester deux états
-UX clairement distincts. Leur implémentation exacte devra réutiliser les
-pipelines SMP de sauvegarde existants et conserver la rétrocompatibilité.
+La création d'une nouvelle sauvegarde complète et la mise à jour de la référence existante sont
+donc deux actions distinctes. Toute extension doit continuer à réutiliser les pipelines SMP
+existants et conserver la rétrocompatibilité.
 
 ---
 
@@ -105,8 +127,8 @@ Le futur diagnostic devra permettre de représenter au minimum trois états :
 3. **Modifiée depuis la dernière sauvegarde** : le runtime contient au moins une
    modification qui n'est pas encore reflétée dans la sauvegarde de référence.
 
-Ce document n'impose pas encore de mécanisme technique, de compteur de version,
-d'empreinte ou de journal de modifications.
+La version minimale mémorise la destination et les archives par `songId`, mais ne fournit pas
+encore de compteur de version, d'empreinte globale ou de journal de modifications.
 
 ### Modifications à étudier
 
@@ -130,6 +152,8 @@ Cette liste est une base d'analyse, pas encore le contrat technique définitif.
 ---
 
 ## Fermeture de l'application
+
+**Statut : comportement cible non implémenté dans la version minimale actuelle.**
 
 ### Bibliothèque inchangée
 
@@ -239,22 +263,20 @@ parler de bibliothèque et de travail sauvegardé, pas de fichiers techniques.
 
 ---
 
-## Chantiers recommandés
+## Chantiers recommandés restants
 
 L'ordre de travail recommandé est :
 
-1. diagnostiquer le mécanisme actuel de sauvegarde et de restauration dans le
-   code réel ;
-2. identifier de manière fiable la première sauvegarde et sa cible durable ;
+1. étendre la mise à jour à l'État global, dont `state.json`, les playlists et les textes
+   défilants ;
+2. traiter explicitement les Familles supprimées sans sortir du dossier SAF référencé ;
 3. définir et valider la détection des modifications pertinentes ;
-4. créer l'action **Mettre à jour la bibliothèque** en réutilisant le pipeline
-   existant ;
-5. adapter les libellés selon l'état de la bibliothèque ;
-6. intercepter la fermeture sans perturber Android, la navigation ou la lecture
+4. adapter les libellés selon l'état réel de la bibliothèque ;
+5. intercepter la fermeture sans perturber Android, la navigation ou la lecture
    Live ;
-7. réaliser des tests de restauration réels, y compris après désinstallation et
+6. réaliser des tests de restauration réels, y compris après désinstallation et
    sur un autre appareil ;
-8. mettre à jour la documentation utilisateur et le parcours d'onboarding.
+7. mettre à jour le parcours d'onboarding lorsque le cycle complet sera livré.
 
 Chaque étape doit suivre l'ordre officiel du projet : diagnostic, patch minimal,
 compilation, validation, puis commit.

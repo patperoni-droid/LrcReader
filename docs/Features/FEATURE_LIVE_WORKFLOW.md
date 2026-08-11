@@ -121,8 +121,9 @@ Barre SMP tablette :
 
 Règles :
 
-✔ `Paroles` signifie toujours `Playlist | Paroles défilantes`  
+✔ `Paroles` signifie toujours `Playlist | Paroles synchronisées avec l'audio`
 ✔ `Paroles` ne signifie pas l'éditeur de paroles  
+✔ `Textes défilants` désigne le catalogue autonome de la Bibliothèque, sans audio ni `.lrc`
 ✔ aucun panneau droit ne doit bloquer le retour vers les paroles  
 ✔ les écrans nécessitant toute la largeur, comme Arrangement ou Timeline, restent en Fullscreen  
 ✔ le téléphone reste la base stable ; la tablette est une extension conditionnée au mode tablette/split
@@ -130,7 +131,7 @@ Règles :
 
 Bibliothèque tablette :
 
-- l'en-tête compact regroupe `Songs / Lists / Lyrics / LUFS / dossier / menu / cockpit`
+- l'en-tête compact regroupe `Songs / Lists / Textes défilants / LUFS / dossier / menu / cockpit`
 - le titre `Bibliothèque` et le sous-titre sont masqués en mode tablette compact pour gagner de la hauteur
 - les lignes de morceaux ne sont pas compactées pour l'instant à cause d'un risque runtime déjà rencontré
 - depuis la playlist gauche, l'icône dossier doit ouvrir la navigation dossiers / Bibliothèque dans le panneau droit

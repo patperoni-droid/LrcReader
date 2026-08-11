@@ -59,7 +59,10 @@ Le partage réutilise le même format `.smp` et le même pipeline d'import.
 - conserve son `sourceSongId` immuable
 - transporte le parent nécessaire à son autonomie
 - inclut uniquement la variante ciblée grâce à `selectedVariantId`
-- transporte ses paroles, ses accords, ses couleurs de lignes et sa structure
+- transporte ses paroles, son brouillon brut d'édition, ses accords, ses couleurs de lignes, sa
+  Structure, sa Timeline, ses annotations, ses événements MIDI/DMX, sa grille, son éventuel
+  contenu de prompteur lié au morceau, son titre personnalisé et ses réglages de lecture pris en
+  charge
 - ne crée pas un second fichier audio
 
 À l'import, l'archive ne doit jamais modifier un parent local qui possède déjà le même
@@ -114,9 +117,12 @@ Arrangement → WAV → SMP → runtime
 - tous les morceaux importés (version runtime), incluant leurs réglages LUFS dans `config.json`
 - le projet `arrangement.json` courant de chaque morceau lorsqu'il existe
 - les variantes Arrangement virtuelles dans `arrangement_variants.json` à l'intérieur du `.smp` de leur morceau parent
-- les paroles, accords et couleurs de lignes propres à chaque variante
+- les données propres à chaque variante : paroles et brouillon brut, accords, couleurs de lignes,
+  Structure, Timeline, annotations, MIDI/DMX, grille, prompteur lié au morceau, titre personnalisé,
+  trim, vitesse, pitch et gain manuel
 - tous les `.smp` présents dans le stockage
 - playlists, groupes internes, couleurs, ordre, occurrences répétées et titres personnalisés
+- textes défilants autonomes, exportés séparément de leurs éventuelles occurrences de playlist
 - état utilisateur (played, lastPlayed, etc.)
 
 ### Variantes Arrangement virtuelles
@@ -127,13 +133,41 @@ La sauvegarde complète applique donc les règles suivantes :
 
 - un seul `.smp` est créé pour le morceau parent ;
 - l'audio source n'est présent qu'une fois ;
-- les identifiants, titres, structures, paroles, accords et couleurs de lignes de ses variantes sont embarqués dans ce même conteneur ;
+- les identifiants, titres, structures et données persistantes prises en charge de ses variantes
+  sont embarqués dans ce même conteneur ;
 - une variante orpheline dont le parent est absent provoque un échec signalé au lieu d'être ignorée silencieusement.
 
 Lors de la restauration, le parent est importé en premier puis ses variantes sont recréées comme données runtime normalisées. Les anciens `.smp` sans variantes restent compatibles.
 
 Une ancienne archive reste compatible, mais elle ne peut pas recréer une donnée qui
 n'était pas transportée au moment de sa création.
+
+---
+
+## 🔄 METTRE À JOUR LA BIBLIOTHÈQUE — VERSION MINIMALE LIVRÉE
+
+Après une sauvegarde complète réussie, l'écran **Plus** propose l'action **Mettre à jour la
+bibliothèque**.
+
+Le comportement actuel est volontairement limité aux Familles SongUnit :
+
+- le dossier de sauvegarde et les archives précédemment publiées sont mémorisés comme référence ;
+- chaque parent courant est réexporté avec ses variantes dans une nouvelle archive `.smp` ;
+- le `songId` de l'archive publiée est vérifié avant remplacement ;
+- la nouvelle référence est enregistrée avant la suppression de l'ancienne archive ;
+- une ancienne archive n'est supprimée que si son identité correspond au `songId` attendu ;
+- les erreurs sont comptées et la sauvegarde précédente est conservée autant que possible.
+
+Limites actuelles :
+
+- l'action ne republie pas encore `state.json` ni le fichier de sauvegarde des textes défilants ;
+- elle ne retire pas encore de la sauvegarde les Familles supprimées du runtime ;
+- elle ne calcule pas encore un état visible « à jour » ou « modifié » ;
+- elle ne remplace donc pas encore une sauvegarde complète avant une restauration critique.
+
+Cette version minimale ne doit pas être confondue avec la synchronisation complète décrite comme
+cible dans [FEATURE_LIBRARY_BACKUP.md](FEATURE_LIBRARY_BACKUP.md) et
+[FEATURE_BACKUP_V2.md](FEATURE_BACKUP_V2.md).
 
 ---
 
@@ -356,7 +390,7 @@ Catégories :
 - morceaux
 - playlists
 - bloc-notes : prévu plus tard
-- prompteurs : prévu plus tard
+- textes défilants : prévu plus tard
 
 Règles :
 
@@ -396,7 +430,8 @@ Voir aussi : `FEATURE_SMP_SYNC.md`
 ## 🔮 PISTES FUTURES NON IMPLÉMENTÉES
 
 - mode avancé “me demander” et sélection des conflits fichier par fichier
-- synchronisation ou mise à jour d'une sauvegarde existante
+- extension de **Mettre à jour la bibliothèque** à l'État global, aux textes défilants, aux
+  suppressions et à l'indication fiable de l'état de la sauvegarde
 - sauvegarde complète dans une archive unique
 - ouverture directe d'un fichier `.smp` par `ACTION_VIEW`
 
@@ -410,6 +445,12 @@ Vérifier au minimum :
 - sauvegarde avec un nom personnalisé
 - restauration complète d'un parent et de ses variantes
 - restauration des paroles et accords propres aux variantes
+- aller-retour complet d'une Famille avec Timeline, annotations, MIDI/DMX, grille, prompteur lié au
+  morceau, brouillon brut de paroles, titres personnalisés et réglages de lecture de variantes
+- création d'une sauvegarde complète contenant des textes défilants autonomes, puis restauration
+  de leur catalogue et de leurs occurrences de playlist
+- mise à jour minimale d'une sauvegarde existante : remplacement sûr d'une Famille, ajout d'une
+  nouvelle Famille, dossier devenu inaccessible et échec de publication
 - restauration d'une playlist contenant un groupe avec parent et variante
 - conservation de l'ordre, des couleurs, des occurrences répétées et des titres personnalisés
 - absence de « Titre manquant » pour toute référence `songId` valide

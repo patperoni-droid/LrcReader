@@ -17,6 +17,7 @@ The user must be able to:
 - group songs logically (intro, dance, etc.)
 - see what has been played
 - prepare what comes next quickly
+- create a standalone scrolling text for the current set
 
 👉 Playlist = live control center
 
@@ -210,6 +211,24 @@ exist in the Library because the variant depends on its audio.
 
 ⸻
 
+STANDALONE SCROLLING TEXTS
+
+An opened playlist provides the localized action `Create a scrolling text` (`Créer un texte
+défilant` in French).
+
+Behavior:
+
+- the existing `New scrolling text` dialog asks for a mandatory title and text;
+- validation creates one item in the shared scrolling-text catalog;
+- the new item is then added to the currently selected playlist;
+- the text remains autonomous: it has no audio and is not a synchronized `.lrc` lyrics file;
+- opening the playlist item routes to the text prompter without changing the audio Player model.
+
+This workflow must remain distinct from creation in `Library` → `Scrolling texts`: Library
+creation adds the item to the catalog only and never chooses or modifies a playlist.
+
+⸻
+
 LIVE SONG FAMILIES
 
 A Library song family can be added to a playlist as one compact entry.
@@ -396,6 +415,7 @@ DATA MODEL
 
 Playlist stores:
 - stable `songId` references for parents and variants
+- stable references to standalone scrolling-text catalog items
 - a stable occurrence/item identity independent from `songId`
 - order
 - group metadata
@@ -409,6 +429,9 @@ The occurrence identity allows:
 Must NOT store:
 - audio files
 - duplicated song data
+
+The playlist owns only the occurrence of a scrolling text. The title and content remain owned by
+the shared scrolling-text catalog.
 
 ⸻
 
@@ -570,6 +593,10 @@ Test at least:
 - verify group, color, order, repeated occurrences, and custom titles are restored
 - verify no valid parent or variant is displayed as “Titre manquant”
 - verify restored parent and variant occurrences survive app restart
+- create a scrolling text from an opened playlist and verify that it appears both in the shared
+  catalog and in that playlist
+- create a scrolling text from the Library and verify that no playlist occurrence is added
+- open a scrolling-text occurrence in the text prompter on phone and tablet
 
 👉 Must be tested on real device
 

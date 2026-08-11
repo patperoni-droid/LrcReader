@@ -17,6 +17,7 @@ The user must be able to:
 - manage live songs
 - select multiple files
 - assign songs to playlists
+- create and manage standalone scrolling texts
 - rename display titles
 - share a parent song or one of its virtual Arrangement variants
 - keep original files safe
@@ -126,6 +127,40 @@ The currently implemented user entry point is the visible Library action and its
 
 ⸻
 
+STANDALONE SCROLLING TEXTS
+
+The Library includes a dedicated `Scrolling texts` view, localized as:
+
+- French: `Textes défilants`
+- English: `Scrolling texts`
+- Spanish: `Textos con desplazamiento`
+
+These entries are autonomous texts intended for continuous reading in the text prompter. They
+must not be confused with synchronized lyrics:
+
+- a scrolling text has a title and free text, does not require audio, and does not require LRC
+  timestamps;
+- synchronized song lyrics belong to a SongUnit and are stored as `.lrc` content tied to audio
+  playback;
+- creating or editing one must never rewrite the other.
+
+User workflow on phone and tablet:
+
+1. open `Library` → `Scrolling texts`;
+2. tap the pencil shown between the storage/folder action and `Import`;
+3. fill in the mandatory title and text in `New scrolling text`;
+4. validate to add the item immediately to the general scrolling-text catalog;
+5. tap the item to open it in the text prompter.
+
+Creation from this Library view never adds the new text to a playlist automatically. Creation
+from an opened playlist remains a separate workflow and adds the new catalog item to that
+playlist.
+
+The pencil uses the localized `Create a scrolling text` accessibility label. The existing
+Import action and import pipeline remain unchanged.
+
+⸻
+
 SMP FILES
 
 .smp files are transport packages.
@@ -154,7 +189,9 @@ User behavior:
 Sharing:
 - the `Partager` action is enabled for a valid variant
 - SMP packages the parent audio once and includes only the selected variant
-- the selected variant keeps its `songId`, title, Structure, lyrics, chords, and line colors when present
+- the selected variant keeps its `songId`, title, custom title, Structure, lyrics, exact editor
+  draft, chords, line colors, Timeline, annotations, MIDI/DMX, grid, song-linked prompter content,
+  and supported playback settings when present
 - sharing does not create a WAV and does not modify the parent
 
 Importing a shared variant:
@@ -163,6 +200,8 @@ Importing a shared variant:
 - an existing variant with the same `songId` is updated without duplication
 - the same variant `songId` attached to another `sourceSongId` is refused explicitly
 - optional local variant assets absent from the archive are preserved
+- supported playback transport currently covers trim, speed, pitch and manual gain; EQ and
+  LUFS-derived device state are not implied by this contract
 
 ⸻
 
@@ -337,7 +376,7 @@ Compact tablet header:
 - the mode controls are grouped on one line:
   - Songs
   - Lists
-  - Lyrics
+  - Scrolling texts
   - LUFS
   - storage/folder action
   - Library actions menu
@@ -590,6 +629,12 @@ Test at least:
 - missing permission case
 - source file moved/deleted after import
 - app restart after import
+- create a scrolling text from the Library on phone and tablet and verify that it appears
+  immediately without playlist assignment
+- restart after scrolling-text creation and open the item in the text prompter
+- create a scrolling text from a playlist and verify that only this workflow adds it to the
+  selected playlist
+- verify that standalone scrolling texts remain distinct from song `.lrc` lyrics
 - delete a parent and confirm the variant/playlist cascade
 - delete one variant and verify that its parent remains
 - validate first launch on phone and tablet with no welcome or Player flash after Demo installation

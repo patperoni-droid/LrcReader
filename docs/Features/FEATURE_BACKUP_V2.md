@@ -4,21 +4,27 @@
 
 ---
 
-## Statut au 28 juillet 2026
+## Statut au 11 août 2026
 
-Ce document décrit une évolution future. Le comportement actuellement implémenté et
-validé reste défini dans `FEATURE_EXPORT_BACKUP.md`.
+Ce document conserve la cible historique d'une sauvegarde de travail complète. Le comportement
+actuellement implémenté et validé reste défini dans
+[FEATURE_EXPORT_BACKUP.md](FEATURE_EXPORT_BACKUP.md), et le cycle produit dans
+[FEATURE_LIBRARY_BACKUP.md](FEATURE_LIBRARY_BACKUP.md).
 
 Déjà livré, sous une forme plus simple que la première hypothèse de ce document :
 
 - le nom du dossier de sauvegarde est proposé automatiquement et reste modifiable ;
 - `state.json` conserve l'état applicatif et les playlists ;
 - les modes Morceaux et Playlists `Conserver / Remplacer` sont indépendants.
+- une sauvegarde complète réussie devient une référence de travail ;
+- l'action **Mettre à jour la bibliothèque** republie de façon sûre les Familles SongUnit
+  courantes dans le même dossier.
 
-Toujours non implémenté :
+Toujours non implémenté dans la mise à jour minimale :
 
-- mémoriser une sauvegarde comme sauvegarde de travail ;
-- synchroniser/reconstruire un dossier de sauvegarde existant ;
+- republier l'État global (`state.json`, playlists, groupes et textes défilants) ;
+- retirer les Familles supprimées de la sauvegarde ;
+- détecter et afficher l'état « à jour » ou « modifié » ;
 - appliquer la structure cible `SMP/` ou `DATA/`.
 
 Les hypothèses de nommage du JSON et de sous-dossiers ci-dessous doivent donc être
@@ -63,9 +69,9 @@ Ce fonctionnement est conservé.
 
 ---
 
-## 2. Synchroniser une sauvegarde
+## 2. Mettre à jour une sauvegarde
 
-Nouvelle fonctionnalité.
+Cible complète, partiellement livrée.
 
 Objectif :
 
@@ -73,7 +79,8 @@ Mettre à jour une sauvegarde existante.
 
 Aucun nouveau dossier n'est créé.
 
-La sauvegarde existante est reconstruite afin de refléter exactement l'état actuel de la bibliothèque.
+La version minimale actuelle republie les Familles SongUnit. La cible reste de reconstruire la
+sauvegarde existante afin qu'elle reflète exactement l'état actuel de la bibliothèque.
 
 Cette fonction joue le rôle d'un "Ctrl+S".
 
@@ -166,7 +173,7 @@ Concrètement :
 - suppression des morceaux supprimés ;
 - prise en compte des modifications des paroles ;
 - prise en compte des accords ;
-- prise en compte du prompteur ;
+- prise en compte des contenus de prompteur liés aux morceaux et des textes défilants autonomes ;
 - prise en compte des futures métadonnées.
 
 Le dossier Export devient ainsi une image fidèle de la bibliothèque.
@@ -199,7 +206,7 @@ Il modifie des paroles.
 
 Puis il appuie simplement sur :
 
-Synchroniser la sauvegarde
+Mettre à jour la bibliothèque
 
 Sans avoir à recréer une nouvelle sauvegarde.
 
@@ -221,9 +228,8 @@ Les sauvegardes sont uniquement des copies de sécurité.
 
 # Priorité
 
-Fonctionnalité prévue pour une future version.
-
-Aucune implémentation dans la version actuellement en cours de stabilisation pour la bêta Play Store.
+La version minimale Familles SongUnit est livrée. L'extension à l'État global, aux suppressions et
+à l'indication fiable de l'état de sauvegarde reste un chantier priorisé dans `docs/BACKLOG.md`.
 
 ---
 
@@ -293,7 +299,7 @@ Concert été 2026.json
 
 Le but est de rendre immédiatement identifiable le contenu de la sauvegarde.
 
-## Synchronisation d'une sauvegarde
+## Mise à jour complète d'une sauvegarde — cible
 
 La synchronisation ne réalise jamais une mise à jour incrémentale.
 
@@ -305,7 +311,8 @@ Elle :
 - régénère tous les .smp ;
 - ajoute les nouveaux morceaux ;
 - retire ceux qui n'existent plus dans la bibliothèque ;
-- met à jour toutes les données (paroles, accords, prompteur, etc.).
+- met à jour toutes les données (paroles, accords, contenus de prompteur liés aux morceaux,
+  textes défilants autonomes, etc.).
 
 La sauvegarde devient ainsi une image fidèle de la bibliothèque.
 
@@ -318,7 +325,10 @@ La représentation de sauvegarde retenue est donc :
 - le titre parent produit un seul fichier `.smp` ;
 - ce fichier transporte l'audio une seule fois ;
 - `arrangement.json` conserve le projet Arrangement courant du parent ;
-- `arrangement_variants.json` regroupe les variantes virtuelles du parent, avec leur identifiant, leur titre et leur Structure ;
+- `arrangement_variants.json` regroupe les variantes virtuelles du parent avec leur identifiant,
+  leur titre, leur Structure, leurs paroles et brouillons bruts, accords, couleurs, Timeline,
+  annotations, MIDI/DMX, grille, contenu de prompteur lié au morceau, titre personnalisé et
+  réglages de lecture pris en charge ;
 - aucun `.smp` incomplet n'est produit pour une variante seule.
 
 La restauration normalise d'abord le parent, puis recrée ses variantes comme entrées distinctes de la Bibliothèque. Un ancien `.smp` sans ces fichiers continue à être accepté.
@@ -371,8 +381,9 @@ Découper BACKUP V2 en plusieurs étapes indépendantes.
 
 ### V2.2
 
-- mémorisation de la sauvegarde de travail.
+- mémorisation de la sauvegarde de travail : livrée sous forme minimale ;
+- republication sûre des Familles SongUnit : livrée sous forme minimale.
 
 ### V2.3
 
-- synchronisation complète d'une sauvegarde existante.
+- mise à jour complète d'une sauvegarde existante, État global et suppressions compris.
