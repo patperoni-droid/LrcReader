@@ -196,7 +196,7 @@
     <string name="quickplaylists_empty">Aucune playlist.\nCrée ta première playlist.</string>
     <string name="quickplaylists_create_playlist_action">Créer une playlist</string>
     <string name="quickplaylists_save_current_list_action">Enregistrer la liste en cours</string>
-    <string name="quickplaylists_create_prompter_action">Créer un prompteur</string>
+    <string name="quickplaylists_create_prompter_action">Créer un texte défilant</string>
     <string name="quickplaylists_no_playlists_title">Aucune playlist pour le moment</string>
     <string name="quickplaylists_no_playlists_subtitle">Créez votre première playlist pour commencer</string>
     <string name="quickplaylists_open_playlist_action">Ouvrir une playlist</string>
@@ -290,7 +290,7 @@
     <string name="library_view_mode_songs">Songs</string>
     <string name="library_view_mode_files">Fichiers</string>
     <string name="library_view_mode_playlists">Lists</string>
-    <string name="library_view_mode_prompters">Lyrics</string>
+    <string name="library_view_mode_prompters">Textes défilants</string>
     <string name="library_view_mode_lufs">LEVELS</string>
     <string name="library_header_cd_storage">Accès au stockage</string>
     <string name="library_storage_header_title">Stockage de l’appareil</string>
@@ -350,7 +350,7 @@
     <string name="library_smp_folder">Mes morceaux live</string>
     <string name="library_legacy_backing_tracks_folder">Mes morceaux live</string>
     <string name="library_smp_empty_state">Aucun morceau live SMP pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>
-    <string name="library_prompter_empty_state">Aucun prompteur pour l’instant.\nCrée un prompteur depuis une playlist pour le voir apparaître ici.</string>
+    <string name="library_prompter_empty_state">Aucun texte défilant pour l’instant.\nCréez un texte défilant depuis une playlist pour le voir apparaître ici.</string>
     <string name="library_smp_detected_importing">Fichier SMP détecté, import du morceau…</string>
 
     <string name="library_delete_backing_track_title">Supprimer ce morceau ?</string>
@@ -825,9 +825,9 @@
     <string name="quickplaylists_group_new_default">Nouveau groupe</string>
     <string name="quickplaylists_group_current">Groupe en cours</string>
     <string name="quickplaylists_add_track_button">Ajouter des morceaux</string>
-    <string name="quickplaylists_edit_prompter_title">Éditer le prompteur ✅ TEST 2026</string>
-    <string name="quickplaylists_new_prompter_title">Nouveau titre (prompteur 2026 )</string>
-    <string name="quickplaylists_prompter_text_label">Texte du prompteur</string>
+    <string name="quickplaylists_edit_prompter_title">Modifier le texte défilant</string>
+    <string name="quickplaylists_new_prompter_title">Nouveau texte défilant</string>
+    <string name="quickplaylists_prompter_text_label">Contenu du texte défilant</string>
 
     <!-- History -->
     <string name="history_title">Historique</string>
@@ -923,7 +923,7 @@
     <string name="smp_sync_manual_category_songs">Morceaux</string>
     <string name="smp_sync_manual_category_playlists">Playlists</string>
     <string name="smp_sync_manual_category_notes">Bloc-notes</string>
-    <string name="smp_sync_manual_category_prompters">Prompteurs</string>
+    <string name="smp_sync_manual_category_prompters">Textes défilants</string>
     <string name="smp_sync_manual_search">Rechercher</string>
     <string name="smp_sync_manual_select_all">Tout sélectionner</string>
     <string name="smp_sync_manual_select_all_short">Tout</string>
@@ -1219,7 +1219,7 @@
     <string name="more_library_restore_importing">Importation des morceaux…</string>
     <string name="more_library_restore_rebuilding">Reconstruction de la bibliothèque…</string>
     <string name="more_library_restore_playlists">Restauration des playlists…</string>
-    <string name="more_library_restore_summary">Cette sauvegarde contient :\n- %1$d morceaux\n- %2$d playlists\n- %3$d prompteur(s)\n- %4$d conflits détectés</string>
+    <string name="more_library_restore_summary">Cette sauvegarde contient :\n- %1$d morceaux\n- %2$d playlists\n- %3$d texte(s) défilant(s)\n- %4$d conflits détectés</string>
     <string name="more_library_restore_songs_choice">Morceaux</string>
     <string name="more_library_restore_keep_existing">Conserver les morceaux existants</string>
     <string name="more_library_restore_replace_existing">Remplacer les morceaux existants</string>
@@ -1228,7 +1228,7 @@
     <string name="more_library_restore_replace_existing_playlists">Remplacer les playlists existantes</string>
     <string name="more_library_restore_scan_failed">Impossible de lire ce dossier de sauvegarde</string>
     <string name="more_library_restore_empty">Aucun fichier de sauvegarde utilisable dans ce dossier</string>
-    <string name="more_library_restore_result">Restauration terminée : %1$d morceau(x) importé(s), %2$d ignoré(s), %3$d échec(s)\nPrompteurs : %4$d importé(s), %5$d ignoré(s)\nÉtat : %6$s</string>
+    <string name="more_library_restore_result">Restauration terminée : %1$d morceau(x) importé(s), %2$d ignoré(s), %3$d échec(s)\nTextes défilants : %4$d importé(s), %5$d ignoré(s)\nÉtat : %6$s</string>
     <string name="more_library_restore_result_state_restored">playlists restaurées</string>
     <string name="more_library_restore_result_state_with_warnings">playlists restaurées avec %1$d avertissement(s)</string>
     <string name="more_library_restore_result_state_failed">state.json non appliqué (%1$d conflit(s))</string>
@@ -1312,10 +1312,10 @@ N’oubliez pas de sauvegarder.</string>
         <item quantity="one">Supprimer définitivement cette playlist ?</item>
         <item quantity="other">Supprimer définitivement ces %1$d playlists ?</item>
     </plurals>
-    <string name="library_delete_selected_lyrics_title">Supprimer les paroles sélectionnées</string>
+    <string name="library_delete_selected_lyrics_title">Supprimer les textes défilants sélectionnés</string>
     <plurals name="library_delete_selected_lyrics_confirm">
-        <item quantity="one">Supprimer définitivement ces paroles ?</item>
-        <item quantity="other">Supprimer définitivement ces %1$d paroles ?</item>
+        <item quantity="one">Supprimer définitivement ce texte défilant ?</item>
+        <item quantity="other">Supprimer définitivement ces %1$d textes défilants ?</item>
     </plurals>
     <string name="library_copying">Copie…</string>
     <string name="library_delete_selected_title">Supprimer la sélection</string>
@@ -1333,7 +1333,7 @@ N’oubliez pas de sauvegarder.</string>
     <string name="main_menu_notes">Bloc Notes</string>
     <string name="main_menu_library">Bibliothèque</string>
     <string name="main_menu_playlists">playlists</string>
-    <string name="main_menu_prompter">📝 Prompteur</string>
+    <string name="main_menu_prompter">📝 Textes défilants</string>
     <string name="main_menu_more">Paramètres / Plus</string>
     <string name="main_menu_tuner">Accordeur</string>
     <string name="tablet_split_menu_library">Bibliothèque</string>

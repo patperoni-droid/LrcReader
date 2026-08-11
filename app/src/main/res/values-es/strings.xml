@@ -203,7 +203,7 @@
     <string name="quickplaylists_empty">No hay listas de reproducción.\nCrea tu primera lista.</string>
     <string name="quickplaylists_create_playlist_action">Crear una lista de reproducción</string>
     <string name="quickplaylists_save_current_list_action">Guardar la lista actual</string>
-    <string name="quickplaylists_create_prompter_action">Crear prompter</string>
+    <string name="quickplaylists_create_prompter_action">Crear un texto con desplazamiento</string>
     <string name="quickplaylists_no_playlists_title">No hay listas de reproducción</string>
     <string name="quickplaylists_no_playlists_subtitle">Crea tu primera lista para comenzar</string>
     <string name="quickplaylists_open_playlist_action">Abrir una lista de reproducción</string>
@@ -288,7 +288,7 @@
     <string name="library_view_mode_songs">Songs</string>
     <string name="library_view_mode_files">Archivos</string>
     <string name="library_view_mode_playlists">Lists</string>
-    <string name="library_view_mode_prompters">Lyrics</string>
+    <string name="library_view_mode_prompters">Textos con desplazamiento</string>
     <string name="library_view_mode_lufs">LEVELS</string>
     <string name="library_header_cd_storage">Acceso al almacenamiento</string>
     <string name="library_storage_header_title">Almacenamiento del dispositivo</string>
@@ -348,7 +348,7 @@
     <string name="library_smp_folder">Mis pistas en vivo</string>
     <string name="library_legacy_backing_tracks_folder">Mis pistas en vivo</string>
     <string name="library_smp_empty_state">Aún no hay pistas en vivo SMP.\nImporta o convierte una canción para verla aquí.</string>
-    <string name="library_prompter_empty_state">Aún no hay prompters.\nCrea un prompter desde una playlist para verlo aquí.</string>
+    <string name="library_prompter_empty_state">Aún no hay textos con desplazamiento.\nCrea un texto con desplazamiento desde una playlist para verlo aquí.</string>
 
     <string name="library_delete_backing_track_title">¿Eliminar esta pista?</string>
     <string name="library_delete_audio_question">Solo pista</string>
@@ -745,9 +745,9 @@
     <string name="quickplaylists_menu_remove_from_group">Quitar del grupo</string>
     <string name="quickplaylists_group_new_default">Nuevo grupo</string>
     <string name="quickplaylists_group_current">Grupo en curso</string>
-    <string name="quickplaylists_edit_prompter_title">Editar prompter ✅ TEST 2026</string>
-    <string name="quickplaylists_new_prompter_title">Nuevo título (prompter 2026 )</string>
-    <string name="quickplaylists_prompter_text_label">Texto del prompter</string>
+    <string name="quickplaylists_edit_prompter_title">Editar texto con desplazamiento</string>
+    <string name="quickplaylists_new_prompter_title">Nuevo texto con desplazamiento</string>
+    <string name="quickplaylists_prompter_text_label">Contenido del texto con desplazamiento</string>
 
     <!-- History -->
     <string name="history_title">Historial</string>
@@ -840,7 +840,7 @@
     <string name="smp_sync_manual_category_songs">Canciones</string>
     <string name="smp_sync_manual_category_playlists">Playlists</string>
     <string name="smp_sync_manual_category_notes">Bloc de notas</string>
-    <string name="smp_sync_manual_category_prompters">Prompters</string>
+    <string name="smp_sync_manual_category_prompters">Textos con desplazamiento</string>
     <string name="smp_sync_manual_search">Buscar</string>
     <string name="smp_sync_manual_select_all">Seleccionar todo</string>
     <string name="smp_sync_manual_select_all_short">Todo</string>
@@ -1136,7 +1136,7 @@
     <string name="more_library_restore_importing">Importando canciones…</string>
     <string name="more_library_restore_rebuilding">Reconstruyendo la biblioteca…</string>
     <string name="more_library_restore_playlists">Restaurando playlists…</string>
-    <string name="more_library_restore_summary">Esta copia contiene:\n- %1$d canciones\n- %2$d listas\n- %3$d prompter(s)\n- %4$d conflictos detectados</string>
+    <string name="more_library_restore_summary">Esta copia contiene:\n- %1$d canciones\n- %2$d listas\n- %3$d texto(s) con desplazamiento\n- %4$d conflictos detectados</string>
     <string name="more_library_restore_songs_choice">Canciones</string>
     <string name="more_library_restore_keep_existing">Conservar las canciones existentes</string>
     <string name="more_library_restore_replace_existing">Reemplazar las canciones existentes</string>
@@ -1145,7 +1145,7 @@
     <string name="more_library_restore_replace_existing_playlists">Reemplazar las playlists existentes</string>
     <string name="more_library_restore_scan_failed">No se puede leer esta carpeta de copia</string>
     <string name="more_library_restore_empty">No se encontraron archivos de copia utilizables en esta carpeta</string>
-    <string name="more_library_restore_result">Restauración terminada: %1$d canción(es) importadas, %2$d omitidas, %3$d fallidas\nPrompters: %4$d importados, %5$d omitidos\nEstado: %6$s</string>
+    <string name="more_library_restore_result">Restauración terminada: %1$d canción(es) importadas, %2$d omitidas, %3$d fallidas\nTextos con desplazamiento: %4$d importados, %5$d omitidos\nEstado: %6$s</string>
     <string name="more_library_restore_result_state_restored">listas restauradas</string>
     <string name="more_library_restore_result_state_with_warnings">listas restauradas con %1$d advertencia(s)</string>
     <string name="more_library_restore_result_state_failed">state.json no aplicado (%1$d conflicto(s))</string>
@@ -1218,10 +1218,10 @@ No olvides guardar.</string>
         <item quantity="one">¿Eliminar esta playlist definitivamente?</item>
         <item quantity="other">¿Eliminar estas %1$d playlists definitivamente?</item>
     </plurals>
-    <string name="library_delete_selected_lyrics_title">Eliminar letras seleccionadas</string>
+    <string name="library_delete_selected_lyrics_title">Eliminar textos con desplazamiento seleccionados</string>
     <plurals name="library_delete_selected_lyrics_confirm">
-        <item quantity="one">¿Eliminar definitivamente esta letra?</item>
-        <item quantity="other">¿Eliminar definitivamente estas %1$d letras?</item>
+        <item quantity="one">¿Eliminar definitivamente este texto con desplazamiento?</item>
+        <item quantity="other">¿Eliminar definitivamente estos %1$d textos con desplazamiento?</item>
     </plurals>
     <string name="library_copying">Copiando…</string>
     <string name="library_delete_selected_title">Eliminar selección</string>
@@ -1239,7 +1239,7 @@ No olvides guardar.</string>
     <string name="main_menu_notes">Bloc de notas</string>
     <string name="main_menu_library">Biblioteca</string>
     <string name="main_menu_playlists">Listas de reproducción</string>
-    <string name="main_menu_prompter">📝 Prompter</string>
+    <string name="main_menu_prompter">📝 Textos con desplazamiento</string>
     <string name="main_menu_more">Ajustes / Más</string>
     <string name="main_menu_tuner">Afinador</string>
     <string name="more_item_arrangement">🎼  Arrangement</string>
