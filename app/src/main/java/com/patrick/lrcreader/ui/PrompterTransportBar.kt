@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material3.Icon
@@ -29,6 +30,8 @@ fun PrompterTransportBarAudioLike(
     onPlayPause: () -> Unit,
     onPrev: () -> Unit,
     onNext: () -> Unit,
+    onReturnToStart: () -> Unit = {},
+    showReturnToStart: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -63,6 +66,17 @@ fun PrompterTransportBarAudioLike(
                 tint = Color.White,
                 modifier = Modifier.size(48.dp)
             )
+        }
+
+        if (showReturnToStart) {
+            IconButton(onClick = onReturnToStart) {
+                Icon(
+                    imageVector = Icons.Filled.Replay,
+                    contentDescription = stringResource(R.string.lyrics_editor_cd_back_to_start),
+                    tint = Color.White,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
         }
     }
 }

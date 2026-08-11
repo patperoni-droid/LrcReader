@@ -4304,12 +4304,18 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 val imeBottomPadding = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+                val useTabletSplitTextPrompter = shouldUseTabletSplitTextPrompter(
+                    tabletMode = adaptiveTokens.tabletMode,
+                    tabletExperimentalModeEnabled = tabletExperimentalModeEnabled,
+                    selectedTabSupportsSplit =
+                        selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists,
+                    textPrompterId = textPrompterId
+                )
                 val shouldHideBottomBarForPlayerIme =
                     selectedTab is BottomTab.Player && imeBottomPadding > 0.dp
                 val shouldHideBottomBarForTabletSplit =
                     adaptiveTokens.tabletMode &&
                         tabletExperimentalModeEnabled &&
-                        textPrompterId == null &&
                         !isFillerSettingsOpen &&
                         !isGlobalMixOpen &&
                         !isMixerPreviewOpen &&
@@ -4531,7 +4537,7 @@ class MainActivity : AppCompatActivity() {
                         isGlobalMixOpen = false
                     } else {
                         // ✅ overlay PROMPTEUR
-                        textPrompterId?.let { tid ->
+                        textPrompterId?.takeUnless { useTabletSplitTextPrompter }?.let { tid ->
                             TextPrompterScreen(
                                 modifier = contentModifier,
                                 songId = tid,
@@ -5273,6 +5279,8 @@ class MainActivity : AppCompatActivity() {
                                                         SMP_PLAY_TRACE_TAG,
                                                         "LIBRARY_TARGET prompter id=${target.id}"
                                                     )
+                                                    tabletPlayerFocusMode = TabletPlayerFocusMode.NONE
+                                                    tabletRightPanel = TabletSplitRightPanel.LYRICS
                                                     textPrompterId = target.id
                                                 }
 
@@ -5651,6 +5659,8 @@ class MainActivity : AppCompatActivity() {
                                                         SMP_PLAY_TRACE_TAG,
                                                         "PLAYLIST_TARGET prompter id=${target.id} playlist=$playlistName"
                                                     )
+                                                    tabletPlayerFocusMode = TabletPlayerFocusMode.NONE
+                                                    tabletRightPanel = TabletSplitRightPanel.LYRICS
                                                     textPrompterId = target.id
                                                     return@QuickPlaylistsScreen
                                                 }
@@ -5863,14 +5873,31 @@ class MainActivity : AppCompatActivity() {
                                                 when (tabletRightPanel) {
                                                     TabletSplitRightPanel.LYRICS -> {
                                                         Column(Modifier.fillMaxSize()) {
-                                                            if (tabletPlayerFocusMode != TabletPlayerFocusMode.LYRICS) {
+                                                            if (
+                                                                textPrompterId != null ||
+                                                                tabletPlayerFocusMode != TabletPlayerFocusMode.LYRICS
+                                                            ) {
                                                                 TabletSplitTopNavigationShortcuts()
                                                             }
-                                                            playerPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
+                                                            val tabletPrompterId = textPrompterId
+                                                            if (tabletPrompterId != null) {
+                                                                TextPrompterScreen(
+                                                                    modifier = Modifier
+                                                                        .weight(1f)
+                                                                        .fillMaxWidth(),
+                                                                    songId = tabletPrompterId,
+                                                                    onClose = { textPrompterId = null },
+                                                                    hardwareActionToken = prompterHardwareActionToken,
+                                                                    hardwareAction = prompterHardwareAction,
+                                                                    tabletSplitLayout = true
+                                                                )
+                                                            } else {
+                                                                playerPane(
+                                                                    Modifier
+                                                                        .weight(1f)
+                                                                        .fillMaxWidth()
+                                                                )
+                                                            }
                                                         }
                                                     }
 

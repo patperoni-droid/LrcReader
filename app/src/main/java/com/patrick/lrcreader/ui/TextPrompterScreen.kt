@@ -114,7 +114,8 @@ fun TextPrompterScreen(
     songId: String,
     onClose: () -> Unit,
     hardwareActionToken: Int = 0,
-    hardwareAction: PrompterAction = PrompterAction.TOGGLE
+    hardwareAction: PrompterAction = PrompterAction.TOGGLE,
+    tabletSplitLayout: Boolean = false
 ) {
     val context = LocalContext.current
 
@@ -282,7 +283,7 @@ fun TextPrompterScreen(
         val transportHeight = 72.dp
 
 // IMPORTANT : transportNudgeY = 0 (ou tu le vires)
-        val transportNudgeY = 50.dp
+        val transportNudgeY = if (tabletSplitLayout) 0.dp else 50.dp
         // ✅ Vitre : élargissement gauche/droite
         val glassOverhangLeft = 30.dp
         val glassOverhangRight = 30.dp
@@ -425,6 +426,8 @@ fun TextPrompterScreen(
                 onPlayPause = onTogglePlayPause,
                 onPrev = onPrevStep,
                 onNext = onNextStep,
+                onReturnToStart = onJumpToStart,
+                showReturnToStart = tabletSplitLayout,
                 modifier = Modifier
                     .zIndex(2f)
                     .align(Alignment.BottomCenter)
