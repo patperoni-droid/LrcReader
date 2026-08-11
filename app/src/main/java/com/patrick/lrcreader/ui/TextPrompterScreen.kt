@@ -285,8 +285,8 @@ fun TextPrompterScreen(
 // IMPORTANT : transportNudgeY = 0 (ou tu le vires)
         val transportNudgeY = if (tabletSplitLayout) 0.dp else 50.dp
         // ✅ Vitre : élargissement gauche/droite
-        val glassOverhangLeft = 30.dp
-        val glassOverhangRight = 30.dp
+        val glassOverhangLeft = if (tabletSplitLayout) 0.dp else 30.dp
+        val glassOverhangRight = if (tabletSplitLayout) 0.dp else 30.dp
 
         // ✅ Slider tiroir : dimensions
         val sliderHeight = 450.dp
@@ -355,19 +355,25 @@ fun TextPrompterScreen(
             }
 
             // ✅ VITRE (derrière progress + transport)
+            val glassWidthModifier = if (tabletSplitLayout) {
+                Modifier.fillMaxWidth()
+            } else {
+                Modifier
+                    .wrapContentWidth(unbounded = true)
+                    .width(
+                        LocalConfiguration.current.screenWidthDp.dp +
+                            glassOverhangLeft + glassOverhangRight
+                    )
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .wrapContentWidth(unbounded = true)
                     .padding(bottom = transportBottom)
                     .offset(
                         x = (glassOverhangRight - glassOverhangLeft) / 2,
                         y = transportNudgeY
                     )
-                    .width(
-                        LocalConfiguration.current.screenWidthDp.dp +
-                                glassOverhangLeft + glassOverhangRight
-                    )
+                    .then(glassWidthModifier)
                     .height(transportHeight + 44.dp)
                     .zIndex(1f)
                     .clip(RoundedCornerShape(16.dp))
