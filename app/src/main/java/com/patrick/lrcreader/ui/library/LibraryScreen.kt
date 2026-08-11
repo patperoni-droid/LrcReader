@@ -92,7 +92,9 @@ import com.patrick.lrcreader.smp.SongUnit
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.MoveResult
+import com.patrick.lrcreader.ui.CreateScrollingTextDialog
 import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
+import com.patrick.lrcreader.ui.createScrollingText
 import com.patrick.lrcreader.ui.clearPersistedUris
 import com.patrick.lrcreader.ui.PlaybackControl
 import com.patrick.lrcreader.ui.TrackGainDrawer
@@ -1721,6 +1723,9 @@ fun LibraryScreen(
     var playlistDeleteTarget by remember { mutableStateOf<String?>(null) }
     var pendingPlaylistDeleteSelection by remember { mutableStateOf<Set<String>>(emptySet()) }
     var pendingPrompterDeleteSelection by remember { mutableStateOf<Set<Uri>>(emptySet()) }
+    var showCreateScrollingTextDialog by remember { mutableStateOf(false) }
+    var newScrollingTextTitle by remember { mutableStateOf("") }
+    var newScrollingTextContent by remember { mutableStateOf("") }
     var editPrompterId by remember { mutableStateOf<String?>(null) }
     var editPrompterTitle by remember { mutableStateOf("") }
     var editPrompterContent by remember { mutableStateOf("") }
@@ -3598,6 +3603,11 @@ fun LibraryScreen(
     val showSelectionBottomBar = selectedSongs.isNotEmpty() && isSongViewMode
     val selectionBottomPadding = if (showSelectionBottomBar) bottomBarHeight else 0.dp
     val isFilesSelectionContext = isFilesViewMode && selectedSongs.isNotEmpty()
+    val openCreateScrollingTextDialog: () -> Unit = {
+        newScrollingTextTitle = ""
+        newScrollingTextContent = ""
+        showCreateScrollingTextDialog = true
+    }
     val openStorageView: () -> Unit = openStorageView@ {
         val previousFolder = currentFolderUri
         libraryViewMode = LIBRARY_VIEW_MODE_FILES
@@ -3820,6 +3830,11 @@ fun LibraryScreen(
                     onImportBackingTracks = onLibraryHeaderImportBackingTracks,
                     onConvertFolderToSmp = onLibraryHeaderConvertFolderToSmp,
                     onImportSmp = { onImportExternalSmp() },
+                    onCreateScrollingText = if (isPrompterViewMode) {
+                        openCreateScrollingTextDialog
+                    } else {
+                        null
+                    },
                     selectionCount = if (isFilesSelectionContext || showSelectionBottomBar) selectedSongs.size else 0,
                     onCopySelection = if (isFilesSelectionContext) {
                         { openCopyBrowserForSelection(selectedSongs) }
@@ -3926,6 +3941,11 @@ fun LibraryScreen(
                         onImportBackingTracks = onLibraryHeaderImportBackingTracks,
                         onConvertFolderToSmp = onLibraryHeaderConvertFolderToSmp,
                         onImportSmp = { onImportExternalSmp() },
+                        onCreateScrollingText = if (isPrompterViewMode) {
+                            openCreateScrollingTextDialog
+                        } else {
+                            null
+                        },
                         selectionCount = if (isFilesSelectionContext || showSelectionBottomBar) selectedSongs.size else 0,
                         onCopySelection = if (isFilesSelectionContext) {
                             { openCopyBrowserForSelection(selectedSongs) }
@@ -5765,6 +5785,25 @@ fun LibraryScreen(
                     }
                 )
             }
+
+            CreateScrollingTextDialog(
+                show = showCreateScrollingTextDialog,
+                title = newScrollingTextTitle,
+                content = newScrollingTextContent,
+                onTitleChange = { newScrollingTextTitle = it },
+                onContentChange = { newScrollingTextContent = it },
+                onDismiss = { showCreateScrollingTextDialog = false },
+                onConfirm = {
+                    val created = createScrollingText(
+                        context = context,
+                        title = newScrollingTextTitle,
+                        content = newScrollingTextContent,
+                        playlistName = null
+                    ) ?: return@CreateScrollingTextDialog
+                    entries = buildPrompterEntries()
+                    showCreateScrollingTextDialog = false
+                }
+            )
 
             MoveBrowserDialog(
                 show = showMoveBrowser && pendingMoveSelection.isNotEmpty(),

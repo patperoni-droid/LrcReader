@@ -3750,86 +3750,25 @@ fun QuickPlaylistsScreen(
         )
     }
 
-    // dialog création titre texte (ancienne méthode)
-    if (showCreateTextDialog && internalSelected != null) {
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = { showCreateTextDialog = false },
-            properties = androidx.compose.ui.window.DialogProperties(
-                usePlatformDefaultWidth = false
-            )
-        ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(0.82f)
-                    .padding(horizontal = 16.dp, vertical = 24.dp)
-                    .imePadding()
-                    .navigationBarsPadding(),
-                shape = RoundedCornerShape(20.dp),
-                color = Color(0xFF222222)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(20.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.quickplaylists_new_prompter_title),
-                        color = Color.White
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    Column(
-                        modifier = Modifier
-                            .weight(1f, fill = true)
-                            .fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
-                    ) {
-                        OutlinedTextField(
-                            value = newTextTitle,
-                            onValueChange = { newTextTitle = it },
-                            label = { Text(stringResource(R.string.common_title_label)) },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        OutlinedTextField(
-                            value = newTextContent,
-                            onValueChange = { newTextContent = it },
-                            label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 320.dp)
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = { showCreateTextDialog = false }) {
-                            Text(stringResource(R.string.common_cancel), color = Color.White)
-                        }
-                        TextButton(onClick = {
-                            val title = newTextTitle.trim()
-                            val content = newTextContent.trim()
-                            val pl = internalSelected ?: return@TextButton
-
-                            if (title.isNotEmpty() && content.isNotEmpty()) {
-                                val id = TextSongRepository.create(context, title, content)
-                                val uri = "prompter://$id"
-                                PlaylistRepository.assignSongToPlaylist(pl, uri)
-                                songs.add(uri)
-                            }
-
-                            showCreateTextDialog = false
-                        }) {
-                            Text(stringResource(R.string.common_ok), color = Color.White)
-                        }
-                    }
-                }
-            }
+    CreateScrollingTextDialog(
+        show = showCreateTextDialog && internalSelected != null,
+        title = newTextTitle,
+        content = newTextContent,
+        onTitleChange = { newTextTitle = it },
+        onContentChange = { newTextContent = it },
+        onDismiss = { showCreateTextDialog = false },
+        onConfirm = {
+            val playlist = internalSelected ?: return@CreateScrollingTextDialog
+            val created = createScrollingText(
+                context = context,
+                title = newTextTitle,
+                content = newTextContent,
+                playlistName = playlist
+            ) ?: return@CreateScrollingTextDialog
+            songs.add(created.uri)
+            showCreateTextDialog = false
         }
-    }
+    )
 
     if (showSavePlaylistDialog) {
         AlertDialog(

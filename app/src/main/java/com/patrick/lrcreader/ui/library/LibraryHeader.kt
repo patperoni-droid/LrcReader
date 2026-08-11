@@ -6,6 +6,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.MoreVert
@@ -69,6 +70,7 @@ fun LibraryHeader(
     onImportBackingTracks: () -> Unit,
     onConvertFolderToSmp: () -> Unit,
     onImportSmp: () -> Unit,
+    onCreateScrollingText: (() -> Unit)? = null,
     selectionCount: Int = 0,
     onCopySelection: (() -> Unit)? = null,
     onMoveSelection: (() -> Unit)? = null,
@@ -298,6 +300,16 @@ fun LibraryHeader(
             }
 
             if (showActions && !isSelectionContext) {
+                onCreateScrollingText?.let { createScrollingText ->
+                    IconButton(onClick = createScrollingText) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = stringResource(R.string.quickplaylists_create_prompter_action),
+                            tint = Color.White
+                        )
+                    }
+                }
+
                 TextButton(
                     onClick = { showImportTypeDialog = true },
                     enabled = hasRoot
@@ -372,6 +384,16 @@ fun LibraryHeader(
         }
 
         if (showActions && !isSelectionContext) {
+            onCreateScrollingText?.let { createScrollingText ->
+                IconButton(onClick = createScrollingText) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.quickplaylists_create_prompter_action),
+                        tint = Color.White
+                    )
+                }
+            }
+
             TextButton(
                 onClick = { showImportTypeDialog = true },
                 enabled = hasRoot
