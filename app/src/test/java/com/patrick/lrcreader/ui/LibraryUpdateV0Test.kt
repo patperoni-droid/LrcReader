@@ -2,9 +2,12 @@ package com.patrick.lrcreader.ui
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.patrick.lrcreader.smp.SmpFamilyAudioHashCache
+import com.patrick.lrcreader.smp.SmpFamilyFingerprintResult
 import com.patrick.lrcreader.smp.SongUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -405,6 +408,247 @@ class LibraryUpdateV0Test {
         assertNull(LibraryUpdateReferenceCodec.decode("{\"state\":\"legacy\"}"))
     }
 
+    @Test
+    fun unchangedFamilyIsNotExported() {
+        val gateway = FakeGateway(mapOf("archive-old" to "parent"))
+        val fingerprint = fingerprint("parent", 'a')
+        val before = reference(
+            archives = mapOf("parent" to "archive-old"),
+            fingerprints = mapOf("parent" to fingerprint.fingerprint),
+            audioHashes = mapOf("parent" to requireNotNull(fingerprint.audioHashCache))
+        )
+
+        val result = updateV1(
+            before,
+            listOf(song("parent")),
+            gateway,
+            fingerprintFor = { fingerprint }
+        )
+
+        assertEquals(0, result.updatedCount)
+        assertEquals(0, result.addedCount)
+        assertEquals(1, result.unchangedCount)
+        assertEquals(0, result.failedCount)
+        assertTrue(gateway.publishedSongs.isEmpty())
+        assertEquals(before, result.reference)
+    }
+
+    @Test
+    fun changedFamilyIsExportedAndItsFingerprintIsReplaced() {
+        val gateway = FakeGateway(mapOf("archive-old" to "parent"))
+        val old = fingerprint("parent", 'a')
+        val changed = fingerprint("parent", 'b')
+        val before = reference(
+            archives = mapOf("parent" to "archive-old"),
+            fingerprints = mapOf("parent" to old.fingerprint),
+            audioHashes = mapOf("parent" to requireNotNull(old.audioHashCache))
+        )
+
+        val result = updateV1(
+            before,
+            listOf(song("parent")),
+            gateway,
+            fingerprintFor = { changed }
+        )
+
+        assertEquals(1, result.updatedCount)
+        assertEquals(0, result.unchangedCount)
+        assertEquals(listOf("parent"), gateway.publishedSongs.map(SongUnit::id))
+        assertEquals(changed.fingerprint, result.reference.fingerprintsBySongId["parent"])
+        assertEquals(changed.audioHashCache, result.reference.audioHashesBySongId["parent"])
+    }
+
+    @Test
+    fun missingFingerprintFromV0ForcesOneExportThenNextUpdateSkips() {
+        val gateway = FakeGateway(mapOf("archive-old" to "parent"))
+        val current = fingerprint("parent", 'a')
+        var saved = reference(mapOf("parent" to "archive-old"))
+
+        val first = updateV1(saved, listOf(song("parent")), gateway, { current }) { saved = it }
+        val publishedAfterFirst = gateway.publishedSongs.size
+        val second = updateV1(
+            saved,
+            listOf(song("parent")),
+            gateway,
+            fingerprintFor = { current }
+        )
+
+        assertEquals(1, first.updatedCount)
+        assertEquals(1, second.unchangedCount)
+        assertEquals(publishedAfterFirst, gateway.publishedSongs.size)
+    }
+
+    @Test
+    fun incompleteAudioCacheForcesSafeReExport() {
+        val gateway = FakeGateway(mapOf("archive-old" to "parent"))
+        val current = fingerprint("parent", 'a')
+        val before = reference(
+            archives = mapOf("parent" to "archive-old"),
+            fingerprints = mapOf("parent" to current.fingerprint)
+        )
+
+        val result = updateV1(
+            before,
+            listOf(song("parent")),
+            gateway,
+            fingerprintFor = { current }
+        )
+
+        assertEquals(1, result.updatedCount)
+        assertEquals(0, result.unchangedCount)
+        assertEquals(1, gateway.publishedSongs.size)
+    }
+
+    @Test
+    fun incoherentArchiveMappingForcesReExportWithoutDeletingForeignArchive() {
+        val gateway = FakeGateway(mapOf("archive-foreign" to "another-song"))
+        val current = fingerprint("parent", 'a')
+        val before = reference(
+            archives = mapOf("parent" to "archive-foreign"),
+            fingerprints = mapOf("parent" to current.fingerprint),
+            audioHashes = mapOf("parent" to requireNotNull(current.audioHashCache))
+        )
+
+        val result = updateV1(
+            before,
+            listOf(song("parent")),
+            gateway,
+            fingerprintFor = { current }
+        )
+
+        assertEquals(1, result.updatedCount)
+        assertEquals(0, result.failedCount)
+        assertEquals("another-song", gateway.archives["archive-foreign"]?.songId)
+        assertNotEquals("archive-foreign", result.reference.archivesBySongId["parent"])
+    }
+
+    @Test
+    fun corruptV1SubIndexesAreIgnoredForSafeReExport() {
+        val decoded = requireNotNull(
+            LibraryUpdateReferenceCodec.decode(
+                """{"treeUri":"tree","folderUri":"folder","archives":{"parent":"archive"},"fingerprints":{"parent":"bad"},"audioHashes":{"parent":{"fileIdentity":"audio","size":1,"lastModified":1,"sha256":"bad"}}}"""
+            )
+        )
+
+        assertTrue(decoded.fingerprintsBySongId.isEmpty())
+        assertTrue(decoded.audioHashesBySongId.isEmpty())
+        val gateway = FakeGateway(mapOf("archive" to "parent"))
+        val result = updateV1(
+            decoded,
+            listOf(song("parent")),
+            gateway,
+            fingerprintFor = { fingerprint("parent", 'a') }
+        )
+        assertEquals(1, result.updatedCount)
+        assertEquals(1, gateway.publishedSongs.size)
+    }
+
+    @Test
+    fun failedChangedExportKeepsPreviousFingerprintAndArchive() {
+        val gateway = FakeGateway(mapOf("archive-old" to "parent")).apply {
+            failedSongIds += "parent"
+        }
+        val old = fingerprint("parent", 'a')
+        val changed = fingerprint("parent", 'b')
+        val before = reference(
+            archives = mapOf("parent" to "archive-old"),
+            fingerprints = mapOf("parent" to old.fingerprint),
+            audioHashes = mapOf("parent" to requireNotNull(old.audioHashCache))
+        )
+
+        val result = updateV1(
+            before,
+            listOf(song("parent")),
+            gateway,
+            fingerprintFor = { changed }
+        )
+
+        assertEquals(1, result.failedCount)
+        assertEquals(before, result.reference)
+        assertEquals("parent", gateway.archives["archive-old"]?.songId)
+    }
+
+    @Test
+    fun failedReferencePublicationKeepsPreviousFingerprintAndArchive() {
+        val gateway = FakeGateway(mapOf("archive-old" to "parent"))
+        val old = fingerprint("parent", 'a')
+        val changed = fingerprint("parent", 'b')
+        val before = reference(
+            archives = mapOf("parent" to "archive-old"),
+            fingerprints = mapOf("parent" to old.fingerprint),
+            audioHashes = mapOf("parent" to requireNotNull(old.audioHashCache))
+        )
+
+        val result = updateLibraryFamiliesV0(
+            reference = before,
+            runtimeSongs = listOf(song("parent")),
+            gateway = gateway,
+            calculateFingerprint = { _, _ -> changed },
+            saveReference = { false }
+        )
+
+        assertEquals(1, result.failedCount)
+        assertEquals(before, result.reference)
+        assertEquals(setOf("archive-old"), gateway.archives.keys)
+    }
+
+    @Test
+    fun fiveHundredFamiliesWithTwoChangesExportExactlyTwoArchives() {
+        val songs = (0 until 500).map { song("family-$it") }
+        val archives = songs.associate { it.id to "archive-${it.id}" }
+        val stored = songs.associate { it.id to fingerprint(it.id, 'a') }
+        val runtime = stored.toMutableMap().apply {
+            this["family-17"] = fingerprint("family-17", 'b')
+            this["family-423"] = fingerprint("family-423", 'c')
+        }
+        val before = reference(
+            archives = archives,
+            fingerprints = stored.mapValues { it.value.fingerprint },
+            audioHashes = stored.mapValues { requireNotNull(it.value.audioHashCache) }
+        )
+        val gateway = FakeGateway(archives.entries.associate { (songId, uri) -> uri to songId })
+
+        val result = updateV1(
+            before,
+            songs,
+            gateway,
+            fingerprintFor = { runtime.getValue(it.id) }
+        )
+
+        assertEquals(2, result.updatedCount)
+        assertEquals(498, result.unchangedCount)
+        assertEquals(0, result.failedCount)
+        assertEquals(setOf("family-17", "family-423"), gateway.publishedSongs.mapTo(linkedSetOf(), SongUnit::id))
+    }
+
+    @Test
+    fun successfulBackupStoresOnlyFingerprintsOfPublishedFamilies() {
+        val parent = fingerprint("parent", 'a')
+        val orphan = fingerprint("orphan", 'b')
+
+        val reference = requireNotNull(
+            registerSuccessfulLibraryBackupV0(
+                treeUri = "tree",
+                folderUri = "folder",
+                expectedFamilyCount = 1,
+                exportedArchivesBySongId = mapOf("parent" to "archive-parent"),
+                fingerprintsBySongId = mapOf(
+                    "parent" to parent.fingerprint,
+                    "orphan" to orphan.fingerprint
+                ),
+                audioHashesBySongId = mapOf(
+                    "parent" to requireNotNull(parent.audioHashCache),
+                    "orphan" to requireNotNull(orphan.audioHashCache)
+                ),
+                failureCount = 0,
+                saveReference = { true }
+            )
+        )
+
+        assertEquals(setOf("parent"), reference.fingerprintsBySongId.keys)
+        assertEquals(setOf("parent"), reference.audioHashesBySongId.keys)
+    }
+
     private fun update(
         reference: LibraryUpdateReference,
         songs: List<SongUnit>,
@@ -414,6 +658,20 @@ class LibraryUpdateV0Test {
         runtimeSongs = songs,
         gateway = gateway,
         saveReference = { true }
+    )
+
+    private fun updateV1(
+        reference: LibraryUpdateReference,
+        songs: List<SongUnit>,
+        gateway: FakeGateway,
+        fingerprintFor: (SongUnit) -> SmpFamilyFingerprintResult,
+        saveReference: (LibraryUpdateReference) -> Unit = {}
+    ): LibraryUpdateResult = updateLibraryFamiliesV0(
+        reference = reference,
+        runtimeSongs = songs,
+        gateway = gateway,
+        calculateFingerprint = { song, _ -> fingerprintFor(song) },
+        saveReference = { next -> saveReference(next); true }
     )
 
     private fun permissionCovers(
@@ -431,11 +689,30 @@ class LibraryUpdateV0Test {
         permissionCanWrite = permissionCanWrite
     )
 
-    private fun reference(archives: Map<String, String> = emptyMap()) = LibraryUpdateReference(
+    private fun reference(
+        archives: Map<String, String> = emptyMap(),
+        fingerprints: Map<String, String> = emptyMap(),
+        audioHashes: Map<String, SmpFamilyAudioHashCache> = emptyMap()
+    ) = LibraryUpdateReference(
         treeUri = "content://tree/root",
         folderUri = "content://tree/root/backup",
-        archivesBySongId = archives
+        archivesBySongId = archives,
+        fingerprintsBySongId = fingerprints,
+        audioHashesBySongId = audioHashes
     )
+
+    private fun fingerprint(songId: String, marker: Char): SmpFamilyFingerprintResult {
+        val hash = marker.toString().repeat(64)
+        return SmpFamilyFingerprintResult(
+            fingerprint = hash,
+            audioHashCache = SmpFamilyAudioHashCache(
+                fileIdentity = "/runtime/$songId/audio.mp3",
+                size = marker.code.toLong(),
+                lastModified = marker.code.toLong(),
+                sha256 = hash
+            )
+        )
+    }
 
     private fun song(
         id: String,
@@ -468,6 +745,9 @@ class LibraryUpdateV0Test {
         private var nextArchive = 1
 
         override fun isFolderWritable(reference: LibraryUpdateReference): Boolean = writable
+
+        override fun isArchiveOwnedBySong(archiveUri: String, songId: String): Boolean =
+            archives[archiveUri]?.songId == songId
 
         override fun publishFamily(reference: LibraryUpdateReference, song: SongUnit): String? {
             publishedSongs += song

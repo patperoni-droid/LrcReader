@@ -112,6 +112,8 @@ import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpExporter
+import com.patrick.lrcreader.smp.SmpFamilyAudioHashCache
+import com.patrick.lrcreader.smp.SmpFamilyFingerprint
 import com.patrick.lrcreader.smp.SmpImporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SongUnit
@@ -772,9 +774,15 @@ private fun MoreRootScreen(
             var failureCount = 0
             var completedCount = 0
             val exportedFamilyArchives = linkedMapOf<String, String>()
+            val exportedFamilyFingerprints = linkedMapOf<String, String>()
+            val exportedFamilyAudioHashes = linkedMapOf<String, SmpFamilyAudioHashCache>()
+            val familyFingerprint = SmpFamilyFingerprint()
 
             runtimeSongs.forEach { song ->
                 exportLiveSongsCurrentTitle = song.title
+                val fingerprintBeforeExport = withContext(Dispatchers.IO) {
+                    familyFingerprint.calculate(context.applicationContext, song)
+                }
                 val exportedArchiveUri = withContext(Dispatchers.IO) {
                     exportLiveSongToTree(
                         context = context.applicationContext,
@@ -785,6 +793,22 @@ private fun MoreRootScreen(
                 if (exportedArchiveUri != null) {
                     successCount += 1
                     exportedFamilyArchives[song.id] = exportedArchiveUri.toString()
+                    val fingerprintAfterExport = withContext(Dispatchers.IO) {
+                        familyFingerprint.calculate(
+                            context.applicationContext,
+                            song,
+                            fingerprintBeforeExport?.audioHashCache
+                        )
+                    }
+                    if (
+                        fingerprintBeforeExport != null &&
+                        fingerprintAfterExport?.fingerprint == fingerprintBeforeExport.fingerprint
+                    ) {
+                        exportedFamilyFingerprints[song.id] = fingerprintBeforeExport.fingerprint
+                        fingerprintBeforeExport.audioHashCache?.let {
+                            exportedFamilyAudioHashes[song.id] = it
+                        }
+                    }
                 } else {
                     failureCount += 1
                 }
@@ -857,6 +881,8 @@ private fun MoreRootScreen(
                     folderUri = exportTarget.uri.toString(),
                     expectedFamilyCount = runtimeSongs.size,
                     exportedArchivesBySongId = exportedFamilyArchives,
+                    fingerprintsBySongId = exportedFamilyFingerprints,
+                    audioHashesBySongId = exportedFamilyAudioHashes,
                     failureCount = failureCount,
                     saveReference = { reference ->
                         LibraryUpdateReferenceStore.save(context.applicationContext, reference)
@@ -1114,6 +1140,7 @@ private fun MoreRootScreen(
                                             R.string.more_library_update_result,
                                             0,
                                             0,
+                                            0,
                                             1
                                         )
                                         isExportingLiveSongs = false
@@ -1127,12 +1154,20 @@ private fun MoreRootScreen(
                                         it.arrangementSourceSongId == null
                                     }
                                     val result = withContext(Dispatchers.IO) {
+                                        val fingerprint = SmpFamilyFingerprint()
                                         updateLibraryFamiliesV0(
                                             reference = reference,
                                             runtimeSongs = runtimeSongs,
                                             gateway = SafLibraryUpdateArchiveGateway(
                                                 context.applicationContext
                                             ),
+                                            calculateFingerprint = { song, cachedAudio ->
+                                                fingerprint.calculate(
+                                                    context.applicationContext,
+                                                    song,
+                                                    cachedAudio
+                                                )
+                                            },
                                             saveReference = { updatedReference ->
                                                 LibraryUpdateReferenceStore.save(
                                                     context.applicationContext,
@@ -1156,6 +1191,7 @@ private fun MoreRootScreen(
                                             R.string.more_library_update_result,
                                             result.updatedCount,
                                             result.addedCount,
+                                            result.unchangedCount,
                                             result.failedCount
                                         )
                                     }

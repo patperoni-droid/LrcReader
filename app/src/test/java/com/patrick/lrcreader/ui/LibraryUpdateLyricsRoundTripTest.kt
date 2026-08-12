@@ -8,7 +8,10 @@ import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
 import com.patrick.lrcreader.core.BackupFolderPrefs
+import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LrcStorage
+import com.patrick.lrcreader.core.StorageModePrefs
+import com.patrick.lrcreader.core.buildSmpItem
 import com.patrick.lrcreader.smp.ArrangementData
 import com.patrick.lrcreader.smp.ArrangementEntryData
 import com.patrick.lrcreader.smp.ArrangementJsonCodec
@@ -16,9 +19,11 @@ import com.patrick.lrcreader.smp.ArrangementVariantStore
 import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpExporter
+import com.patrick.lrcreader.smp.SmpFamilyFingerprint
 import com.patrick.lrcreader.smp.SmpImporter
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SongUnit
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -35,7 +40,7 @@ import java.util.zip.ZipFile
 class LibraryUpdateLyricsRoundTripTest {
 
     @Test
-    fun updateThenRestore_usesLatestParentAndVariantLyricsOnly() {
+    fun updateThenRestore_usesLatestParentAndVariantLyricsOnly() = runBlocking {
         val root = Files.createTempDirectory(TEMP_PREFIX).toFile()
         val filesDir = root.resolve("files").apply { mkdirs() }
         val cacheDir = root.resolve("cache").apply { mkdirs() }
@@ -50,13 +55,17 @@ class LibraryUpdateLyricsRoundTripTest {
         val clockMock = Mockito.mockStatic(SystemClock::class.java)
         val looperMock = Mockito.mockStatic(Looper::class.java)
         val uriMock = Mockito.mockStatic(Uri::class.java)
+        var loggedWriteFailure: Throwable? = null
 
         try {
             logMock.`when`<Int> {
                 Log.e(Mockito.anyString(), Mockito.anyString(), Mockito.nullable(Throwable::class.java))
-            }.thenAnswer { invocation -> throw invocation.getArgument<Throwable>(2) }
+            }.thenAnswer { invocation ->
+                loggedWriteFailure = invocation.getArgument(2)
+                0
+            }
             logMock.`when`<Int> { Log.e(Mockito.anyString(), Mockito.anyString()) }
-                .thenAnswer { invocation -> error(invocation.getArgument<String>(1)) }
+                .thenReturn(0)
             Mockito.`when`(context.filesDir).thenReturn(filesDir)
             Mockito.`when`(context.cacheDir).thenReturn(cacheDir)
             Mockito.`when`(context.contentResolver).thenReturn(resolver)
@@ -77,6 +86,7 @@ class LibraryUpdateLyricsRoundTripTest {
             uriMock.`when`<Uri> { Uri.fromFile(Mockito.any(File::class.java)) }
                 .thenAnswer { invocation -> fakeUri("file://${invocation.getArgument<File>(0).absolutePath}") }
             BackupFolderPrefs.saveLibraryRootUri(context, fakeUri("file://${root.absolutePath}"))
+            StorageModePrefs.set(context, StorageModePrefs.Mode.INTERNAL)
 
             val tracksRoot = filesDir.resolve("tracks").apply { mkdirs() }
             writeParent(tracksRoot.resolve(PARENT_ID), PARENT_ID, "Parent", OLD_LRC, OLD_RAW)
@@ -93,20 +103,57 @@ class LibraryUpdateLyricsRoundTripTest {
             val stateFile = backupDir.resolve("state.json").apply { writeText("state-before") }
             val promptersFile = backupDir.resolve("prompters.json").apply { writeText("prompters-before") }
 
-            writeLyrics(tracksRoot.resolve(PARENT_ID), NEW_LRC, NEW_RAW)
+            val activeEditorTrackUri = buildSmpItem(PARENT_ID)
+            assertEquals(
+                tracksRoot.resolve(PARENT_ID).canonicalFile,
+                LrcStorage.resolveSmpRuntimeSongDir(filesDir, activeEditorTrackUri)
+            )
+            assertTrue(LrcStorage.isSmpRuntimeTrack(context, activeEditorTrackUri))
+            assertEquals(OLD_LRC, LrcStorage.loadForTrack(context, activeEditorTrackUri))
+            var editorLrcSaved = false
+            var editorRawSaved = false
+            val activeEditorFlush = LyricsEditorPersistenceBarrier.registerActive {
+                editorLrcSaved = LrcStorage.saveForTrack(
+                    context = context,
+                    trackUriString = activeEditorTrackUri,
+                    lines = listOf(LrcLine(0L, NEW_EDITOR_LRC))
+                )
+                editorRawSaved = editorLrcSaved && LrcStorage.saveEditorRawForTrack(
+                    context = context,
+                    trackUriString = activeEditorTrackUri,
+                    rawText = NEW_RAW
+                )
+                editorLrcSaved && editorRawSaved
+            }
             writeLyrics(tracksRoot.resolve(VARIANT_ID), NEW_VARIANT_LRC, NEW_VARIANT_RAW)
-            val firstUpdate = runUpdate(context, gateway, reference) { reference = it }
+            val firstUpdate = try {
+                runUpdate(context, gateway, reference) { reference = it }
+            } finally {
+                LyricsEditorPersistenceBarrier.unregisterActive(activeEditorFlush)
+            }
 
+            assertTrue(
+                "Editor flush failed: lrc=$editorLrcSaved raw=$editorRawSaved uri=$activeEditorTrackUri error=$loggedWriteFailure",
+                editorLrcSaved && editorRawSaved
+            )
             assertEquals(1, firstUpdate.updatedCount)
             assertEquals(0, firstUpdate.failedCount)
+            assertEquals(NEW_EDITOR_LRC, tracksRoot.resolve(PARENT_ID).resolve("lyrics.lrc").readText())
+            assertEquals(NEW_RAW, tracksRoot.resolve(PARENT_ID).resolve(LrcStorage.LYRICS_EDITOR_RAW_FILE_NAME).readText())
             assertEquals(1, activeArchives(backupDir, PARENT_ID).size)
             assertArchiveLyrics(
                 File(reference.archivesBySongId.getValue(PARENT_ID)),
-                NEW_LRC,
+                NEW_EDITOR_LRC,
                 NEW_RAW,
                 NEW_VARIANT_LRC,
                 NEW_VARIANT_RAW
             )
+
+            val publishedAfterFirstUpdate = gateway.publishedCount
+            val unchangedUpdate = runUpdate(context, gateway, reference) { reference = it }
+            assertEquals(0, unchangedUpdate.updatedCount)
+            assertEquals(1, unchangedUpdate.unchangedCount)
+            assertEquals(publishedAfterFirstUpdate, gateway.publishedCount)
 
             writeLyrics(tracksRoot.resolve(PARENT_ID), THIRD_LRC, THIRD_RAW)
             val secondUpdate = runUpdate(context, gateway, reference) { reference = it }
@@ -131,8 +178,9 @@ class LibraryUpdateLyricsRoundTripTest {
                 audioName = "audio.mp3"
             )
             val thirdUpdate = runUpdate(context, gateway, reference) { reference = it }
-            assertEquals(1, thirdUpdate.updatedCount)
+            assertEquals(0, thirdUpdate.updatedCount)
             assertEquals(1, thirdUpdate.addedCount)
+            assertEquals(1, thirdUpdate.unchangedCount)
             assertEquals(0, thirdUpdate.failedCount)
             assertEquals(1, activeArchives(backupDir, PARENT_ID).size)
             assertEquals(1, activeArchives(backupDir, NEW_SONG_ID).size)
@@ -164,17 +212,24 @@ class LibraryUpdateLyricsRoundTripTest {
         }
     }
 
-    private fun runUpdate(
+    private suspend fun runUpdate(
         context: Context,
         gateway: RealArchiveGateway,
         reference: LibraryUpdateReference,
         save: (LibraryUpdateReference) -> Unit
-    ): LibraryUpdateResult = updateLibraryFamiliesV0(
-        reference = reference,
-        runtimeSongs = SmpLibraryScanner(context).listSongs(),
-        gateway = gateway,
-        saveReference = { next -> save(next); true }
-    )
+    ): LibraryUpdateResult {
+        check(LyricsEditorPersistenceBarrier.awaitPending())
+        val fingerprint = SmpFamilyFingerprint()
+        return updateLibraryFamiliesV0(
+            reference = reference,
+            runtimeSongs = SmpLibraryScanner(context).listSongs(),
+            gateway = gateway,
+            calculateFingerprint = { song, cachedAudio ->
+                fingerprint.calculate(context, song, cachedAudio)
+            },
+            saveReference = { next -> save(next); true }
+        )
+    }
 
     private fun activeArchives(folder: File, songId: String): List<File> = folder.listFiles()
         .orEmpty()
@@ -292,10 +347,13 @@ class LibraryUpdateLyricsRoundTripTest {
         private val backupDir: File
     ) : LibraryUpdateArchiveGateway {
         private var sequence = 0
+        var publishedCount = 0
+            private set
 
         override fun isFolderWritable(reference: LibraryUpdateReference): Boolean = backupDir.isDirectory
 
         override fun publishFamily(reference: LibraryUpdateReference, song: SongUnit): String? {
+            publishedCount += 1
             val current = SmpLibraryScanner(context).findSongById(song.id) ?: return null
             val exported = SmpExporter.exportSongUnitToCacheSmp(context, current) ?: return null
             val target = backupDir.resolve("${song.id}_update_${++sequence}.smp")
@@ -347,7 +405,7 @@ class LibraryUpdateLyricsRoundTripTest {
         const val NEW_SONG_ID = "new_mp3"
         const val OLD_LRC = "[00:00.000]Anciennes paroles\n"
         const val OLD_RAW = "Ancien texte brut\n"
-        const val NEW_LRC = "[00:00.000]Nouvelles paroles\n"
+        const val NEW_EDITOR_LRC = "Nouvelles paroles"
         const val NEW_RAW = "Nouveau couplet\n\nNouveau refrain\n"
         const val THIRD_LRC = "[00:00.000]Troisièmes paroles\n"
         const val THIRD_RAW = "Troisième couplet\n\n\nTroisième refrain\n"

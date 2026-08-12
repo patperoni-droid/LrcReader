@@ -1204,7 +1204,7 @@
     <string name="more_live_songs_export_no_songs">No songs to back up</string>
     <string name="more_live_songs_export_failed">Unable to start the backup</string>
     <string name="more_item_update_library">Update library</string>
-    <string name="more_library_update_result">Update complete: %1$d family/families updated, %2$d added, %3$d failed</string>
+    <string name="more_library_update_result">Update complete: %1$d family/families updated, %2$d added, %3$d unchanged, %4$d failed</string>
     <string name="more_library_update_inaccessible">The backup folder is no longer writable. Create a new full backup to choose an available folder.</string>
     <string name="more_library_restore_title">Restore my library</string>
     <string name="more_library_restore_progress">Restore in progress: %1$d / %2$d</string>

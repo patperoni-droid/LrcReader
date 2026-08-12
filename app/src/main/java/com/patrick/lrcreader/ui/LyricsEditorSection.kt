@@ -92,6 +92,15 @@ internal fun shouldFlushLyricsDraftOnEditorDispose(
 
 internal object LyricsEditorPersistenceBarrier {
     private val pendingFlushes = linkedSetOf<Deferred<Boolean>>()
+    private val activeFlushes = linkedMapOf<Any, suspend () -> Boolean>()
+
+    fun registerActive(flush: suspend () -> Boolean): Any = Any().also { handle ->
+        synchronized(activeFlushes) { activeFlushes[handle] = flush }
+    }
+
+    fun unregisterActive(handle: Any) {
+        synchronized(activeFlushes) { activeFlushes.remove(handle) }
+    }
 
     fun track(flush: Deferred<Boolean>) {
         synchronized(pendingFlushes) { pendingFlushes += flush }
@@ -99,6 +108,10 @@ internal object LyricsEditorPersistenceBarrier {
 
     suspend fun awaitPending(): Boolean {
         var allSucceeded = true
+        val active = synchronized(activeFlushes) { activeFlushes.values.toList() }
+        active.forEach { flush ->
+            allSucceeded = runCatching { flush() }.getOrDefault(false) && allSucceeded
+        }
         while (true) {
             val flushes = synchronized(pendingFlushes) { pendingFlushes.toList() }
             if (flushes.isEmpty()) return allSucceeded
@@ -805,7 +818,15 @@ fun LyricsEditorSection(
     val editorActivity = remember(context) { context.findComponentActivity() }
 
     DisposableEffect(editorActivity, currentTrackUri, showChordPalette) {
+        val activeFlushHandle = if (!showChordPalette && !currentTrackUri.isNullOrBlank()) {
+            LyricsEditorPersistenceBarrier.registerActive {
+                if (flushOnDisposeRequired) persistLatestDraftOnDispose() else true
+            }
+        } else {
+            null
+        }
         onDispose {
+            activeFlushHandle?.let(LyricsEditorPersistenceBarrier::unregisterActive)
             if (flushOnDisposeRequired) {
                 val flush = editorActivity?.lifecycleScope?.async {
                     yield()

@@ -6,6 +6,8 @@ import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpExporter
+import com.patrick.lrcreader.smp.SmpFamilyAudioHashCache
+import com.patrick.lrcreader.smp.SmpFamilyFingerprintResult
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SongUnit
 import org.json.JSONObject
@@ -13,7 +15,9 @@ import org.json.JSONObject
 internal data class LibraryUpdateReference(
     val treeUri: String,
     val folderUri: String,
-    val archivesBySongId: Map<String, String>
+    val archivesBySongId: Map<String, String>,
+    val fingerprintsBySongId: Map<String, String> = emptyMap(),
+    val audioHashesBySongId: Map<String, SmpFamilyAudioHashCache> = emptyMap()
 )
 
 internal object LibraryUpdateReferenceCodec {
@@ -21,6 +25,22 @@ internal object LibraryUpdateReferenceCodec {
         put("treeUri", reference.treeUri)
         put("folderUri", reference.folderUri)
         put("archives", JSONObject(reference.archivesBySongId))
+        put("fingerprints", JSONObject(reference.fingerprintsBySongId))
+        put(
+            "audioHashes",
+            JSONObject().apply {
+                reference.audioHashesBySongId.forEach { (songId, cache) ->
+                    put(
+                        songId,
+                        JSONObject()
+                            .put("fileIdentity", cache.fileIdentity)
+                            .put("size", cache.size)
+                            .put("lastModified", cache.lastModified)
+                            .put("sha256", cache.sha256)
+                    )
+                }
+            }
+        )
     }.toString()
 
     fun decode(raw: String?): LibraryUpdateReference? = runCatching {
@@ -37,8 +57,46 @@ internal object LibraryUpdateReferenceCodec {
                 archives[songId] = archiveUri
             }
         }
-        LibraryUpdateReference(treeUri, folderUri, archives)
+        val fingerprints = linkedMapOf<String, String>()
+        root.optJSONObject("fingerprints")?.keys()?.forEach { rawSongId ->
+            val songId = rawSongId.trim()
+            val fingerprint = root.optJSONObject("fingerprints")
+                ?.optString(rawSongId)
+                ?.trim()
+                .orEmpty()
+            if (songId.isNotEmpty() && SHA_256.matches(fingerprint)) {
+                fingerprints[songId] = fingerprint
+            }
+        }
+        val audioHashes = linkedMapOf<String, SmpFamilyAudioHashCache>()
+        root.optJSONObject("audioHashes")?.let { hashesJson ->
+            hashesJson.keys().forEach { rawSongId ->
+                val songId = rawSongId.trim()
+                val item = hashesJson.optJSONObject(rawSongId) ?: return@forEach
+                val fileIdentity = item.optString("fileIdentity").trim()
+                val size = item.optLong("size", -1L)
+                val lastModified = item.optLong("lastModified", -1L)
+                val sha256 = item.optString("sha256").trim()
+                if (
+                    songId.isNotEmpty() &&
+                    fileIdentity.isNotEmpty() &&
+                    size >= 0L &&
+                    lastModified >= 0L &&
+                    SHA_256.matches(sha256)
+                ) {
+                    audioHashes[songId] = SmpFamilyAudioHashCache(
+                        fileIdentity = fileIdentity,
+                        size = size,
+                        lastModified = lastModified,
+                        sha256 = sha256
+                    )
+                }
+            }
+        }
+        LibraryUpdateReference(treeUri, folderUri, archives, fingerprints, audioHashes)
     }.getOrNull()
+
+    private val SHA_256 = Regex("[0-9a-f]{64}")
 }
 
 internal object LibraryUpdateReferenceStore {
@@ -92,6 +150,8 @@ internal fun registerSuccessfulLibraryBackupV0(
     folderUri: String,
     expectedFamilyCount: Int,
     exportedArchivesBySongId: Map<String, String>,
+    fingerprintsBySongId: Map<String, String> = emptyMap(),
+    audioHashesBySongId: Map<String, SmpFamilyAudioHashCache> = emptyMap(),
     failureCount: Int,
     saveReference: (LibraryUpdateReference) -> Boolean
 ): LibraryUpdateReference? {
@@ -99,7 +159,9 @@ internal fun registerSuccessfulLibraryBackupV0(
     val reference = LibraryUpdateReference(
         treeUri = treeUri,
         folderUri = folderUri,
-        archivesBySongId = exportedArchivesBySongId
+        archivesBySongId = exportedArchivesBySongId,
+        fingerprintsBySongId = fingerprintsBySongId.filterKeys(exportedArchivesBySongId::containsKey),
+        audioHashesBySongId = audioHashesBySongId.filterKeys(exportedArchivesBySongId::containsKey)
     )
     return reference.takeIf { runCatching { saveReference(it) }.getOrDefault(false) }
 }
@@ -116,12 +178,14 @@ internal data class LibraryUpdateResult(
     val reference: LibraryUpdateReference,
     val updatedCount: Int,
     val addedCount: Int,
+    val unchangedCount: Int,
     val failedCount: Int,
     val folderInaccessible: Boolean = false
 )
 
 internal interface LibraryUpdateArchiveGateway {
     fun isFolderWritable(reference: LibraryUpdateReference): Boolean
+    fun isArchiveOwnedBySong(archiveUri: String, songId: String): Boolean = true
     fun publishFamily(reference: LibraryUpdateReference, song: SongUnit): String?
     fun deleteArchiveIfOwnedBySong(archiveUri: String, songId: String): Boolean
 }
@@ -130,11 +194,12 @@ internal fun updateLibraryFamiliesV0(
     reference: LibraryUpdateReference,
     runtimeSongs: List<SongUnit>,
     gateway: LibraryUpdateArchiveGateway,
+    calculateFingerprint: (SongUnit, SmpFamilyAudioHashCache?) -> SmpFamilyFingerprintResult? = { _, _ -> null },
     saveReference: (LibraryUpdateReference) -> Boolean,
     onProgress: (completed: Int, total: Int, title: String) -> Unit = { _, _, _ -> }
 ): LibraryUpdateResult {
     if (!gateway.isFolderWritable(reference)) {
-        return LibraryUpdateResult(reference, 0, 0, 0, folderInaccessible = true)
+        return LibraryUpdateResult(reference, 0, 0, 0, 0, folderInaccessible = true)
     }
 
     val families = runtimeSongs
@@ -146,33 +211,66 @@ internal fun updateLibraryFamiliesV0(
     var currentReference = reference
     var updatedCount = 0
     var addedCount = 0
+    var unchangedCount = 0
     var failedCount = 0
 
     families.forEachIndexed { index, song ->
+        val referenceBeforeUpdate = currentReference
         val songId = song.id.trim()
         val previousArchiveUri = currentReference.archivesBySongId[songId]
+        val previousFingerprint = currentReference.fingerprintsBySongId[songId]
+        val previousAudioHash = currentReference.audioHashesBySongId[songId]
+        val runtimeFingerprint = calculateFingerprint(
+            song,
+            previousAudioHash
+        )
+        val previousArchiveIsValid = previousArchiveUri != null &&
+            (runtimeFingerprint == null || gateway.isArchiveOwnedBySong(previousArchiveUri, songId))
+        if (
+            previousArchiveIsValid &&
+            runtimeFingerprint != null &&
+            previousFingerprint == runtimeFingerprint.fingerprint &&
+            previousAudioHash == runtimeFingerprint.audioHashCache
+        ) {
+            unchangedCount += 1
+            onProgress(index + 1, families.size, song.title)
+            return@forEachIndexed
+        }
         val publishedArchiveUri = gateway.publishFamily(currentReference, song)
         if (publishedArchiveUri == null) {
             failedCount += 1
         } else {
             val nextArchives = LinkedHashMap(currentReference.archivesBySongId)
             nextArchives[songId] = publishedArchiveUri
-            val nextReference = currentReference.copy(archivesBySongId = nextArchives)
+            val verifiedFingerprint = runtimeFingerprint?.takeIf { before ->
+                calculateFingerprint(song, before.audioHashCache)?.fingerprint == before.fingerprint
+            }
+            val nextFingerprints = LinkedHashMap(currentReference.fingerprintsBySongId).apply {
+                remove(songId)
+                verifiedFingerprint?.let { this[songId] = it.fingerprint }
+            }
+            val nextAudioHashes = LinkedHashMap(currentReference.audioHashesBySongId).apply {
+                remove(songId)
+                verifiedFingerprint?.audioHashCache?.let { this[songId] = it }
+            }
+            val nextReference = currentReference.copy(
+                archivesBySongId = nextArchives,
+                fingerprintsBySongId = nextFingerprints,
+                audioHashesBySongId = nextAudioHashes
+            )
             if (runCatching { saveReference(nextReference) }.getOrDefault(false)) {
                 currentReference = nextReference
                 if (previousArchiveUri == null) {
                     addedCount += 1
+                } else if (!previousArchiveIsValid) {
+                    updatedCount += 1
                 } else {
                     val previousRemoved = previousArchiveUri == publishedArchiveUri ||
                         gateway.deleteArchiveIfOwnedBySong(previousArchiveUri, songId)
                     if (previousRemoved) {
                         updatedCount += 1
                     } else {
-                        val rollbackReference = currentReference.copy(
-                            archivesBySongId = LinkedHashMap(currentReference.archivesBySongId).apply {
-                                this[songId] = previousArchiveUri
-                            }
-                        )
+                        val rollbackReference = referenceBeforeUpdate
                         if (runCatching { saveReference(rollbackReference) }.getOrDefault(false)) {
                             currentReference = rollbackReference
                             gateway.deleteArchiveIfOwnedBySong(publishedArchiveUri, songId)
@@ -192,6 +290,7 @@ internal fun updateLibraryFamiliesV0(
         reference = currentReference,
         updatedCount = updatedCount,
         addedCount = addedCount,
+        unchangedCount = unchangedCount,
         failedCount = failedCount
     )
 }
@@ -205,6 +304,10 @@ internal class SafLibraryUpdateArchiveGateway(
             hasWritableTreePermission = true,
             folderExistsAndIsDirectory = folder.exists() && folder.isDirectory
         )
+    }.getOrDefault(false)
+
+    override fun isArchiveOwnedBySong(archiveUri: String, songId: String): Boolean = runCatching {
+        SmpArchiveSongIdResolver.readStableSongId(context, Uri.parse(archiveUri)) == songId
     }.getOrDefault(false)
 
     override fun publishFamily(reference: LibraryUpdateReference, song: SongUnit): String? =

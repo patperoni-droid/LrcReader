@@ -60,6 +60,22 @@ class LyricsEditorDisposePersistenceTest {
     }
 
     @Test
+    fun libraryUpdateForcesActiveEditorDraftBeforeScanningRuntime() = runBlocking {
+        var runtimeLyrics = "old"
+        val activeHandle = LyricsEditorPersistenceBarrier.registerActive {
+            runtimeLyrics = "latest editor draft"
+            true
+        }
+
+        try {
+            assertTrue(LyricsEditorPersistenceBarrier.awaitPending())
+            assertTrue(runtimeLyrics == "latest editor draft")
+        } finally {
+            LyricsEditorPersistenceBarrier.unregisterActive(activeHandle)
+        }
+    }
+
+    @Test
     fun failedEditorFlushPreventsLibraryUpdateScan() = runBlocking {
         val flush = CompletableDeferred<Boolean>()
         LyricsEditorPersistenceBarrier.track(flush)

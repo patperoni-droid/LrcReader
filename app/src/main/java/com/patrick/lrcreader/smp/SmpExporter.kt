@@ -290,7 +290,7 @@ object SmpExporter {
             .ifBlank { "song_export" }
     }
 
-    private fun refreshSongUnitForExport(context: Context, songUnit: SongUnit): SongUnit {
+    internal fun refreshSongUnitForExport(context: Context, songUnit: SongUnit): SongUnit {
         val songDir = songUnit.storageFolder
             ?.takeIf { it.isNotBlank() }
             ?.let(::File)
@@ -382,7 +382,7 @@ object SmpExporter {
             ?.absolutePath
     }
 
-    private fun resolveArrangementVariantsForExport(
+    internal fun resolveArrangementVariantsForExport(
         context: Context,
         sourceSong: SongUnit,
         selectedVariantId: String?
