@@ -647,6 +647,7 @@ fun LibraryScreen(
     val sFilesView = stringResource(R.string.library_view_mode_files)
     val sPlaylistsView = stringResource(R.string.library_view_mode_playlists)
     val sPromptersView = stringResource(R.string.library_view_mode_prompters)
+    val sPromptersPhoneView = stringResource(R.string.library_view_mode_prompters_phone)
     val sLufsView = stringResource(R.string.library_view_mode_lufs)
     val sPlaylistsEmpty = stringResource(R.string.all_playlists_empty)
     val sDeleteSelectedPlaylistsTitle = stringResource(R.string.library_delete_selected_playlists_title)
@@ -3895,7 +3896,7 @@ fun LibraryScreen(
                     }
                 )
                 LibraryViewModeButton(
-                    label = sPromptersView,
+                    label = if (compactTabletLayout) sPromptersView else sPromptersPhoneView,
                     selected = isPrompterViewMode,
                     accent = accent,
                     compact = compactTabletLayout,

@@ -291,6 +291,7 @@
     <string name="library_view_mode_files">Fichiers</string>
     <string name="library_view_mode_playlists">Lists</string>
     <string name="library_view_mode_prompters">Textes défilants</string>
+    <string name="library_view_mode_prompters_phone">Textes</string>
     <string name="library_view_mode_lufs">LEVELS</string>
     <string name="library_header_cd_storage">Accès au stockage</string>
     <string name="library_storage_header_title">Stockage de l’appareil</string>

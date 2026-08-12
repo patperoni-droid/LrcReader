@@ -297,6 +297,7 @@
     <string name="library_view_mode_files">Files</string>
     <string name="library_view_mode_playlists">Lists</string>
     <string name="library_view_mode_prompters">Scrolling texts</string>
+    <string name="library_view_mode_prompters_phone">Texts</string>
     <string name="library_view_mode_lufs">LEVELS</string>
     <string name="library_header_cd_storage">Open storage</string>
     <string name="library_storage_header_title">Device storage</string>
