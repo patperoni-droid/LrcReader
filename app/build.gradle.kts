@@ -25,7 +25,7 @@ val enableSoundTouchNative =
 
 android {
     namespace = "com.patrick.lrcreader.exo"
-    compileSdk = 35
+    compileSdk = 36
 
     flavorDimensions += "mode"
     productFlavors {
@@ -54,7 +54,7 @@ android {
     defaultConfig {
         applicationId = "com.patrick.lrcreader.exo"
         minSdk = 23
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 6
         versionName = "0.4.2-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
