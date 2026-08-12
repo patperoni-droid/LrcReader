@@ -159,4 +159,4 @@ Le pitch ou la vitesse de l’un des morceaux peut imposer une transition séque
 
 Vérifiez ses points IN/OUT dans Waveform.
 
-Chapitre suivant : [Afficher les paroles et les accords](10-paroles-et-accords.md).
+Chapitre suivant : [Préparer et enchaîner une prestation](09-preparer-et-enchainer-un-live.md).

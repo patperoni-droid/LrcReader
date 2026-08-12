@@ -17,25 +17,40 @@ Ce manuel décrit les fonctions présentes dans la version bêta actuelle. Une f
 6. [Rechercher un morceau et consulter l’historique](06-recherche-et-historique.md)
 7. [Organiser ses playlists, groupes et familles](07-playlists-groupes-et-familles.md)
 
-## Lire et afficher les contenus
+## Lire, afficher et préparer un live
 
 8. [Utiliser le Lecteur et ses commandes](08-lecteur-et-commandes-de-lecture.md)
-9. [Afficher les paroles et les accords](10-paroles-et-accords.md)
-10. [Éditer et synchroniser les paroles](11-editer-et-synchroniser-les-paroles.md)
-11. [Créer et utiliser des textes défilants](12-textes-defilants.md)
+9. [Préparer et enchaîner une prestation](09-preparer-et-enchainer-un-live.md)
+10. [Afficher les paroles et les accords](10-paroles-et-accords.md)
+11. [Éditer et synchroniser les paroles](11-editer-et-synchroniser-les-paroles.md)
+12. [Créer et utiliser des textes défilants](12-textes-defilants.md)
 
-## Chapitres à venir
+## Préparer le son et la structure
 
-Les prochaines étapes du manuel couvriront notamment :
+13. [Préparer les niveaux avec LEVELS](13-levels-et-niveaux-des-morceaux.md)
+14. [Régler le mixage du titre et le Bus principal](14-mixage-du-titre-et-bus-principal.md)
+15. [Utiliser Waveform et les points IN/OUT](15-waveform-et-points-in-out.md)
+16. [Créer un Arrangement et ses variantes](16-arrangement-et-variantes.md)
+17. [Utiliser la Timeline, MIDI, DMX et les annotations](17-timeline-midi-dmx-et-annotations.md)
 
-- la préparation et l’enchaînement d’un concert ;
-- LEVELS, le mixage et le Bus principal ;
-- Waveform, Arrangement et les variantes ;
-- Timeline, MIDI, DMX et annotations ;
-- le Fond sonore, le mode DJ, le Bloc-notes et l’Accordeur ;
-- le Deuxième écran et SMP Sync ;
-- le partage, la sauvegarde et la restauration ;
-- les réglages, le dépannage et la FAQ.
+## Utiliser les outils de scène
+
+18. [Utiliser le Fond sonore](18-fond-sonore.md)
+19. [Utiliser le mode DJ](19-mode-dj.md)
+20. [Utiliser le Bloc-notes](20-bloc-notes.md)
+21. [Utiliser l’Accordeur](21-accordeur.md)
+
+## Connecter, transférer et protéger
+
+22. [Utiliser un Deuxième écran](22-deuxieme-ecran.md)
+23. [Transférer une sélection avec SMP Sync](23-smp-sync.md)
+24. [Partager et exporter](24-partager-et-exporter.md)
+25. [Sauvegarder et restaurer la Bibliothèque](25-sauvegarder-et-restaurer.md)
+
+## Personnaliser et résoudre
+
+26. [Personnaliser les réglages et l’affichage](26-reglages-et-modes-daffichage.md)
+27. [Résoudre les problèmes courants](27-depannage-et-faq.md)
 
 ## Vocabulaire essentiel
 

@@ -122,4 +122,4 @@ Un texte défilant n’est pas synchronisé à l’audio. Pour suivre automatiqu
 
 Vérifiez que la sauvegarde complète contenait les textes défilants. La commande actuelle **Mettre à jour la bibliothèque** ne met pas encore à jour ce catalogue ; effectuez une nouvelle sauvegarde complète après avoir créé ou modifié des textes importants.
 
-Retour au [sommaire du manuel](index.md).
+Chapitre suivant : [Préparer les niveaux avec LEVELS](13-levels-et-niveaux-des-morceaux.md).
