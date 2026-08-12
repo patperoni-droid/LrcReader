@@ -3858,7 +3858,8 @@ fun LibraryScreen(
                     } else {
                         null
                     },
-                    onSecretMultiTap = { handleHiddenFullModeTap() }
+                    onSecretMultiTap = { handleHiddenFullModeTap() },
+                    compactActionsOnly = true
                 )
             }
 
