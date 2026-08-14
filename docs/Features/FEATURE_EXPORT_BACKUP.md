@@ -114,7 +114,7 @@ Arrangement → WAV → SMP → runtime
 
 ### Contenu sauvegardé
 
-- tous les morceaux importés (version runtime), incluant leurs réglages LUFS dans `config.json`
+- tous les morceaux importés (version runtime), incluant leur réglage LEVEL dans `config.json`
 - le projet `arrangement.json` courant de chaque morceau lorsqu'il existe
 - les variantes Arrangement virtuelles dans `arrangement_variants.json` à l'intérieur du `.smp` de leur morceau parent
 - les données propres à chaque variante : paroles et brouillon brut, accords, couleurs de lignes,
@@ -194,8 +194,8 @@ cible dans [FEATURE_LIBRARY_BACKUP.md](FEATURE_LIBRARY_BACKUP.md) et
 
 - sauvegarde = création de fichiers `.smp`
 - restauration = réimport des `.smp`
-- les réglages LUFS suivent le morceau via `SongUnit/config.json`
-- référence LUFS : `FEATURE_LUFS_PREPARATION.md`
+- le réglage LEVEL suit le morceau via `SongUnit/config.json`
+- référence fonctionnelle : `FEATURE_LEVELS.md`
 - aucune dépendance au runtime Android
 
 ---

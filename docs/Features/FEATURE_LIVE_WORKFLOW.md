@@ -131,7 +131,7 @@ Règles :
 
 Bibliothèque tablette :
 
-- l'en-tête compact regroupe `Songs / Lists / Textes défilants / LUFS / dossier / menu / cockpit`
+- l'en-tête compact regroupe `Songs / Lists / Textes défilants / LEVELS / dossier / menu / cockpit`
 - le titre `Bibliothèque` et le sous-titre sont masqués en mode tablette compact pour gagner de la hauteur
 - les lignes de morceaux ne sont pas compactées pour l'instant à cause d'un risque runtime déjà rencontré
 - depuis la playlist gauche, l'icône dossier doit ouvrir la navigation dossiers / Bibliothèque dans le panneau droit
@@ -305,10 +305,11 @@ Le critère SMP est :
 
 Workflow recommandé :
 
-1. utiliser `Appliquer LUFS` SMP pendant la préparation pour rapprocher automatiquement le morceau d'un niveau de référence
-2. corriger ensuite à l'oreille avec le gain manuel
-3. écouter immédiatement le résultat pendant la préécoute ou la lecture
-4. conserver le gain manuel mémorisé par morceau
+1. ouvrir `LEVELS` pendant la préparation
+2. écouter un passage représentatif, avec les raccourcis de départ si nécessaire
+3. corriger le niveau à l'oreille avec le réglage manuel en dB
+4. écouter immédiatement le résultat pendant la préécoute ou la lecture
+5. conserver le réglage mémorisé par morceau
 
 La page d'ajustement volume sert aussi d'atelier d'uniformisation des playlists :
 

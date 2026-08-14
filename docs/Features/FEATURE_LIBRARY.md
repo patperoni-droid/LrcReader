@@ -200,8 +200,8 @@ Importing a shared variant:
 - an existing variant with the same `songId` is updated without duplication
 - the same variant `songId` attached to another `sourceSongId` is refused explicitly
 - optional local variant assets absent from the archive are preserved
-- supported playback transport currently covers trim, speed, pitch and manual gain; EQ and
-  LUFS-derived device state are not implied by this contract
+- supported playback transport currently covers trim, speed, pitch and the stored LEVEL setting;
+  EQ and other device-local state are not implied by this contract
 
 ⸻
 
@@ -377,7 +377,7 @@ Compact tablet header:
   - Songs
   - Lists
   - Scrolling texts
-  - LUFS
+  - LEVELS
   - storage/folder action
   - Library actions menu
   - cockpit menu
@@ -500,36 +500,37 @@ Rules:
 
 ⸻
 
-LUFS PREPARATION PREVIEW
+LEVELS — PRÉPARATION MANUELLE DES NIVEAUX
 
-Detailed contract: `FEATURE_LUFS_PREPARATION.md`.
+Detailed contract: `FEATURE_LEVELS.md`.
 
-The Library LUFS tab provides an isolated preview tool for preparation and rehearsals.
+The Library LEVELS tab provides an isolated listening and adjustment tool for preparation and rehearsals.
 
-Current naming note:
-- the UI keeps the LUFS wording for compatibility and simplicity
-- SMP V1 level preparation is based on waveform level estimation / normalization
-- it is not a broadcast-compliant ITU-R BS.1770 / EBU R128 LUFS implementation
-- the product goal is live-perceived consistency between songs
+Current product rule:
+- LEVELS is the sole current workflow
+- adjustment is manual and expressed in dB
+- no automatic loudness measurement, target or normalization is part of the current functional contract
+- historical implementation identifiers do not define the user-visible feature
 
 Purpose:
 - compare the real perceived levels of songs quickly
-- avoid waiting through long intros when checking LUFS preparation
+- avoid waiting through long intros when checking level preparation
 - stay inside the Library preparation workflow
 - calibrate playlists before concert by reaching representative passages quickly
 
 Scope:
-- this feature exists only in Library -> LUFS
-- it reuses the Library LUFS preview player
+- this feature exists only in Library -> LEVELS
+- it reuses the Library LEVELS preview player and the official Playback Control
 - it is not part of the live Player pipeline
 
 UX:
 - simple tap on Play starts preview from 0s
-- long press on Play opens a lightweight start-offset menu
+- tapping Play opens a lightweight start-offset menu
 - available start offsets are 20s, 40s, 60s, and 90s
 - choosing an offset starts preview directly at that position
-- manual `+1` / `-1` corrections are audible immediately during preview or current-song playback
-- manual gain is saved per song
+- the shared gain drawer adjusts the value from `-24 dB` to `+6 dB`
+- corrections are audible immediately during preview or current-song playback
+- the LEVEL setting is saved per song
 
 Rules:
 - no impact on Player live
@@ -542,7 +543,7 @@ Rules:
 - no playlist behavior change
 - no heavy level analysis during live playback
 
-👉 LUFS preview offsets are a Library preparation aid only.
+👉 LEVELS preview offsets are a Library preparation aid only.
 👉 This page also acts as a playlist calibration workshop before concert.
 
 ⸻

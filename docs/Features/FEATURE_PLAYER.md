@@ -532,9 +532,9 @@ Rules:
 - legacy URI/path keys may exist but must not override stable song identity
 
 Level workflow note:
-- the current UI term LUFS refers to SMP V1 level preparation, not broadcast-compliant ITU-R BS.1770 / EBU R128 LUFS
-- `Appliquer LUFS` prepares an automatic SMP level correction before live use
-- manual gain corrections are stored per song and must be audible immediately on the active track
+- LEVELS is the sole current preparation workflow
+- the musician listens to representative passages and adjusts the level manually in dB
+- LEVELS corrections are stored per song and must be audible immediately on the active track
 - Track Console must reflect the level actually applied to the current playback
 - Player must apply prepared gain values only; it must not run heavy level analysis during live playback
 
@@ -602,13 +602,12 @@ Required behavior:
 - use a live-safe sequential transition
 - apply a short fade-out
 - stop, clear, and release/cleanup the old active player when needed
-- reset controlled volume/gain/LUFS state before the next start
+- reset controlled per-track volume/gain state before the next start
 - apply playback parameters before `prepare()` / `play()`
 - launch the next track through the standard Player pipeline
 
 The standard pipeline must still apply:
 - gain
-- LUFS-derived gain
 - pitch
 - speed
 - timeline handoff
@@ -621,7 +620,7 @@ Rules:
 - the next track must become the only authoritative source for audio, lyrics, chords, and timeline
 
 Reason:
-Double-player transitions with pitch/speed can cause inherited playback parameters, stale gain/LUFS state, ghost players, old-track restart, or audible relaunch.
+Double-player transitions with pitch/speed can cause inherited playback parameters, stale gain state, ghost players, old-track restart, or audible relaunch.
 
 ## Track Gain Pipeline Guard (Live Critical)
 

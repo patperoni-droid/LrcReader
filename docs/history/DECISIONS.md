@@ -11,6 +11,37 @@ Chaque nouvelle décision importante doit être ajoutée avec :
 
 ---
 
+# 14/08/2026 — LEVELS remplace définitivement l'ancien système de niveau
+
+## Contexte
+
+L'ancien système de mesure et de normalisation automatique a été revu. Le produit dispose
+désormais de **LEVELS**, un atelier volontairement plus simple : le musicien écoute des passages
+représentatifs et règle manuellement le niveau du morceau en décibels.
+
+Des noms historiques peuvent encore subsister dans le code ou les données persistées. Ils sont
+des éléments de compatibilité ou une dette technique et ne constituent pas une fonctionnalité.
+
+## Décisions
+
+- **LEVELS** est la seule fonctionnalité actuelle de préparation des niveaux ;
+- l'ancien système est abandonné et ne figure plus dans la feuille de route ;
+- aucune mesure, cible ou normalisation automatique n'appartient au contrat fonctionnel LEVELS ;
+- `docs/Features/FEATURE_LEVELS.md` est la référence fonctionnelle actuelle ;
+- `docs/Features/FEATURE_LEVELS_V2.md` et `docs/Features/FEATURE_LUFS_PREPARATION.md` sont conservés
+  uniquement comme archives historiques explicitement obsolètes ;
+- la suppression ou la migration des identifiants et champs historiques du code devra faire
+  l'objet d'une tâche applicative distincte, avec étude de compatibilité des données existantes.
+
+## Conséquences pratiques
+
+- le manuel utilisateur décrit uniquement l'écoute et l'ajustement manuel proposés par LEVELS ;
+- les documents actifs ne présentent plus l'ancien système comme disponible ou futur ;
+- les formats persistés et les imports existants ne doivent pas être cassés par une future
+  opération de nettoyage technique.
+
+---
+
 # 11/08/2026
 
 ## Contexte

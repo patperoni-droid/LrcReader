@@ -139,9 +139,10 @@ All song-related data must:
 👉 No duplicated storage logic allowed
 
 Level metadata:
-- SMP V1 currently keeps the UI LUFS wording for compatibility
-- this is waveform-based level estimation / normalization, not a broadcast-compliant ITU-R BS.1770 / EBU R128 LUFS implementation
-- automatic SMP level data and manual gain corrections are song metadata
+- LEVELS is the current user-facing workflow and is intentionally manual
+- the user listens to representative passages and adjusts the stored gain in dB
+- there is no automatic loudness-normalization feature in the current product contract
+- historical identifiers and persisted fields from the abandoned system may remain for compatibility, but they do not define a current or future product feature
 - the effective live gain must be stored per songId and applied from normalized internal storage
 - live playback applies prepared gain values only; it must not perform heavy level analysis
 

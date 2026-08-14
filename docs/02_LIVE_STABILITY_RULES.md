@@ -62,9 +62,9 @@ ALL required data must be prepared BEFORE playback:
 👉 ZERO preparation during playback.
 
 Level preparation rule:
-- LUFS SMP / waveform-based level analysis is preparation work only
-- level analysis may run at import, on an explicit user action, or during pre-concert preparation
-- no heavy level analysis may run during live playback
+- LEVELS preparation is a manual, pre-concert workflow based on listening to representative passages
+- no automatic loudness analysis or normalization belongs to the current product contract
+- no heavy level processing may run during live playback
 - manual gain changes may be applied during playback only as lightweight volume updates to the active player
 - manual gain updates must not restart the track or rebuild playback structures
 
@@ -146,7 +146,7 @@ Pitch/speed transition guard:
 - use a sequential live-safe transition instead:
   - short fade-out
   - full stop/clear/release or cleanup of the old audible player
-  - controlled reset of volume/gain/LUFS state
+  - controlled reset of per-track volume/gain state, including compatible legacy persisted state
   - playback parameters applied before `prepare()` / `play()`
   - launch through the standard Player pipeline
 - normal -> normal may keep the existing crossfade

@@ -31,7 +31,7 @@ Affiche le catalogue des textes autonomes sans audio. Consultez [Créer et utili
 
 ### LEVELS
 
-Ouvre l’espace de préparation des niveaux sonores. Dans la version actuelle, certains libellés historiques LUFS peuvent encore être visibles. Un chapitre dédié expliquera cette fonction dans une étape ultérieure du manuel.
+Ouvre l’espace de préparation manuelle des niveaux sonores. Chaque morceau affiche son réglage en décibels et peut être écouté depuis plusieurs passages avant ajustement. Consultez [Préparer les niveaux des morceaux avec LEVELS](13-levels-et-niveaux-des-morceaux.md).
 
 ## Morceau live, fichier source et playlist
 

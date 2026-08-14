@@ -183,13 +183,13 @@ Pour un morceau, l’import peut mettre à jour les données associées :
 - paroles
 - accords
 - timeline
-- réglages, incluant `playback` et les champs LUFS de `config.json`
+- réglages, incluant `playback` et le niveau mémorisé dans `config.json`
 - arrangement
 - autres fichiers normalisés du SongUnit
 
 Après import, le téléphone secours doit travailler depuis son runtime local normalisé.
 
-Référence LUFS : `FEATURE_LUFS_PREPARATION.md`. Les réglages LUFS font partie du `SongUnit/config.json` et doivent suivre la sync manuelle avec le morceau.
+Référence LEVELS : `FEATURE_LEVELS.md`. Le niveau mémorisé fait partie du `SongUnit/config.json` et doit suivre la sync manuelle avec le morceau. Les anciens noms de champs éventuellement conservés dans le format relèvent de la compatibilité technique, pas d'une fonctionnalité distincte.
 
 ---
 

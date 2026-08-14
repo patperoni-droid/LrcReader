@@ -1,252 +1,66 @@
 # FEATURE — LEVELS
 
-## Objectif
+## Statut
 
-`LEVELS` devient l'atelier de préparation du mix du concert.
+**Référence fonctionnelle actuelle — décision définitive du 14 août 2026.**
 
-Son objectif n'est pas de mesurer un niveau théorique. Son objectif est de préparer le niveau réel de chaque morceau avant le live.
+`LEVELS` est l'atelier manuel de préparation du niveau des morceaux avant répétition ou concert.
 
-Le musicien doit pouvoir écouter les passages utiles, régler le niveau à l'oreille, puis passer rapidement au morceau suivant.
+L'ancien système LUFS est abandonné. Il ne constitue ni une fonctionnalité actuelle, ni une cible future de Stage Music Player. Les noms techniques ou données hérités encore présents dans le code relèvent uniquement de la compatibilité et de la dette technique ; ils ne définissent pas le produit.
 
 ---
 
-## Changement De Philosophie
+## Objectif
 
-L'ancien module LUFS reposait sur l'idée suivante :
+Permettre au musicien de :
 
-- analyser les morceaux ;
-- uniformiser automatiquement leurs niveaux ;
-- affiner ensuite les réglages.
+- écouter rapidement un passage utile de chaque morceau ;
+- comparer les morceaux à l'oreille dans des conditions cohérentes ;
+- ajuster manuellement leur `LEVEL` ;
+- mémoriser un niveau propre à chaque morceau ;
+- préparer un enchaînement homogène avant le live.
 
-L'expérience terrain montre que ce modèle n'est plus le bon.
-
-En pratique, la préparation fiable se fait à l'oreille, morceau par morceau, avec le fader `LEVEL` mémorisé.
-
-`LEVELS` n'est donc plus un analyseur LUFS.
-
-`LEVELS` devient une page de travail pour préparer le mix réel du concert.
-
-Après validation en utilisation réelle, le workflow manuel est la philosophie définitive de `LEVELS`.
-
-Les traitements automatiques LUFS ne font plus partie du parcours `LEVELS`.
+`LEVELS` ne présente aucune mesure de sonie, aucune cible et aucune commande de normalisation automatique. La décision fonctionnelle appartient au musicien.
 
 ---
 
 ## Source De Vérité
 
-La seule valeur de référence est :
+La seule valeur fonctionnelle de référence est :
 
 ```text
-LEVEL mémorisé du morceau
+LEVEL mémorisé du morceau, exprimé en dB
 ```
 
-Ce `LEVEL` est le réglage utilisé par le Player.
+Cette valeur est celle que le Playback principal applique au morceau.
 
-Il correspond au niveau choisi par le musicien avec le fader du tiroir `LEVEL`.
+Le `LEVEL` appartient au morceau et doit rester cohérent entre :
 
-La notion LUFS ne doit plus être exposée à l'utilisateur dans ce module.
-
-Les anciennes données ou analyses LUFS peuvent rester internes si elles existent encore, mais elles ne sont plus la vérité produit et ne doivent plus piloter l'UX principale.
-
-Le réglage des niveaux repose exclusivement sur l'écoute du musicien et l'ajustement manuel via le `GainDrawer`.
+- la page `LEVELS` ;
+- le Playback Control ;
+- le tiroir de gain ;
+- le Player et la Track Console ;
+- l'export, la sauvegarde, la restauration et la synchronisation du morceau.
 
 ---
 
-## Workflow Utilisateur
+## Parcours Actuellement Implémenté
 
-Parcours cible :
+### Accès
 
-```text
-Ouvrir LEVELS
-↓
-Choisir un morceau
-↓
-Appui simple sur Lecture
-↓
-Choisir le point d'écoute
-↓
-Ouvrir le tiroir LEVEL
-↓
-Écouter
-↓
-Régler le niveau
-↓
-Passer au morceau suivant
-```
+La Bibliothèque contient un onglet `LEVELS`.
 
-Le travail consiste à préparer le mix du concert, pas à corriger automatiquement des valeurs d'analyse.
+Cet onglet affiche les morceaux live jouables connus de la Bibliothèque. Chaque ligne présente :
 
-Le parcours normal devient :
+- le titre du morceau ;
+- une commande de lecture rapide ;
+- le `LEVEL` courant en dB.
 
-```text
-Choisir un morceau
-↓
-Écouter
-↓
-Ajuster
-↓
-Morceau suivant
-```
+Toucher une ligne sélectionne le morceau à régler et le relie au tiroir de gain.
 
----
+### Démarrage Rapide
 
-## Vision UX
-
-La page doit rester extrêmement simple.
-
-Elle doit montrer uniquement ce qui aide à préparer le niveau réel des morceaux :
-
-- les morceaux ;
-- leur `LEVEL` actuel ;
-- les commandes de lecture ;
-- le tiroir `LEVEL` ;
-- les raccourcis utiles pour préparer le mix.
-
-Tout ce qui concerne les LUFS doit disparaître de l'interface utilisateur principale.
-
-Le musicien ne doit pas avoir à comprendre :
-
-- LUFS ;
-- gain calculé ;
-- normalisation automatique ;
-- analyse audio ;
-- correction théorique.
-
-L'interface doit parler le langage du concert :
-
-```text
-Est-ce que ce morceau est au bon niveau par rapport aux autres ?
-```
-
----
-
-## Rôle Du Démarrage Rapide
-
-Le bouton `Lecture` ouvre directement le choix du point d'écoute.
-
-Il permet de démarrer au début du morceau ou de rejoindre rapidement un passage utile, notamment un passage fort, afin de régler le niveau sans perdre de temps.
-
-Cette fonction doit être conservée dans `LEVELS`.
-
-Elle fait partie du workflow principal de préparation du mix.
-
-## Écoute Rapide (Quick Preview)
-
-Lorsqu'un morceau est affiché dans la liste des niveaux, un appui simple sur le bouton `Lecture` ouvre directement un petit menu proposant plusieurs points de départ :
-
-- Début ;
-- 20 s ;
-- 40 s ;
-- 60 s ;
-- 90 s.
-
-Le morceau démarre directement au temps choisi.
-
-La fonction est donc directement accessible : aucune action cachée ni appui long n'est nécessaire.
-
-Le choix `Début` remplace implicitement `0 seconde`, avec un vocabulaire naturel pour un musicien.
-
-Cette évolution améliore la découvrabilité tout en conservant une interface simple : le bouton reste unique, mais il révèle immédiatement les départs utiles.
-
-Cette fonction permet d'éviter les introductions trop longues et d'écouter rapidement les passages les plus représentatifs d'un morceau.
-
-Elle facilite :
-
-- la comparaison rapide entre plusieurs titres ;
-- l'équilibrage des niveaux ;
-- la préparation des enchaînements ;
-- la création d'un mix cohérent pour le concert.
-
-Cette fonctionnalité fait partie intégrante de la philosophie de préparation audio de SMP et devra être conservée lors des futures évolutions de l'interface.
-
----
-
-## Tiroir LEVEL
-
-`LEVELS` doit utiliser le même comportement que le Player pour le réglage du niveau.
-
-Objectif produit :
-
-- même fader ;
-- même valeur mémorisée ;
-- même ergonomie ;
-- même effet réel sur le morceau.
-
-Si possible, le même composant doit être réutilisé afin d'éviter deux expériences différentes pour un même réglage.
-
-La documentation produit ne définit pas l'implémentation technique. Elle fixe seulement la règle UX :
-
-```text
-Régler le LEVEL dans LEVELS doit revenir au même résultat que régler le LEVEL dans le Player.
-```
-
----
-
-## Roadmap
-
-### Étape 1 — Renommer L'Onglet
-
-Renommer l'onglet :
-
-```text
-LUFS
-↓
-LEVELS
-```
-
-Objectif :
-
-- supprimer la promesse d'analyse LUFS ;
-- installer le nouveau rôle produit ;
-- rendre la page compréhensible pour un musicien.
-
-### Étape 2 — Retirer Les Actions LUFS De L'Interface
-
-Supprimer de l'interface utilisateur principale :
-
-- `Appliquer LUFS` ;
-- `Retirer LUFS`.
-
-Ces actions ne correspondent plus au workflow réel.
-
-Elles doivent être retirées du workflow `LEVELS`.
-
-La sélection de morceaux dédiée à ces actions n'est plus nécessaire dans cette page.
-
-### Étape 3 — Remplacer La Colonne LUFS Par LEVEL
-
-La colonne affichée comme `LUFS` devient :
-
-```text
-LEVEL
-```
-
-Elle affiche la valeur réellement utilisée par le Player :
-
-```text
-LEVEL mémorisé du morceau
-```
-
-Cette valeur doit aider le musicien à voir rapidement quels morceaux ont déjà été préparés et quels morceaux restent à ajuster.
-
-### Étape 4 — Intégrer Le Tiroir LEVEL
-
-Intégrer dans `LEVELS` le même tiroir `LEVEL` que dans le Player.
-
-Objectif :
-
-- écouter un morceau ;
-- ouvrir le tiroir ;
-- régler le niveau ;
-- mémoriser immédiatement le réglage du morceau.
-
-Le comportement doit rester identique au Player.
-
-### Étape 5 — Conserver Le Démarrage Rapide
-
-Conserver l'écoute rapide directement accessible depuis `Lecture`.
-
-Un appui simple doit ouvrir le choix du point d'écoute :
+Un appui sur la commande de lecture ouvre les points de départ suivants :
 
 - `Début` ;
 - `20 s` ;
@@ -254,55 +68,96 @@ Un appui simple doit ouvrir le choix du point d'écoute :
 - `60 s` ;
 - `90 s`.
 
-Cette fonction permet de sélectionner rapidement le début ou un passage fort et accélère la préparation du mix.
+Choisir un point lance le morceau avec son niveau courant. Si ce morceau est déjà en lecture, la même commande l'arrête.
 
-Elle doit rester accessible dans le workflow principal.
+Cette fonction permet d'atteindre directement un refrain ou un passage dense sans attendre une longue introduction.
 
-### Étape 6 — Mettre À Jour L'Aide De Première Ouverture
+### Playback Control
 
-La fenêtre d'aide affichée lors de la première ouverture doit présenter la nouvelle philosophie `LEVELS`.
+Le composant officiel `Playback Control` reste affiché dans `LEVELS`.
 
-Elle doit expliquer que cette page sert à :
+Il permet notamment de :
 
-- préparer le niveau sonore de chaque morceau avant le concert ;
-- écouter rapidement les passages importants grâce au démarrage rapide ;
-- ajuster le `LEVEL` avec le fader ;
-- mémoriser automatiquement le niveau de chaque morceau.
+- lancer ou mettre en pause la lecture active ;
+- suivre et déplacer la position ;
+- revenir au début ;
+- voir le niveau courant ;
+- ajuster le niveau par pas.
 
-Elle ne doit plus mettre en avant les notions de LUFS ou d'uniformisation automatique.
+`LEVELS` ne possède pas de moteur audio autonome. Il réutilise le Playback principal et ses règles de stabilité.
 
-L'objectif est que le musicien comprenne immédiatement le rôle de cette page sans connaissance technique.
+### Tiroir LEVEL
+
+Le tiroir de gain officiel permet de régler le morceau sélectionné de `-24 dB` à `+6 dB`.
+
+Le réglage est manuel, immédiatement audible et mémorisé pour le morceau. Le même niveau doit être retrouvé lorsque le morceau est ensuite lancé depuis la Bibliothèque, une playlist ou le Player.
 
 ---
 
-## Hors Périmètre
+## Méthode De Préparation Recommandée
 
-Ce document ne propose aucune implémentation technique.
+```text
+Ouvrir LEVELS
+↓
+Choisir un morceau
+↓
+Écouter un passage représentatif
+↓
+Ajuster le LEVEL à l'oreille
+↓
+Comparer avec un morceau de référence
+↓
+Passer au morceau suivant
+```
 
-Il ne définit pas :
+Conserver le même volume général, la même enceinte ou console et des passages comparables pendant la préparation.
 
-- une structure de stockage ;
-- un algorithme audio ;
-- une nouvelle analyse ;
-- une migration de données ;
-- un refactor de composant.
+L'objectif n'est pas de rendre tous les morceaux identiques. Il est d'éviter les écarts gênants tout en conservant leur dynamique musicale.
 
-Les futures modifications devront respecter les règles SMP :
+---
 
-- patch minimal ;
-- stabilité avant fonctionnalités ;
-- aucune régression du Player ;
-- ExoPlayer reste la référence temporelle ;
-- aucun traitement lourd pendant le playback.
+## Règles Fonctionnelles
+
+- Aucun bouton d'analyse ou de normalisation automatique ne doit structurer le parcours `LEVELS`.
+- Aucune cible théorique ne doit être présentée comme vérité produit.
+- Le niveau choisi manuellement doit rester non destructif pour le fichier audio source.
+- Une simple sélection ne doit pas lancer la lecture.
+- Le traitement de préparation ne doit pas perturber le Playback live.
+- Aucun traitement lourd ne doit être déclenché pendant une prestation.
+- Les changements de niveau doivent préserver l'identité `songId` et le stockage normalisé du morceau.
+
+---
+
+## Compatibilité Technique
+
+Le code actuel conserve encore des identifiants, champs de configuration et fonctions portant l'ancien nom `lufs`. Certains participent encore au chargement ou à la sauvegarde du gain.
+
+Un écart d'implémentation reste notamment présent : à l'ouverture de LEVELS, le code peut encore extraire des crêtes de waveform, calculer une estimation héritée par rapport à une cible `-14` et utiliser le résultat comme niveau initial affiché ou écouté. Cette opération n'est pas exposée comme une commande utilisateur, mais elle est encore active dans le parcours actuel.
+
+Ces éléments sont hérités de l'ancien système. Ils peuvent être lus pour préserver les morceaux existants, mais :
+
+- ils ne doivent pas être documentés comme une fonctionnalité utilisateur ;
+- ils ne doivent pas réintroduire une analyse ou une cible automatique dans l'UX ;
+- leur éventuelle migration relève d'un chantier de code séparé, avec diagnostic et compatibilité ascendante.
+
+La suppression de cet écart nécessite donc une tâche applicative distincte. D'ici là, la présente spécification décrit la décision produit et signale explicitement la divergence du code.
+
+---
+
+## Critères De Validation
+
+- L'onglet visible s'appelle `LEVELS`.
+- La liste affiche le titre et le niveau en dB de chaque morceau.
+- Le démarrage rapide propose `Début`, `20 s`, `40 s`, `60 s` et `90 s`.
+- La sélection d'une ligne cible le bon morceau sans le lancer.
+- Le Playback Control et le tiroir modifient le même niveau mémorisé.
+- Le morceau retrouve ce niveau dans le Player.
+- Aucun vocabulaire ni commande de l'ancien système n'est nécessaire pour comprendre ou utiliser la page.
 
 ---
 
 ## Principe Final
 
-`LEVELS` sert à préparer un concert à l'oreille.
-
-La vérité n'est plus une mesure LUFS.
+`LEVELS` sert à préparer le concert à l'oreille.
 
 La vérité est le niveau réellement choisi par le musicien pour chaque morceau.
-
-Les traitements automatiques LUFS ne sont plus une fonction utilisateur de `LEVELS`.

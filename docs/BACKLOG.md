@@ -148,9 +148,8 @@ pas leur priorité.
 
 - contrôle au pied Bluetooth ;
 - amélioration de la liste live et du prochain morceau ;
-- étude d'un « Niveau Live » hors lecture fondé sur des passages représentatifs ;
 - mode concert simplifié.
-- **Références** : `FEATURE_LIVE_WORKFLOW.md`, `FEATURE_LUFS_PREPARATION.md`.
+- **Référence** : `FEATURE_LIVE_WORKFLOW.md`.
 
 ### Extensions de sauvegarde et de transfert
 
