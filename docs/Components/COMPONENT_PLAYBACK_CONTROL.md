@@ -61,6 +61,75 @@ Il contrôle toujours le Playback principal actif.
 
 Il ne contrôle jamais les moteurs audio complémentaires, notamment le Fond sonore.
 
+Toute évolution du Playback Control doit être pensée comme une évolution d'un composant partagé
+et transversal, jamais comme un correctif local d'un écran, sauf nécessité explicitement
+démontrée.
+
+👉 Stabilité live > fonctionnalité > esthétique.
+
+---
+
+## Architecture du composant
+
+Le composant possède deux niveaux de responsabilité dans le code :
+
+### `PlaybackControl`
+
+Défini dans `app/src/main/java/com/patrick/lrcreader/ui/PlaybackControl.kt`, il constitue le
+composant partagé de niveau supérieur.
+
+Il assemble :
+
+- `PlaybackProgressBar`, pour la progression, les temps, le seek et, selon le mode, la Structure ;
+- `PlayerControls`, pour la rangée de commandes.
+
+Il reçoit les états et callbacks du Playback actif : position, durée, seek, lecture, retour début,
+gain, mode compact, mode console live et éventuels callbacks de Structure.
+
+### `PlayerControls`
+
+Défini dans `app/src/main/java/com/patrick/lrcreader/ui/PlayerControls.kt`, il contient réellement
+la rangée des commandes :
+
+- Play ou Play/Pause selon le mode ;
+- Pause séparée en `liveConsoleMode` ;
+- Retour début ;
+- réglage rapide du gain.
+
+`PlayerControls` est appelé par `PlaybackControl`. Il ne doit pas être copié ou réimplémenté dans
+un écran pour résoudre un problème local. Une correction de sa géométrie ou de son état visuel
+peut affecter tous les écrans qui utilisent le Playback Control officiel.
+
+---
+
+## Cartographie actuelle des usages
+
+Le code utilise actuellement `PlaybackControl` dans les contextes suivants :
+
+- Player officiel ;
+- éditeur Paroles / Accords ;
+- Timeline et Arrangement, via le Playback Control officiel fourni par le Player ;
+- Track Console, via le même Playback Control officiel ;
+- Bibliothèque, dans plusieurs vues utilisant le contrôle commun ;
+- LEVELS ;
+- Bus principal / console ;
+- écran Fond sonore, où il pilote uniquement le Playback principal et non le lecteur local du
+  Fond sonore ;
+- Accordeur ;
+- Waveform, pour le Playback principal officiel.
+
+Les points de construction directs se trouvent dans :
+
+- `PlayerScreen.kt` ;
+- `LibraryScreen.kt` ;
+- `MixerHomePreviewScreen.kt` ;
+- `FillerSoundScreen.kt` ;
+- `TunerScreen.kt` ;
+- `WaveformPreviewScreen.kt`.
+
+Une modification du composant partagé doit donc être évaluée dans toutes ces surfaces, même si le
+besoin initial n'apparaît que dans un seul écran.
+
 ---
 
 ## Playback principal actif
@@ -125,6 +194,21 @@ Dans tous les cas :
 Cette séparation est volontaire.
 
 Elle constitue le fondement du mode Live de SMP.
+
+### États à ne jamais confondre
+
+Le système distingue au moins trois notions indépendantes :
+
+- la multi-sélection de playlist, utilisée pour des actions de groupe ou de lot ;
+- la sélection préparée pour un futur appui manuel sur Play ;
+- `PlaybackCoordinator.nextTrack`, qui représente le morceau explicitement défini comme prochain.
+
+La multi-sélection ne constitue pas une vérité de lecture.
+
+La sélection préparée ne constitue pas automatiquement un Define Next.
+
+`PlaybackCoordinator.nextTrack` ne doit jamais être déduit de la multi-sélection, de la couleur du
+bouton Play ou de l'état visuel d'une ligne de playlist.
 
 ---
 
@@ -253,7 +337,36 @@ Cette sélection prépare un autre morceau sans déclencher de lecture automatiq
 
 Le bouton Play indique qu'un nouveau morceau est prêt à être lancé.
 
+Sa couleur dépend de l'état `liveSelectionInSync` transmis au composant. Elle indique
+conceptuellement :
+
+> Un appui manuel sur Play lancera la ligne actuellement préparée.
+
+Elle ne signifie jamais :
+
+> Ce morceau démarrera automatiquement à la fin du morceau courant.
+
 Lorsque ce morceau est lancé, il devient le nouveau Playback actif et le bouton Play redevient vert.
+
+---
+
+## Define Next réel
+
+Le véritable morceau explicitement défini comme prochain est porté par :
+
+`PlaybackCoordinator.nextTrack`
+
+Cet état est distinct :
+
+- de la multi-sélection de playlist ;
+- de la sélection préparée pour Play ;
+- de `liveSelectionInSync` ;
+- de la couleur jaune du bouton Play.
+
+Un futur changement ne doit pas fusionner ces états pour simplifier l'interface. Le Playback Control
+peut afficher une information issue de `PlaybackCoordinator.nextTrack`, mais cet affichage ne doit
+jamais faire de l'état UI une source de vérité de lecture et ne doit pas modifier la résolution du
+prochain morceau.
 
 ---
 
@@ -438,6 +551,21 @@ Le Playback Control doit :
 - utiliser les couleurs uniquement pour représenter un état ;
 - rester utilisable sans apprentissage.
 
+Toute évolution de la rangée de commandes doit également :
+
+- éviter tout déplacement des commandes pendant le live ;
+- réserver une largeur stable aux contenus dynamiques ;
+- interdire le retour à la ligne dans la rangée ;
+- éviter tout texte animé ou défilant susceptible de distraire ;
+- éviter tout scroll automatique lié au Playback Control ;
+- vérifier les contraintes horizontales avant d'ajouter un élément ;
+- préserver le comportement téléphone portrait lorsque l'espace est insuffisant ;
+- être validée sur les largeurs réellement concernées.
+
+`liveConsoleMode` décrit un mode de présentation et de commande. Il ne faut pas supposer qu'il
+signifie nécessairement « tablette physique » : certaines configurations larges ou en paysage
+peuvent emprunter des branches adaptatives proches du mode tablette.
+
 La mémoire musculaire du musicien est prioritaire.
 
 En mode Live tablette, toutes les méthodes de sélection possèdent le même comportement.
@@ -450,6 +578,57 @@ Cette différence avec le téléphone est volontaire :
 
 - le téléphone privilégie la rapidité ;
 - la console Live tablette privilégie la sécurité.
+
+---
+
+## Champ Define Next dans la rangée — évolution envisagée, non implémentée
+
+Une évolution produit est envisagée pour `liveConsoleMode` : insérer entre Play et Pause un champ de
+largeur fixe affichant uniquement :
+
+`PlaybackCoordinator.nextTrack?.title`
+
+Représentation conceptuelle :
+
+`PLAY | L'Italiano… | PAUSE`
+
+Règles prévues :
+
+- aucun libellé avant le titre ;
+- aucun mot `Prochain`, `Next` ou `Suiv.` ;
+- titre uniquement ;
+- largeur fixe ;
+- une seule ligne ;
+- troncature avec `…` si nécessaire ;
+- aucun défilement du texte ;
+- aucune animation ;
+- emplacement conservé et vide lorsqu'aucun `nextTrack` n'existe, afin que Play et Pause ne se
+  déplacent jamais ;
+- alimentation exclusive par le véritable `PlaybackCoordinator.nextTrack` ;
+- interdiction d'utiliser la sélection préparée, `liveSelectionInSync` ou la multi-sélection pour
+  alimenter ce champ ;
+- aucun changement de logique audio, de playlist ou de résolution du prochain morceau.
+
+**Cette fonctionnalité n'est pas encore implémentée.**
+
+### Contraintes de largeur connues
+
+Le diagnostic actuel établit uniquement les tendances suivantes, sans validation matérielle :
+
+- tablette paysage : emplacement a priori favorable ;
+- tablette portrait ou conteneur étroit : validation nécessaire avant intégration ;
+- téléphone portrait : ajout en ligne considéré risqué pour la géométrie existante ;
+- téléphone paysage : test obligatoire, car certaines branches adaptatives peuvent adopter un
+  comportement tablette.
+
+Ces estimations ne constituent pas une garantie. Toute implémentation devra vérifier au minimum :
+
+- l'absence d'overflow horizontal ;
+- la stabilité de la position de Play et Pause quand le titre change ou disparaît ;
+- la disponibilité de Retour début et des contrôles de gain ;
+- l'absence de modification de hauteur ;
+- le Player, la Bibliothèque, LEVELS, le Bus principal, le Fond sonore, l'Accordeur, Waveform,
+  Timeline, Arrangement et Track Console dans leurs dispositions concernées.
 
 ---
 
@@ -482,3 +661,27 @@ La préparation consiste à choisir ou déplacer la sélection.
 L'exécution consiste à lancer effectivement le morceau.
 
 Cette séparation garantit que le musicien conserve la maîtrise du lancement par validation manuelle avec Play.
+
+---
+
+## Point d'entrée pour une future intervention
+
+Un agent intervenant sur Playback Control doit charger en priorité, dans cet ordre :
+
+1. `docs/Components/COMPONENT_PLAYBACK_CONTROL.md` ;
+2. `app/src/main/java/com/patrick/lrcreader/ui/PlaybackControl.kt` ;
+3. `app/src/main/java/com/patrick/lrcreader/ui/PlayerControls.kt`.
+
+Il ne doit ensuite ouvrir que les écrans appelants concernés par le problème ou la validation.
+
+Avant toute modification, il doit déterminer si le changement concerne :
+
+- la barre de progression ;
+- la rangée de commandes ;
+- le mode téléphone ;
+- `liveConsoleMode` ;
+- la sélection préparée ;
+- le véritable `PlaybackCoordinator.nextTrack` ;
+- ou uniquement un écran appelant.
+
+Cette classification évite de transformer une correction locale en divergence du composant partagé.
