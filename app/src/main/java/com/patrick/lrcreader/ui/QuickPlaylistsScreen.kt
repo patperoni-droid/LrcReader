@@ -192,7 +192,7 @@ fun QuickPlaylistsScreen(
     hardwareReturnToCurrentToken: Int = 0,
     hardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT,
     playbackControlActivateSelectedToken: Int = 0,
-    onSequentialSelectionChanged: (String?) -> Unit = {},
+    onSequentialSelectionChanged: (songId: String?, playbackItem: String?, playlist: String?) -> Unit = { _, _, _ -> },
     onAddTrackToPlaylist: (String) -> Unit = {},
     searchToggleSignal: Int = 0,
     smpSongsCache: Map<String, com.patrick.lrcreader.smp.SongUnit> = emptyMap(),
@@ -1204,9 +1204,14 @@ fun QuickPlaylistsScreen(
     }
 
     fun prepareLivePlaylistSelection(item: String) {
+        val playbackItem = resolveVariantFamilyPlaybackItem(item, variantFamilyById)
         keyboardSelectedItem = item
         updatePlayedMoveSelection(item)
-        onSequentialSelectionChanged(playbackControlSelectionSongId(item, variantFamilyById))
+        onSequentialSelectionChanged(
+            playbackControlSelectionSongId(item, variantFamilyById),
+            playbackItem,
+            internalSelected
+        )
         closePlaylistSearch()
     }
 
@@ -1303,7 +1308,11 @@ fun QuickPlaylistsScreen(
         keyboardSelectedItem = targetItem
         updatePlayedMoveSelection(targetItem)
         scope.launch { scrollKeyboardSelectionIntoView(targetItem) }
-        onSequentialSelectionChanged(playbackControlSelectionSongId(targetItem, variantFamilyById))
+        onSequentialSelectionChanged(
+            playbackControlSelectionSongId(targetItem, variantFamilyById),
+            resolveVariantFamilyPlaybackItem(targetItem, variantFamilyById),
+            internalSelected
+        )
     }
 
     LaunchedEffect(hardwareCommandToken, visibleRows, internalSelected) {
@@ -1316,7 +1325,11 @@ fun QuickPlaylistsScreen(
                     command = hardwareCommand,
                     anchorToCurrentTrack = false
                 ) ?: return@LaunchedEffect
-                onSequentialSelectionChanged(playbackControlSelectionSongId(targetItem, variantFamilyById))
+                onSequentialSelectionChanged(
+                    playbackControlSelectionSongId(targetItem, variantFamilyById),
+                    resolveVariantFamilyPlaybackItem(targetItem, variantFamilyById),
+                    internalSelected
+                )
             }
 
             HardwareListCommand.ACTIVATE -> {
@@ -1324,7 +1337,11 @@ fun QuickPlaylistsScreen(
                     command = HardwareListCommand.ACTIVATE,
                     anchorToCurrentTrack = false
                 ) ?: return@LaunchedEffect
-                onSequentialSelectionChanged(playbackControlSelectionSongId(targetItem, variantFamilyById))
+                onSequentialSelectionChanged(
+                    playbackControlSelectionSongId(targetItem, variantFamilyById),
+                    resolveVariantFamilyPlaybackItem(targetItem, variantFamilyById),
+                    internalSelected
+                )
             }
         }
     }
@@ -1871,6 +1888,7 @@ fun QuickPlaylistsScreen(
                                                 .weight(1f)
                                                 .clickable {
                                                     if (livePlaylistSelectionMode) {
+                                                        selectedTrackKeys = emptySet()
                                                         prepareLivePlaylistSelection(uriString)
                                                         return@clickable
                                                     }
@@ -2726,6 +2744,7 @@ fun QuickPlaylistsScreen(
                                         .combinedClickable(
                                             onClick = {
                                                 if (livePlaylistSelectionMode) {
+                                                    selectedTrackKeys = emptySet()
                                                     prepareLivePlaylistSelection(uriString)
                                                     return@combinedClickable
                                                 }

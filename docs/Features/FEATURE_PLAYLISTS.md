@@ -408,6 +408,20 @@ User must be able to:
 Rules:
 - must preserve order
 - must be fast and reliable
+- in tablet live mode, a short tap prepares exactly one song for the yellow Play action and clears
+  any previous multi-selection
+- a long press remains the deliberate gesture for adding or removing songs from multi-selection
+- successive long presses must keep batch and group actions available
+
+The existing blinking Player indicator uses this visual priority:
+
+1. explicit Define Next (`PlaybackCoordinator.nextTrack`)
+2. next playable song in the active chain
+3. the single song prepared for the yellow Play action, only as a visual fallback
+4. no indicator
+
+The prepared selection must never hide or modify a real automatic next track. This priority affects
+display only and does not alter playback, Define Next, chaining, or end-of-track transitions.
 
 ⸻
 

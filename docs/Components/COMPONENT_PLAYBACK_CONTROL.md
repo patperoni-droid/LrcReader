@@ -584,37 +584,40 @@ Cette différence avec le téléphone est volontaire :
 ## Indicateur visuel unique du prochain morceau
 
 Stage Music Player réutilise l'indicateur clignotant existant en haut du `PlayerScreen` comme
-représentation visuelle unique du morceau qui sera réellement joué ensuite.
+représentation visuelle unique du prochain morceau automatique ou, à défaut, du morceau préparé
+pour le Play jaune en mode live tablette.
 
 L'affichage conserve la présentation historique :
 
 `Prochain : titre`
 
-Le titre affiché est calculé par `effectiveNextTrackTitle` avec la même priorité que la transition
-réelle :
+Le titre affiché est calculé par `effectiveNextTrackTitle` avec la priorité suivante :
 
 1. `PlaybackCoordinator.nextTrack`, lorsqu'un véritable Define Next existe ;
 2. le prochain élément jouable de la liste enchaînable, uniquement en l'absence de Define Next ;
-3. aucun indicateur lorsqu'aucune de ces deux sources n'existe.
+3. la sélection préparée correspondant réellement au Play jaune, uniquement en fallback visuel ;
+4. aucun indicateur lorsqu'aucune de ces sources n'existe.
+
+Les deux premières sources conservent donc toujours la priorité réelle de transition. La sélection
+préparée ne modifie ni Define Next, ni la chaîne, ni la fin de morceau.
 
 Le bloc existant de `PlayerScreen` est réutilisé sans duplication. Il conserve son emplacement, sa
 couleur et son animation d'alpha. Aucun second indicateur n'est ajouté dans la rangée du Playback
 Control entre Play et Pause.
 
-Cet indicateur ne doit jamais être alimenté par :
+Le fallback de sélection préparée ne doit jamais être déduit de :
 
-- `keyboardSelectedItem` ou une autre sélection préparée ;
 - `selectedTrackKeys` ou la multi-sélection ;
-- `liveSelectionInSync` ;
-- la couleur jaune du bouton Play.
+- une couleur de ligne ;
+- une position dans la playlist.
 
-Le Play jaune continue à signifier uniquement qu'un appui manuel sur Play lancera le morceau
-préparé. Il ne promet pas une transition automatique et ne doit donc pas créer l'indication
-`Prochain : titre`.
+Il doit provenir de la même cible de lecture que le Play jaune et n'est affiché que lorsque cette
+sélection est effectivement désynchronisée du morceau courant. Le Play jaune reste une action
+manuelle et ne devient jamais une promesse de transition automatique.
 
 Lorsque Define Next est consommé ou invalidé, `PlaybackCoordinator.nextTrack` est vidé. L'indicateur
-se met alors à jour vers le prochain élément de chaîne encore applicable ou disparaît si aucun
-prochain morceau réel n'existe.
+se met alors à jour vers le prochain élément de chaîne encore applicable, puis vers la sélection
+préparée encore active, ou disparaît si aucune de ces sources n'existe.
 
 ---
 

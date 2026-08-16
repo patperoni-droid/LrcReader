@@ -147,6 +147,16 @@ private fun sanitizeDisplayTrackTitle(value: String?): String? {
         ?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
 }
 
+internal fun selectNextTrackIndicatorTitle(
+    defineNextTitle: String?,
+    chainedTitle: String?,
+    preparedSelectionTitle: String?
+): String? {
+    return sanitizeDisplayTrackTitle(defineNextTitle)
+        ?: sanitizeDisplayTrackTitle(chainedTitle)
+        ?: sanitizeDisplayTrackTitle(preparedSelectionTitle)
+}
+
 private data class TargetedVariantImportResult(
     val song: com.patrick.lrcreader.smp.SongUnit? = null,
     val failed: Boolean = false
@@ -1394,6 +1404,8 @@ class MainActivity : AppCompatActivity() {
                 }
                 var quickPlaylistSequentialSelectionPendingPlay by remember { mutableStateOf(false) }
                 var quickPlaylistPreparedSelectionSongId by remember { mutableStateOf<String?>(null) }
+                var quickPlaylistPreparedSelectionItem by remember { mutableStateOf<String?>(null) }
+                var quickPlaylistPreparedSelectionPlaylist by remember { mutableStateOf<String?>(null) }
                 var quickPlaylistPlaybackControlActivateToken by remember { mutableIntStateOf(0) }
 
                 var currentPlayingUri by remember { mutableStateOf<String?>(null) }
@@ -1917,31 +1929,59 @@ class MainActivity : AppCompatActivity() {
                     nextTrack,
                     nextChainedUri,
                     chainPlaylist,
+                    adaptiveTokens.tabletMode,
+                    tabletExperimentalModeEnabled,
+                    quickPlaylistLiveSelectionInSync,
+                    quickPlaylistPreparedSelectionItem,
+                    quickPlaylistPreparedSelectionPlaylist,
                     smpSongsById,
                     indexAll
                 ) {
-                    sanitizeDisplayTrackTitle(nextTrack?.title) ?: nextChainedUri?.let { queuedItem ->
-                        val cleanPlaylist = chainPlaylist?.trim()?.takeIf { it.isNotEmpty() }
-                        sanitizeDisplayTrackTitle(
-                            cleanPlaylist?.let { PlaylistRepository.getCustomTitle(it, queuedItem) }
+                    fun resolvePlaylistItemTitle(playlist: String?, item: String): String {
+                        val cleanPlaylist = playlist?.trim()?.takeIf { it.isNotEmpty() }
+                        return sanitizeDisplayTrackTitle(
+                            cleanPlaylist?.let { PlaylistRepository.getCustomTitle(it, item) }
                         )
                             ?: cleanPlaylist
-                                ?.let { PlaylistRepository.getPlaylistItem(it, queuedItem)?.songId }
+                                ?.let { PlaylistRepository.getPlaylistItem(it, item)?.songId }
                                 ?.trim()
                                 ?.takeIf { it.isNotEmpty() }
                                 ?.let { songId ->
                                     sanitizeDisplayTrackTitle(smpSongsById[songId]?.title)
                                 }
-                            ?: getSmpSongId(queuedItem)
+                            ?: getSmpSongId(item)
                                 ?.let { songId ->
                                     sanitizeDisplayTrackTitle(smpSongsById[songId]?.title)
                                 }
-                            ?: sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, queuedItem))
-                            ?: sanitizeDisplayTrackTitle(PlaylistRepository.getAnyCustomTitleForUri(queuedItem))
-                            ?: sanitizeDisplayTrackTitle(indexAll.firstOrNull { it.uriString == queuedItem }?.name)
-                            ?: sanitizeDisplayTrackTitle(Uri.parse(queuedItem).lastPathSegment)
+                            ?: sanitizeDisplayTrackTitle(TitleAliasesStore.getTitleForTrack(ctx, item))
+                            ?: sanitizeDisplayTrackTitle(PlaylistRepository.getAnyCustomTitleForUri(item))
+                            ?: sanitizeDisplayTrackTitle(indexAll.firstOrNull { it.uriString == item }?.name)
+                            ?: sanitizeDisplayTrackTitle(Uri.parse(item).lastPathSegment)
                             ?: ctx.getString(R.string.player_next_track_fallback)
                     }
+
+                    val chainedTitle = nextChainedUri?.let { queuedItem ->
+                        resolvePlaylistItemTitle(chainPlaylist, queuedItem)
+                    }
+                    val preparedSelectionTitle = if (
+                        adaptiveTokens.tabletMode &&
+                        tabletExperimentalModeEnabled &&
+                        !quickPlaylistLiveSelectionInSync
+                    ) {
+                        quickPlaylistPreparedSelectionItem?.let { preparedItem ->
+                            resolvePlaylistItemTitle(
+                                quickPlaylistPreparedSelectionPlaylist,
+                                preparedItem
+                            )
+                        }
+                    } else {
+                        null
+                    }
+                    selectNextTrackIndicatorTitle(
+                        defineNextTitle = nextTrack?.title,
+                        chainedTitle = chainedTitle,
+                        preparedSelectionTitle = preparedSelectionTitle
+                    )
                 }
                 suspend fun syncWorkspaceSmpArchivesToRuntime(
                     trigger: String,
@@ -5776,8 +5816,10 @@ class MainActivity : AppCompatActivity() {
                                         hardwareReturnToCurrentToken = quickHardwareReturnToken,
                                         hardwareReturnCommand = quickHardwareReturnCommand,
                                         playbackControlActivateSelectedToken = quickPlaylistPlaybackControlActivateToken,
-                                        onSequentialSelectionChanged = { preparedSongId ->
+                                        onSequentialSelectionChanged = { preparedSongId, preparedItem, playlist ->
                                             quickPlaylistPreparedSelectionSongId = preparedSongId
+                                            quickPlaylistPreparedSelectionItem = preparedItem
+                                            quickPlaylistPreparedSelectionPlaylist = playlist
                                             quickPlaylistSequentialSelectionPendingPlay = true
                                         },
                                         onAddTrackToPlaylist = {
@@ -6470,8 +6512,10 @@ class MainActivity : AppCompatActivity() {
                                     hardwareReturnToCurrentToken = quickHardwareReturnToken,
                                     hardwareReturnCommand = quickHardwareReturnCommand,
                                     playbackControlActivateSelectedToken = quickPlaylistPlaybackControlActivateToken,
-                                    onSequentialSelectionChanged = { preparedSongId ->
+                                    onSequentialSelectionChanged = { preparedSongId, preparedItem, playlist ->
                                         quickPlaylistPreparedSelectionSongId = preparedSongId
+                                        quickPlaylistPreparedSelectionItem = preparedItem
+                                        quickPlaylistPreparedSelectionPlaylist = playlist
                                         quickPlaylistSequentialSelectionPendingPlay = true
                                     },
                                     onAddTrackToPlaylist = { playlistName ->
