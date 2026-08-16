@@ -1,6 +1,15 @@
 # Roadmap
 
-Ce dossier contient uniquement les évolutions futures du projet Stage Music Player.
+Ce dossier contient les évolutions futures du projet Stage Music Player et les plans opérationnels
+des jalons majeurs qui nécessitent un point de reprise durable.
+
+## Plan actif de lancement
+
+- [Lancement de la bêta publique](BETA_PUBLIC_LAUNCH_PLAN.md) : point de reprise opérationnel
+  jusqu'à l'ouverture de la bêta publique.
+
+Ce plan de lancement coordonne un jalon de publication. Il ne crée pas une seconde liste de
+priorités techniques : `docs/BACKLOG.md` reste la référence des chantiers produit et techniques.
 
 La liste priorisée et la décision de ce qui constitue réellement un chantier futur sont
 centralisées dans :
