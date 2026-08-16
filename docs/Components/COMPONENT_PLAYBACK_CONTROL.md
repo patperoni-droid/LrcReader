@@ -581,54 +581,40 @@ Cette différence avec le téléphone est volontaire :
 
 ---
 
-## Champ Define Next dans la rangée — évolution envisagée, non implémentée
+## Indicateur visuel unique du prochain morceau
 
-Une évolution produit est envisagée pour `liveConsoleMode` : insérer entre Play et Pause un champ de
-largeur fixe affichant uniquement :
+Stage Music Player réutilise l'indicateur clignotant existant en haut du `PlayerScreen` comme
+représentation visuelle unique du morceau qui sera réellement joué ensuite.
 
-`PlaybackCoordinator.nextTrack?.title`
+L'affichage conserve la présentation historique :
 
-Représentation conceptuelle :
+`Prochain : titre`
 
-`PLAY | L'Italiano… | PAUSE`
+Le titre affiché est calculé par `effectiveNextTrackTitle` avec la même priorité que la transition
+réelle :
 
-Règles prévues :
+1. `PlaybackCoordinator.nextTrack`, lorsqu'un véritable Define Next existe ;
+2. le prochain élément jouable de la liste enchaînable, uniquement en l'absence de Define Next ;
+3. aucun indicateur lorsqu'aucune de ces deux sources n'existe.
 
-- aucun libellé avant le titre ;
-- aucun mot `Prochain`, `Next` ou `Suiv.` ;
-- titre uniquement ;
-- largeur fixe ;
-- une seule ligne ;
-- troncature avec `…` si nécessaire ;
-- aucun défilement du texte ;
-- aucune animation ;
-- emplacement conservé et vide lorsqu'aucun `nextTrack` n'existe, afin que Play et Pause ne se
-  déplacent jamais ;
-- alimentation exclusive par le véritable `PlaybackCoordinator.nextTrack` ;
-- interdiction d'utiliser la sélection préparée, `liveSelectionInSync` ou la multi-sélection pour
-  alimenter ce champ ;
-- aucun changement de logique audio, de playlist ou de résolution du prochain morceau.
+Le bloc existant de `PlayerScreen` est réutilisé sans duplication. Il conserve son emplacement, sa
+couleur et son animation d'alpha. Aucun second indicateur n'est ajouté dans la rangée du Playback
+Control entre Play et Pause.
 
-**Cette fonctionnalité n'est pas encore implémentée.**
+Cet indicateur ne doit jamais être alimenté par :
 
-### Contraintes de largeur connues
+- `keyboardSelectedItem` ou une autre sélection préparée ;
+- `selectedTrackKeys` ou la multi-sélection ;
+- `liveSelectionInSync` ;
+- la couleur jaune du bouton Play.
 
-Le diagnostic actuel établit uniquement les tendances suivantes, sans validation matérielle :
+Le Play jaune continue à signifier uniquement qu'un appui manuel sur Play lancera le morceau
+préparé. Il ne promet pas une transition automatique et ne doit donc pas créer l'indication
+`Prochain : titre`.
 
-- tablette paysage : emplacement a priori favorable ;
-- tablette portrait ou conteneur étroit : validation nécessaire avant intégration ;
-- téléphone portrait : ajout en ligne considéré risqué pour la géométrie existante ;
-- téléphone paysage : test obligatoire, car certaines branches adaptatives peuvent adopter un
-  comportement tablette.
-
-Ces estimations ne constituent pas une garantie. Toute implémentation devra vérifier au minimum :
-
-- l'absence d'overflow horizontal ;
-- la stabilité de la position de Play et Pause quand le titre change ou disparaît ;
-- la disponibilité de Retour début et des contrôles de gain ;
-- l'absence de modification de hauteur ;
-- le Player, la Bibliothèque, LEVELS, le Bus principal, le Fond sonore, l'Accordeur, Waveform,
-  Timeline, Arrangement et Track Console dans leurs dispositions concernées.
+Lorsque Define Next est consommé ou invalidé, `PlaybackCoordinator.nextTrack` est vidé. L'indicateur
+se met alors à jour vers le prochain élément de chaîne encore applicable ou disparaît si aucun
+prochain morceau réel n'existe.
 
 ---
 
