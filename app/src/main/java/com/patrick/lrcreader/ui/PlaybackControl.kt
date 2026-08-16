@@ -3,8 +3,11 @@ package com.patrick.lrcreader.ui
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import com.patrick.lrcreader.core.PlaybackCoordinator
 
 @Composable
 fun PlaybackControl(
@@ -28,6 +31,8 @@ fun PlaybackControl(
     onStructureSegmentLongPressed: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val nextTrack by PlaybackCoordinator.nextTrack.collectAsState()
+
     Column(modifier = modifier.fillMaxWidth()) {
         PlaybackProgressBar(
             mode = progressMode,
@@ -52,7 +57,8 @@ fun PlaybackControl(
             compact = compact,
             liveConsoleMode = liveConsoleMode,
             liveSelectionInSync = liveSelectionInSync,
-            onLivePlay = onLivePlay
+            onLivePlay = onLivePlay,
+            nextTrackTitle = nextTrack?.title.orEmpty()
         )
     }
 }
