@@ -581,10 +581,10 @@ Cette différence avec le téléphone est volontaire :
 
 ---
 
-## Champ Define Next dans la rangée — implémenté
+## Champ Define Next dans la rangée — évolution envisagée, non implémentée
 
-Lorsque la largeur réelle du conteneur le permet en `liveConsoleMode`, la rangée insère entre Play
-et Pause un champ de largeur fixe affichant uniquement :
+Une évolution produit est envisagée pour `liveConsoleMode` : insérer entre Play et Pause un champ de
+largeur fixe affichant uniquement :
 
 `PlaybackCoordinator.nextTrack?.title`
 
@@ -592,7 +592,7 @@ Représentation conceptuelle :
 
 `PLAY | L'Italiano… | PAUSE`
 
-Règles implémentées :
+Règles prévues :
 
 - aucun libellé avant le titre ;
 - aucun mot `Prochain`, `Next` ou `Suiv.` ;
@@ -609,34 +609,19 @@ Règles implémentées :
   alimenter ce champ ;
 - aucun changement de logique audio, de playlist ou de résolution du prochain morceau.
 
-Le champ mesure `96 dp`. Compose tronque dynamiquement le contenu selon cette largeur sans limiter
-arbitrairement le nombre de caractères.
-
-L'affichage dépend exclusivement de la largeur réelle fournie au `PlayerControls`, jamais de
-l'orientation ou du type physique d'appareil :
-
-- géométrie compacte : affichage à partir de `560 dp` disponibles ;
-- géométrie standard : affichage à partir de `510 dp` disponibles ;
-- sous le seuil correspondant : conservation stricte de la rangée existante, sans champ, sans
-  réduction et sans réorganisation des commandes.
-
-Ces seuils additionnent les dimensions actuelles des commandes, le champ de `96 dp`, les
-espacements, l'enveloppe du gain affiché jusqu'à `-24 dB` et une marge anti-overflow de `16 dp`.
+**Cette fonctionnalité n'est pas encore implémentée.**
 
 ### Contraintes de largeur connues
 
-La validation sur tablette physique établit les résultats suivants :
+Le diagnostic actuel établit uniquement les tendances suivantes, sans validation matérielle :
 
-- conteneur large en paysage : champ vide et titre long tronqué validés sans overflow ajouté ;
-- titre absent puis défini : positions de Play et Pause identiques ;
-- conteneur étroit simulé à environ `372 dp` : champ correctement omis et rangée précédente
-  conservée sans réorganisation ;
-- les limitations horizontales préexistantes de cette rangée très étroite restent hors du
-  périmètre de cette évolution ;
-- tablette portrait : non validée, le cockpit testé maintenant son affichage paysage ;
-- téléphone portrait et paysage : non validés sur appareil pendant cette évolution.
+- tablette paysage : emplacement a priori favorable ;
+- tablette portrait ou conteneur étroit : validation nécessaire avant intégration ;
+- téléphone portrait : ajout en ligne considéré risqué pour la géométrie existante ;
+- téléphone paysage : test obligatoire, car certaines branches adaptatives peuvent adopter un
+  comportement tablette.
 
-Toute évolution ultérieure devra continuer à vérifier au minimum :
+Ces estimations ne constituent pas une garantie. Toute implémentation devra vérifier au minimum :
 
 - l'absence d'overflow horizontal ;
 - la stabilité de la position de Play et Pause quand le titre change ou disparaît ;
