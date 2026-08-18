@@ -3,7 +3,7 @@
 ## Identification
 
 - Date de préparation : 18/08/2026
-- Statut : AAB candidat corrigé pour les pages mémoire 16 Ko et vérifié localement ; aucun upload Google Play effectué
+- Statut : AAB candidat corrigé pour les pages mémoire 16 Ko, vérifié localement et validé en lecture réelle par l'utilisateur ; aucun upload Google Play effectué
 - Canal prévu : Tests fermés Alpha, à confirmer dans Play Console avant tout upload
 - Variante : `laboRelease`
 - Tâche Gradle : `./gradlew :app:bundleLaboRelease --console=plain`
@@ -85,10 +85,11 @@ Cet AAB précis est l'unique candidat désigné pour une éventuelle action Goog
 
 ### Validation appareil
 
-- Aucun appareil physique n'était connecté pendant cette correction ; les scénarios audio complets sur appareil réel restent donc à exécuter.
+- Validation physique utilisateur après le correctif 16 Ko : lecture réelle réussie, fonctionnement audio jugé normal et aucun problème perceptible signalé.
+- Cette validation correspond uniquement au retour utilisateur disponible ; aucune mesure instrumentée ni validation détaillée scénario par scénario n'est revendiquée.
 - Un émulateur `arm64-v8a`, Android 14/API 34, à pages mémoire `4096` octets était disponible.
 - Smoke test sur cet émulateur : lancement à froid réussi, `libsoundtouch_jni.so` chargée, flavor `REAL`, disponibilité native `true`, autotest natif `true`, chemin neutre `PURE_EXO`.
-- Ce smoke test ne valide ni l'écoute réelle (craquements, latence, coupures, transitions, gain et vumètres), ni l'exécution sur un appareil à pages mémoire 16 Ko.
+- Ce smoke test ne valide pas l'exécution sur un appareil à pages mémoire 16 Ko. La validation physique utilisateur n'inclut pas de mesure instrumentée de la latence, des coupures, du gain ou des vumètres.
 
 ## Contrôles Google Play et Android
 
@@ -143,7 +144,7 @@ Ces notes correspondent aux changements présents dans le commit candidat, notam
 
 ## Points restant à contrôler
 
-1. Effectuer les scénarios audio complets sur appareil physique : lecture neutre, seek, pause/reprise, fin de morceau, tempo réduit/augmenté, pitch positif/négatif, combinaison tempo + pitch, transitions, gain et vumètres.
+1. Si une traçabilité plus fine est nécessaire, consigner séparément les scénarios audio exécutés sur appareil physique ; le retour actuel confirme uniquement une lecture réelle normale sans problème perceptible.
 2. Si possible, installer et tester l'application dans un environnement dont `getconf PAGE_SIZE` retourne `16384` ; cette validation runtime 16 Ko n'est pas encore acquise.
 3. Avant un futur upload, confirmer dans Play Console la piste exacte, l'unicité du `versionCode 6` et les messages d'analyse Google.
 4. Après upload autorisé, distinguer explicitement AAB reçu, analyse terminée, soumission, acceptation et disponibilité pour les testeurs.
