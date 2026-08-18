@@ -5,7 +5,7 @@
 - VersionName : `0.4.3-beta-labo`
 - VersionCode : `7`
 - Date de préparation : 18/08/2026
-- Statut : AAB candidat publiable préparé et vérifié localement ; aucun upload Google Play effectué
+- Statut : AAB importé manuellement et reconnu par Google Play Console ; enregistrement de la release et déploiement non confirmés
 - Variante : `laboRelease`
 - Application ID : `com.patrick.lrcreader.exo.labo`
 - Piste prévue : `Tests fermés / Alpha`
@@ -40,7 +40,7 @@ Le fichier `base/root/META-INF/version-control-info.textproto` du bundle désign
 - Date/heure du fichier : `2026-08-18 15:18:26 +0200`
 - SHA-256 : `3c6dfc7be4cf96ce545dccaf0c99526a86e39d47511496dd5341d3025b4cab35`
 - Intégrité ZIP : aucune erreur détectée
-- Statut de l'artefact : candidat publiable, non uploadé
+- Statut de l'artefact : candidat importé manuellement dans Play Console
 
 Cet AAB précis est l'unique candidat publiable de cette release. Tout nouveau build produirait un autre artefact et imposerait de refaire les contrôles et d'actualiser cette fiche.
 
@@ -108,12 +108,28 @@ Les avertissements Kotlin/Kapt préexistants observés pendant la compilation ne
 
 ## Play Console
 
-- Upload : non effectué
-- Release Play Console : non créée
-- Soumission : non effectuée
-- Promotion ou publication : non effectuée
-- Analyse Google de cet AAB : non disponible
+- Import manuel de l'AAB par l'utilisateur : effectué dans `Tests fermés / Alpha`
+- AAB reconnu par Play Console : `0.4.3-beta-labo`, `versionCode 7`
+- Avertissement affiché : aucun fichier de désobscurcissement n'est associé à cet App Bundle ; Play Console indique qu'un tel fichier facilite l'analyse des plantages et ANR lorsque R8/ProGuard obscurcit le code
+- Nature du message : avertissement non bloquant, pas une erreur d'import
+- Décision R8/ProGuard à ce stade : aucune modification décidée
+- Release enregistrée ou préparée dans Play Console : non confirmé par les informations disponibles
+- Soumission ou démarrage du déploiement : non confirmé
+- Distribution effective aux testeurs : non confirmée
+
+### Diagnostic de l'avertissement de désobscurcissement
+
+- `laboRelease` et `concertRelease` utilisent le même build type `release`, configuré avec `isMinifyEnabled = false`.
+- R8 n'effectue donc ni shrinking, ni optimisation, ni obfuscation sur `laboRelease`.
+- Les fichiers `proguard-android-optimize.txt` et `app/proguard-rules.pro` sont déclarés, mais leurs règles ne sont pas appliquées tant que la minification reste désactivée.
+- Aucun `mapping.txt` n'est généré par `bundleLaboRelease` et aucun mapping R8/ProGuard n'est inclus dans cet AAB.
+- L'avertissement Play Console est donc informatif pour cette version : le code Kotlin/Java n'est pas obscurci et ne nécessite pas de mapping pour restaurer ses noms.
+- Les symboles natifs sont un mécanisme distinct. L'AAB versionCode 7 contient directement, sous `BUNDLE-METADATA/com.android.tools.build.debugsymbols/`, les tables de symboles de `libsoundtouch_jni.so` pour `arm64-v8a` et `armeabi-v7a`.
+- Les Build ID de ces fichiers `.sym` correspondent aux bibliothèques SoundTouch empaquetées dans ce même AAB. Ils contiennent les tables `.symtab` permettant la symbolication des fonctions, sans informations `.debug_info` permettant de garantir les fichiers et numéros de ligne.
+- Un fichier externe `app/build/outputs/native-debug-symbols/laboRelease/native-debug-symbols.zip` existe encore localement, mais il est antérieur à cet AAB et ses Build ID ne correspondent pas au versionCode 7. Il ne doit pas être utilisé pour cette release.
+- Aucun symbole natif distinct n'est présent pour `libandroidx.graphics.path.so`, bibliothèque tierce déjà livrée sans ces métadonnées.
+- Aucune activation ou modification de R8/ProGuard n'est décidée dans le cadre de cette release.
 
 Le précédent AAB `0.4.2-beta-labo`, `versionCode 6`, SHA-256 `3fa5a091719b0217ed2a95a28530ea76e6923305d92060ad2decd910d415539d`, reste documenté dans `RELEASE_0.4.2.md` comme artefact de validation 16 Ko non publiable.
 
-Le statut de cette fiche est limité à : **AAB candidat local généré, inspecté et prêt pour une vérification finale avant upload manuel**.
+Le statut de cette fiche est limité à : **AAB importé et reconnu par Play Console, avec avertissement non bloquant sur le fichier de désobscurcissement ; déploiement et distribution non confirmés**.
