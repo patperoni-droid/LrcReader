@@ -79,3 +79,8 @@ endif()
 
 find_library(log-lib log)
 target_link_libraries(soundtouch_jni ${log-lib})
+
+target_link_options(soundtouch_jni PRIVATE
+        "-Wl,-z,max-page-size=16384"
+        "-Wl,-z,common-page-size=16384"
+)
