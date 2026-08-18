@@ -2,7 +2,7 @@
 
 ## Objectif
 
-Décrire pas à pas la procédure officielle pour générer et publier une nouvelle bêta publique Google Play de Stage Music Player.
+Décrire pas à pas la procédure officielle pour préparer une release Google Play de Stage Music Player sur la piste explicitement choisie.
 
 Ce document doit permettre de refaire une publication plusieurs mois plus tard sans rechercher dans l'historique du projet.
 
@@ -40,7 +40,7 @@ La configuration de version Android se trouve dans :
 app/build.gradle.kts
 ```
 
-Champs à vérifier avant chaque publication :
+Champs à vérifier avant chaque publication, après avoir déterminé les versions déjà utilisées dans Google Play :
 
 ```kotlin
 versionCode = ...
@@ -49,9 +49,19 @@ versionName = "..."
 
 Règles :
 
-- `versionCode` doit toujours augmenter avant un nouvel upload Google Play.
+- Avant toute génération d'AAB, identifier l'application, la piste concernée et le plus grand `versionCode` déjà utilisé pour cette application.
+- Vérifier d'abord Play Console lorsqu'elle est accessible, puis `docs/releases/`, puis l'historique Git et les artefacts précédents si nécessaire.
+- Play Console est la source de vérité lorsqu'elle est accessible ; consigner dans la fiche de release la valeur trouvée et sa provenance.
+- Le nouveau `versionCode` doit être strictement supérieur au plus grand code déjà utilisé, même si Gradle contient déjà une autre valeur.
+- Si Play Console est inaccessible, annoncer le dernier code connu et le prochain code possible. En cas de preuve insuffisante ou contradictoire, arrêter avant génération et demander une vérification manuelle.
 - Google Play refuse un bundle dont le `versionCode` a déjà été publié.
 - `versionName` doit rester lisible pour une bêta publique.
+
+Ordre obligatoire :
+
+```text
+VERSION PLAY CONSOLE → VERSION LOCALE → VALIDATION → AAB
+```
 
 Convention actuelle :
 
@@ -142,6 +152,8 @@ Ne jamais committer ce fichier.
 
 ## 5. Génération du bundle
 
+Ne commencer cette étape qu'après avoir verrouillé le prochain `versionCode` disponible selon la section 2.
+
 Commande officielle :
 
 ```bash
@@ -182,8 +194,8 @@ Des avertissements liés à un certificat auto-signé, à l'absence de timestamp
 Procédure :
 
 1. Ouvrir Google Play Console.
-2. Aller dans `Tester et publier`.
-3. Ouvrir `Test ouvert`.
+2. Confirmer l'application par son application ID.
+3. Confirmer la piste existante destinée à la release ; ne pas changer de piste sur la seule base de ce guide.
 4. Créer une nouvelle version.
 5. Déposer le fichier :
 
@@ -193,7 +205,9 @@ app-labo-release.aab
 
 6. Vérifier les messages de Google Play Console.
 7. Ajouter les notes de version.
-8. Valider la publication de la bêta ouverte.
+8. N'effectuer l'action finale de distribution que si elle est explicitement autorisée.
+
+Référence locale au 18/08/2026 : l'utilisateur a confirmé visuellement dans Play Console que la piste active est `Tests fermés / Alpha` et qu'elle distribue `0.4.2-beta-labo`, `versionCode 6`. Cette valeur courante appartient à l'historique de release et ne remplace jamais la vérification de Play Console lors d'une future préparation.
 
 ---
 
@@ -201,9 +215,13 @@ app-labo-release.aab
 
 Avant publication :
 
+- application Google Play identifiée ;
+- piste concernée identifiée ;
+- plus grand `versionCode` Play connu et provenance consignés ;
+- prochain `versionCode` disponible déterminé avant tout build ;
 - Git propre ou modifications restantes explicitement identifiées ;
 - documentation à jour ;
-- `versionCode` incrémenté ;
+- `versionCode` strictement supérieur au plus grand code déjà utilisé ;
 - `versionName` mis à jour ;
 - compilation OK ;
 - bundle généré ;
@@ -238,6 +256,7 @@ Difficultés déjà rencontrées :
 - build signé impossible tant que les placeholders n'étaient pas remplacés ;
 - nécessité de conserver précieusement le keystore officiel ;
 - nécessité de vérifier explicitement la signature du bundle avant upload.
+- génération d'un AAB avec un `versionCode` déjà utilisé, faute d'avoir interrogé l'état Play avant le build.
 
 Décision actuelle :
 

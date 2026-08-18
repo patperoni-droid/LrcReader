@@ -3,8 +3,8 @@
 ## Identification
 
 - Date de préparation : 18/08/2026
-- Statut : AAB candidat corrigé pour les pages mémoire 16 Ko, vérifié localement et validé en lecture réelle par l'utilisateur ; aucun upload Google Play effectué
-- Canal prévu : Tests fermés Alpha, à confirmer dans Play Console avant tout upload
+- Statut : artefact de validation du correctif 16 Ko, non publiable car son `versionCode 6` est déjà utilisé sur Google Play
+- Canal confirmé manuellement par l'utilisateur le 18/08/2026 : `Tests fermés / Alpha`, actif
 - Variante : `laboRelease`
 - Tâche Gradle : `./gradlew :app:bundleLaboRelease --console=plain`
 - Commit de base avant correctif : `6ae9c55e87a31b4bdda90433e18ad90bfab9d4f2`
@@ -34,10 +34,13 @@
 - `versionCode` Gradle : `6`
 - `versionName` Gradle : `0.4.2-beta`
 - `versionName` final vérifié dans l'AAB : `0.4.2-beta-labo`
-- Release Google Play précédente documentée : `0.4.1-beta-labo`, `versionCode 5`
-- Décision : aucune modification de version nécessaire ; le code `6` est déjà l'incrément attendu.
+- Plus grand `versionCode` Google Play connu avant la prochaine génération : `6`
+- Provenance : vérification visuelle manuelle effectuée par l'utilisateur dans Play Console le 18/08/2026
+- Version distribuée affichée : `0.4.2-beta-labo`, `versionCode 6`, date de sortie affichée 27/07/2026
+- Conséquence : le code `6` n'est plus disponible et l'AAB décrit ci-dessous ne doit pas être envoyé à Google Play.
+- Prochaine version envisagée, non générée dans cette mission : `0.4.3-beta-labo`, `versionCode 7`, variante `laboRelease`.
 
-## AAB candidat
+## Artefact de validation non publiable
 
 - Application ID vérifié dans l'AAB : `com.patrick.lrcreader.exo.labo`
 - Chemin : `/Users/patrickperoni/AndroidStudioProjects/LrcReader_EXO_V2/app/build/outputs/bundle/laboRelease/app-labo-release.aab`
@@ -47,7 +50,7 @@
 - SHA-256 : `3fa5a091719b0217ed2a95a28530ea76e6923305d92060ad2decd910d415539d`
 - Intégrité ZIP : aucune erreur détectée
 
-Cet AAB précis est l'unique candidat désigné pour une éventuelle action Google Play ultérieure. Tout nouveau build invaliderait cette identification et imposerait de refaire les contrôles et de mettre à jour cette fiche.
+Cet AAB précis reste la preuve de validation du correctif 16 Ko. Il n'est plus candidat à l'upload : son `versionCode 6` est déjà utilisé par la version distribuée sur Google Play. Il doit être conservé comme artefact de validation et ne doit pas être envoyé à Play Console.
 
 ## Signature
 
@@ -146,15 +149,19 @@ Ces notes correspondent aux changements présents dans le commit candidat, notam
 
 1. Si une traçabilité plus fine est nécessaire, consigner séparément les scénarios audio exécutés sur appareil physique ; le retour actuel confirme uniquement une lecture réelle normale sans problème perceptible.
 2. Si possible, installer et tester l'application dans un environnement dont `getconf PAGE_SIZE` retourne `16384` ; cette validation runtime 16 Ko n'est pas encore acquise.
-3. Avant un futur upload, confirmer dans Play Console la piste exacte, l'unicité du `versionCode 6` et les messages d'analyse Google.
-4. Après upload autorisé, distinguer explicitement AAB reçu, analyse terminée, soumission, acceptation et disponibilité pour les testeurs.
+3. Avant toute future génération, reconfirmer le plus grand `versionCode` déjà utilisé et vérifier que le nouveau code lui est strictement supérieur.
+4. Pour la prochaine release envisagée, préparer séparément `0.4.3-beta-labo`, `versionCode 7`, sans réutiliser cet AAB.
 
 ## Play Console
 
-- Upload : non effectué
-- Release Play Console : non créée
+- Piste active : `Tests fermés / Alpha`
+- Version distribuée au 18/08/2026 : `0.4.2-beta-labo`, `versionCode 6`
+- Date de sortie affichée : 27/07/2026
+- Provenance de ces informations : vérification visuelle manuelle de Play Console par l'utilisateur ; aucune vérification directe par Codex n'est revendiquée.
+- Upload de l'AAB décrit dans cette fiche : non effectué et désormais interdit
+- Nouvelle release Play Console : non créée
 - Soumission : non effectuée
 - Promotion ou publication : non effectuée
 - Analyse Google de cet AAB : non disponible
 
-Le statut de cette fiche est limité à : **AAB local généré et vérifié**.
+Le statut de cette fiche est limité à : **artefact local du correctif 16 Ko, vérifié mais non publiable en raison du `versionCode 6` déjà utilisé**.

@@ -14,6 +14,8 @@ Références officielles à consulter avant toute publication :
 
 Avant de préparer une version Alpha :
 
+- identifier l'application Google Play et la piste réellement utilisée ;
+- déterminer le plus grand `versionCode` déjà utilisé avant toute génération d'AAB ;
 - vérifier que la version ciblée est cohérente avec l'état réel du projet ;
 - relire les changements depuis la dernière release ;
 - vérifier que les décisions importantes sont documentées ;
@@ -40,13 +42,24 @@ Chaque fiche de release doit indiquer le commit Git exact utilisé.
 
 # Incrément du versionCode
 
-Avant chaque upload Google Play :
+Avant chaque génération d'AAB destiné à Google Play :
 
-- incrémenter `versionCode` dans `app/build.gradle.kts` ;
-- vérifier que ce `versionCode` n'a jamais été publié ;
+- identifier l'application et la piste concernée ;
+- rechercher le plus grand `versionCode` déjà utilisé, d'abord dans Play Console lorsqu'elle est accessible, puis dans les fiches `docs/releases/`, puis dans Git et les artefacts précédents si nécessaire ;
+- consigner le dernier code connu et la provenance de cette information dans la fiche de release ;
+- choisir un nouveau `versionCode` strictement supérieur à ce maximum ;
+- vérifier ensuite la valeur dans `app/build.gradle.kts` ;
 - conserver la correspondance entre `versionCode`, `versionName` et commit Git dans la fiche de release.
 
 Google Play refuse tout App Bundle dont le `versionCode` a déjà été utilisé.
+
+Ne jamais considérer la valeur Gradle comme preuve qu'un code est disponible. Si Play Console est inaccessible et que les preuves locales sont insuffisantes ou contradictoires, arrêter avant génération et demander une vérification manuelle.
+
+Ordre obligatoire :
+
+```text
+VERSION PLAY CONSOLE → VERSION LOCALE → VALIDATION → AAB
+```
 
 ---
 
@@ -71,6 +84,8 @@ Si Gradle définit `versionName` sans suffixe `-labo`, vérifier le nom final pr
 ---
 
 # Génération du App Bundle (.aab)
+
+Cette étape est interdite tant que le dernier `versionCode` connu, sa provenance et le prochain code disponible ne sont pas consignés.
 
 Commande officielle :
 
@@ -192,6 +207,11 @@ Après disponibilité :
 
 # Checklist de release
 
+- [ ] Application Google Play identifiée.
+- [ ] Piste réellement utilisée ou visée identifiée.
+- [ ] Plus grand `versionCode` déjà utilisé déterminé avant tout build.
+- [ ] Provenance du dernier `versionCode` consignée dans la fiche de release.
+- [ ] Prochain `versionCode` strictement supérieur déterminé.
 - [ ] Changements de la release identifiés.
 - [ ] Documentation utile mise à jour.
 - [ ] Fiche de release créée dans `docs/releases/`.
@@ -199,7 +219,7 @@ Après disponibilité :
 - [ ] Notes Play Store rédigées.
 - [ ] Tous les changements de la release sont commités.
 - [ ] SHA du commit Git noté.
-- [ ] `versionCode` incrémenté.
+- [ ] `versionCode` local comparé au plus grand code déjà utilisé.
 - [ ] `versionName` vérifié.
 - [ ] Commande `./gradlew :app:bundleLaboRelease` exécutée.
 - [ ] `.aab` généré à l'emplacement attendu.
