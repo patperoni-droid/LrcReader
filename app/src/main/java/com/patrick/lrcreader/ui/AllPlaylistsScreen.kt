@@ -31,7 +31,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -50,6 +49,8 @@ import com.patrick.lrcreader.exo.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentMap
 
 @Composable
 fun AllPlaylistsScreen(
@@ -65,7 +66,7 @@ fun AllPlaylistsScreen(
 
     // ✅ cache durée par titre (uriString -> durée ms)
     // => évite de relire 200 fois les mêmes mp3 (super important)
-    val durationCache = remember { mutableStateMapOf<String, Long>() }
+    val durationCache = remember { ConcurrentHashMap<String, Long>() }
 
     // dialog création
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -376,7 +377,7 @@ private fun PlaylistRow(
     name: String,
     repoVersion: Int,
     context: Context,
-    durationCache: MutableMap<String, Long>,
+    durationCache: ConcurrentMap<String, Long>,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit
