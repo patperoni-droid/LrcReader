@@ -3934,11 +3934,11 @@ fun PlayerScreen(
                         showMixScreen = false
                         val marketIntent = android.content.Intent(
                             android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse("market://search?q=Stage Music Player Pro")
+                            android.net.Uri.parse("market://search?q=MusiMio Pro")
                         ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                         val webIntent = android.content.Intent(
                             android.content.Intent.ACTION_VIEW,
-                            android.net.Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+                            android.net.Uri.parse("https://play.google.com/store/search?q=MusiMio%20Pro&c=apps")
                         ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                         try {
                             context.startActivity(marketIntent)

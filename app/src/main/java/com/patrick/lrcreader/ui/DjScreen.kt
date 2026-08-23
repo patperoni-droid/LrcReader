@@ -121,11 +121,11 @@ fun DjScreen(
         {
             val marketIntent = Intent(
                 Intent.ACTION_VIEW,
-                Uri.parse("market://search?q=Stage Music Player Pro")
+                Uri.parse("market://search?q=MusiMio Pro")
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val webIntent = Intent(
                 Intent.ACTION_VIEW,
-                Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+                Uri.parse("https://play.google.com/store/search?q=MusiMio%20Pro&c=apps")
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             try {
                 context.startActivity(marketIntent)

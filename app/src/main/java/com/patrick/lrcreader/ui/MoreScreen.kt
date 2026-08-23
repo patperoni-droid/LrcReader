@@ -695,11 +695,11 @@ private fun MoreRootScreen(
         {
             val marketIntent = Intent(
                 Intent.ACTION_VIEW,
-                Uri.parse("market://search?q=Stage Music Player Pro")
+                Uri.parse("market://search?q=MusiMio Pro")
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val webIntent = Intent(
                 Intent.ACTION_VIEW,
-                Uri.parse("https://play.google.com/store/search?q=Stage%20Music%20Player%20Pro&c=apps")
+                Uri.parse("https://play.google.com/store/search?q=MusiMio%20Pro&c=apps")
             ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             try {
                 context.startActivity(marketIntent)
@@ -1383,17 +1383,6 @@ private fun MoreRootScreen(
                         icon = Icons.Filled.Folder,
                         label = stringResource(R.string.more_working_folder),
                         value = workingFolderPath
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = stringResource(R.string.more_footer_signature),
-                        color = Color(0xFF9E9E9E),
-                        fontSize = 11.sp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        textAlign = TextAlign.Center
                     )
                 }
             }

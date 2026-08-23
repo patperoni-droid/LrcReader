@@ -115,8 +115,8 @@
     <string name="common_ellipsis">…</string>
     <string name="common_percent_value">%1$d %%</string>
     <!-- Mixer / Console -->
-    <string name="mixer_app_title">Stage Music Player</string>
-    <string name="mixer_app_title_labo">🧪 LABO - Stage Music Player</string>
+    <string name="mixer_app_title">MusiMio</string>
+    <string name="mixer_app_title_labo">🧪 MusiMio Labo</string>
     <string name="mixer_console_studio">Console Studio</string>
 
     <string name="mixer_cd_back">Retour</string>
@@ -241,11 +241,11 @@
     <string name="library_import_type_title">Que souhaites-tu importer ?</string>
     <string name="library_import_audio">Importer un morceau audio</string>
     <string name="library_import_audio_subtitle">MP3, WAV et autres formats audio pris en charge</string>
-    <string name="library_import_smp">Importer un fichier SMP</string>
-    <string name="library_import_smp_subtitle">Sauvegarde ou morceau au format SMP</string>
-    <string name="library_header_convert_folder_to_smp">Convertir dossier en SMP</string>
-    <string name="library_header_import_smp">Importer un fichier SMP</string>
-    <string name="library_header_import_smp_short">Importer SMP</string>
+    <string name="library_import_smp">Importer un fichier .smp</string>
+    <string name="library_import_smp_subtitle">Sauvegarde ou morceau au format .smp</string>
+    <string name="library_header_convert_folder_to_smp">Convertir le dossier au format .smp</string>
+    <string name="library_header_import_smp">Importer un fichier .smp</string>
+    <string name="library_header_import_smp_short">Importer .smp</string>
     <string name="library_header_forget_folder">Oublier le dossier</string>
 
     <string name="library_assign_to_playlist_title">Ajouter à une playlist</string>
@@ -277,7 +277,7 @@
 
     <string name="library_list_cd_play">Lire (bibliothèque)</string>
     <string name="library_list_edit_lrc">Éditer ce .lrc</string>
-    <string name="library_list_convert_to_smp">Convertir en SMP</string>
+    <string name="library_list_convert_to_smp">Convertir au format .smp</string>
     <string name="library_list_import_backup">Importer ce backup</string>
     <string name="library_list_assign_to_playlist">Attribuer à une playlist</string>
     <string name="library_list_copy_to_folder">Copier vers un dossier</string>
@@ -352,7 +352,7 @@
     <string name="library_legacy_backing_tracks_folder">Mes morceaux live</string>
     <string name="library_smp_empty_state">Aucun morceau live SMP pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>
     <string name="library_prompter_empty_state">Aucun texte défilant pour l’instant.\nCréez un texte défilant depuis une playlist pour le voir apparaître ici.</string>
-    <string name="library_smp_detected_importing">Fichier SMP détecté, import du morceau…</string>
+    <string name="library_smp_detected_importing">Fichier .smp détecté, import du morceau…</string>
 
     <string name="library_delete_backing_track_title">Supprimer ce morceau ?</string>
     <string name="library_delete_audio_question">Morceau seul</string>
@@ -613,11 +613,11 @@
     <string name="setup_music_access_message">Pour lire vos fichiers audio et utiliser le mode DJ, l’application a besoin d’accéder à votre musique.</string>
     <string name="setup_music_access_button">Autoriser l’accès à la musique</string>
     <string name="setup_music_access_denied">Accès à la musique refusé. Vous pourrez l’autoriser plus tard.</string>
-    <string name="setup_welcome_title">Bienvenue dans Stage Music Player</string>
+    <string name="setup_welcome_title">Bienvenue dans MusiMio</string>
     <string name="setup_welcome_message">Nous allons préparer votre espace de travail.\n\nAndroid va maintenant vous demander d\'autoriser l\'accès à votre musique.\n\nLe dossier Music est proposé par défaut.</string>
     <string name="setup_continue">Continuer</string>
     <string name="setup_workspace_title">Choisissez votre dossier de travail</string>
-    <string name="setup_workspace_explainer">Ce dossier sera utilisé pour organiser vos morceaux, vos fichiers SMP et vos sauvegardes.</string>
+    <string name="setup_workspace_explainer">Ce dossier sera utilisé pour organiser vos morceaux, vos fichiers .smp et vos sauvegardes.</string>
     <string name="setup_workspace_music_recommended">Dossier recommandé : Music</string>
     <string name="setup_workspace_android_confirmation_hint">Android vous demandera ensuite de confirmer « Utiliser ce dossier ».</string>
     <string name="setup_use_music_workspace">Utiliser le dossier Music</string>
@@ -876,11 +876,11 @@
     <string name="more_item_local_link_sender">Diffuser les paroles</string>
     <string name="more_item_local_link_receiver">Afficher les paroles</string>
     <string name="more_item_local_link_experimental_subtitle">Connexion locale entre deux appareils.</string>
-    <string name="more_item_smp_sync_debug">SMP Sync : aperçu</string>
+    <string name="more_item_smp_sync_debug">MusiMio Sync : aperçu</string>
     <string name="more_item_smp_sync_debug_subtitle">Écran labo : analyse de bibliothèque, comparaison et transfert manuel confirmé.</string>
-    <string name="smp_sync_debug_title">SMP Sync aperçu</string>
+    <string name="smp_sync_debug_title">Aperçu de MusiMio Sync</string>
     <string name="smp_sync_debug_subtitle">Écran expérimental labo. Analyse la bibliothèque, compare deux téléphones et importe seulement après confirmation.</string>
-    <string name="smp_sync_live_title">SMP Sync</string>
+    <string name="smp_sync_live_title">MusiMio Sync</string>
     <string name="smp_sync_live_subtitle">Choisissez quoi envoyer, puis importez sur le téléphone secours.</string>
     <string name="smp_sync_live_connection_title">Connexion</string>
     <string name="smp_sync_live_main_phone">Téléphone principal</string>
@@ -894,7 +894,7 @@
     <string name="smp_sync_advanced_hide">Masquer les options avancées</string>
     <string name="smp_sync_live_join_connection">Rejoindre une connexion</string>
     <string name="smp_sync_live_share_connection_details">À saisir sur le téléphone secours</string>
-    <string name="smp_sync_peer_identity_title">Identité SMP Sync</string>
+    <string name="smp_sync_peer_identity_title">Identité MusiMio Sync</string>
     <string name="smp_sync_peer_local_name">Nom de cet appareil</string>
     <string name="smp_sync_peer_role">Rôle</string>
     <string name="smp_sync_peer_role_main">Téléphone principal</string>
@@ -907,7 +907,7 @@
     <string name="smp_sync_peer_new_device_detected">Nouvel appareil détecté</string>
     <string name="smp_sync_peer_remote_role">Rôle distant</string>
     <string name="smp_sync_known_peer_title">Appareil connu</string>
-    <string name="smp_sync_known_peer_reconnect_failed">Ouvrez SMP Sync sur la tablette et appuyez sur Recevoir</string>
+    <string name="smp_sync_known_peer_reconnect_failed">Ouvrez MusiMio Sync sur la tablette et appuyez sur Recevoir</string>
     <string name="smp_sync_peer_set_main">Définir comme téléphone principal</string>
     <string name="smp_sync_peer_set_backup">Définir comme appareil secours</string>
     <string name="smp_sync_peer_forget">Oublier appareil associé</string>
@@ -943,7 +943,7 @@
     <string name="smp_sync_manual_ready_without_session">%1$d élément(s) prêt(s). Créez une session pour envoyer.</string>
     <string name="smp_sync_manual_list_limited">Liste limitée aux 80 premiers résultats. Utilisez la recherche pour filtrer.</string>
     <string name="smp_sync_debug_generating">Analyse en cours…</string>
-    <string name="smp_sync_debug_error">Impossible de générer l’aperçu SMP Sync.</string>
+    <string name="smp_sync_debug_error">Impossible de générer l’aperçu de MusiMio Sync.</string>
     <string name="smp_sync_debug_local_manifest">Téléphone principal</string>
     <string name="smp_sync_debug_backup_phone">Téléphone secours</string>
     <string name="smp_sync_debug_fixture_manifest">Téléphone secours simulé</string>
@@ -962,15 +962,15 @@
     <string name="smp_sync_debug_line_broken_references">%1$d références cassées</string>
     <string name="smp_sync_debug_line_songs_absent_on_a">%1$d morceaux présents seulement sur le téléphone secours</string>
     <string name="smp_sync_debug_line_no_auto_delete">Aucune suppression automatique ne sera faite</string>
-    <string name="smp_sync_debug_host_device_name">SMP Sync hôte</string>
-    <string name="smp_sync_debug_join_device_name">SMP Sync appareil secours</string>
+    <string name="smp_sync_debug_host_device_name">MusiMio Sync hôte</string>
+    <string name="smp_sync_debug_join_device_name">MusiMio Sync appareil secours</string>
     <string name="smp_sync_debug_real_section_title">Connexion entre téléphones</string>
     <string name="smp_sync_debug_real_section_subtitle">Synchronisation entre deux appareils. L’envoi et l’import restent manuels et confirmés.</string>
-    <string name="smp_sync_debug_create_session">Créer une session SMP Sync</string>
-    <string name="smp_sync_debug_join_session">Rejoindre une session SMP Sync</string>
+    <string name="smp_sync_debug_create_session">Créer une session MusiMio Sync</string>
+    <string name="smp_sync_debug_join_session">Rejoindre une session MusiMio Sync</string>
     <string name="smp_sync_debug_stop_session">Arrêter session</string>
     <string name="smp_sync_debug_join_hint">Sur l’appareil secours, entrez l’IP et le port affichés par l’appareil principal.</string>
-    <string name="smp_sync_debug_status_idle">SMP Sync arrêté</string>
+    <string name="smp_sync_debug_status_idle">MusiMio Sync arrêté</string>
     <string name="smp_sync_debug_session_starting">Création session…</string>
     <string name="smp_sync_debug_session_connecting">Connexion session…</string>
     <string name="smp_sync_debug_session_ready">Session prête</string>
@@ -1202,7 +1202,6 @@
     <string name="more_show_dj_mode_help">Affiche l’onglet DJ pour accéder au lecteur DJ séparé du Player principal.</string>
     <string name="more_show_main_bus_help">Affiche le Bus principal pour contrôler les niveaux globaux audio de l’application.</string>
     <string name="more_show_light_indicator_help">Affiche un témoin visuel pour suivre l’activité lumière/DMX pendant l’utilisation live.</string>
-    <string name="more_footer_signature">Live in Pocket · LrcReader_EXO</string>
     <string name="more_live_songs_export_title">Sauvegarder ma bibliothèque</string>
     <string name="more_live_songs_export_name_title">Nom de la sauvegarde</string>
     <string name="more_live_songs_export_name_label">Nom du dossier</string>
@@ -1322,7 +1321,7 @@ N’oubliez pas de sauvegarder.</string>
     <string name="library_delete_selected_title">Supprimer la sélection</string>
     <string name="library_delete_selected_confirm_text">Supprimer définitivement %1$d fichier(s) sélectionné(s) ?</string>
     <string name="library_delete_selected_smp_title">Supprimer %1$d morceaux de la bibliothèque ?</string>
-    <string name="library_delete_selected_smp_confirm_text">Ils seront retirés de Stage Music Player et des playlists. Les sauvegardes externes ne seront pas supprimées.</string>
+    <string name="library_delete_selected_smp_confirm_text">Ils seront retirés de MusiMio et des playlists. Les sauvegardes externes ne seront pas supprimées.</string>
     <string name="library_delete_selected_smp_success">%1$d morceaux supprimés.</string>
     <string name="library_delete_selected_smp_partial_failure">Suppression partielle : %1$d échec(s) sur %2$d morceau(x).</string>
 
