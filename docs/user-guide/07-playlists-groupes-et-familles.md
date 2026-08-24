@@ -133,7 +133,7 @@ Supprimer une playlist ne supprime pas les morceaux de la Bibliothèque.
 
 ## Importer une playlist
 
-L’action **Importer une playlist** accepte une playlist JSON compatible. Après l’import, Stage Music Player indique combien de morceaux ont été retrouvés et combien manquent.
+L’action **Importer une playlist** accepte une playlist JSON compatible. Après l’import, MusiMio indique combien de morceaux ont été retrouvés et combien manquent.
 
 Une playlist importée ne peut utiliser correctement un morceau que si celui-ci est déjà présent dans la Bibliothèque avec son identité correspondante.
 

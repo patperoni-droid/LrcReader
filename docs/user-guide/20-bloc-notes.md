@@ -1,6 +1,6 @@
 # Utiliser le Bloc-notes
 
-Le Bloc-notes conserve des textes libres dans Stage Music Player : rappels de scène, annonces, réglages matériels, programme ou consignes liées à une playlist.
+Le Bloc-notes conserve des textes libres dans MusiMio : rappels de scène, annonces, réglages matériels, programme ou consignes liées à une playlist.
 
 ## Ouvrir le Bloc-notes
 
@@ -39,7 +39,7 @@ Le partage ne constitue pas une sauvegarde automatique : vérifiez le message ou
 
 ## Supprimer une note
 
-Ouvrez le menu de la note, choisissez **Supprimer**, puis confirmez si l’application le demande. La suppression retire la note de Stage Music Player.
+Ouvrez le menu de la note, choisissez **Supprimer**, puis confirmez si l’application le demande. La suppression retire la note de MusiMio.
 
 ## Différence avec les autres textes
 
@@ -50,7 +50,7 @@ Ouvrez le menu de la note, choisissez **Supprimer**, puis confirmez si l’appli
 
 ## Sauvegarde et synchronisation
 
-Ne supposez pas que les notes sont incluses dans tous les exports `.smp` ou dans SMP Sync : le transfert des notes par SMP Sync est annoncé comme une évolution future. Pour une note importante, utilisez également **Partager** vers un emplacement externe et vérifiez le résultat.
+Ne supposez pas que les notes sont incluses dans tous les exports `.smp` ou dans MusiMio Sync : le transfert des notes par MusiMio Sync est annoncé comme une évolution future. Pour une note importante, utilisez également **Partager** vers un emplacement externe et vérifiez le résultat.
 
 ## Problèmes courants
 
@@ -64,6 +64,6 @@ C’est normal : les notes et les paroles sont deux contenus distincts.
 
 ### Une note importante doit être transférée
 
-Partagez-la explicitement sous forme de texte. Ne comptez pas sur SMP Sync pour ce transfert dans la version actuelle.
+Partagez-la explicitement sous forme de texte. Ne comptez pas sur MusiMio Sync pour ce transfert dans la version actuelle.
 
 Chapitre suivant : [Utiliser l’Accordeur](21-accordeur.md).

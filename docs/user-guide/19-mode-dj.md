@@ -53,7 +53,7 @@ Utilisez **DJ LEVEL** ou le fader DJ du Mixage général pour régler cette sour
 
 ## Coordination avec les autres lecteurs
 
-Player, DJ et Fond sonore sont séparés, mais Stage Music Player coordonne leur priorité pour éviter plusieurs sources dominantes simultanées. Avant de lancer DJ, vérifiez la source active et le niveau du bus correspondant.
+Player, DJ et Fond sonore sont séparés, mais MusiMio coordonne leur priorité pour éviter plusieurs sources dominantes simultanées. Avant de lancer DJ, vérifiez la source active et le niveau du bus correspondant.
 
 ## Mettre à jour la musique disponible
 

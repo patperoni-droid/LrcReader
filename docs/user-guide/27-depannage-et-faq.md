@@ -65,7 +65,7 @@ Contrôlez l’autorisation Android et le dossier sélectionné. Attendez la fin
 
 Placez les deux appareils sur le même réseau, activez la diffusion et évitez les Wi-Fi invités. Si la découverte échoue, utilisez l’adresse IP et le port dans les options avancées.
 
-## SMP Sync ne se connecte pas
+## MusiMio Sync ne se connecte pas
 
 Vérifiez le mode réception, l’IP et le port actuellement affichés. Un redémarrage ou un changement de réseau peut modifier l’adresse. L’import doit ensuite être confirmé manuellement sur l’appareil de secours.
 
@@ -81,11 +81,11 @@ Vérifiez la date et le nom du dossier. L’action **Mettre à jour la biblioth�
 
 ### Puis-je déplacer les fichiers internes avec une application de fichiers ?
 
-Non. Utilisez les commandes d’import, de partage, de sauvegarde et de restauration de Stage Music Player. Le déplacement manuel peut casser les liens entre un morceau et ses données.
+Non. Utilisez les commandes d’import, de partage, de sauvegarde et de restauration de MusiMio. Le déplacement manuel peut casser les liens entre un morceau et ses données.
 
 ### Un `.smp` est-il le fichier utilisé directement pendant la lecture ?
 
-Non. Il sert au transport. Après import, Stage Music Player prépare une copie locale adaptée à la lecture.
+Non. Il sert au transport. Après import, MusiMio prépare une copie locale adaptée à la lecture.
 
 ### Ajouter un morceau à plusieurs playlists duplique-t-il l’audio ?
 
@@ -95,7 +95,7 @@ Non. Les playlists référencent le même morceau de la Bibliothèque.
 
 Non. Les variantes dépendent de l’audio du parent et sont supprimées avec lui.
 
-### SMP Sync remplace-t-il une sauvegarde ?
+### MusiMio Sync remplace-t-il une sauvegarde ?
 
 Non. Il transfère une sélection entre deux appareils. Conservez une sauvegarde externe complète.
 

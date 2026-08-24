@@ -74,7 +74,7 @@ Une ligne peut recevoir une couleur particulière pour signaler :
 - un changement d’instrument ;
 - une section importante.
 
-Ces couleurs sont enregistrées avec le morceau et peuvent être transportées dans une sauvegarde SMP compatible.
+Ces couleurs sont enregistrées avec le morceau et peuvent être transportées dans un fichier `.smp` compatible.
 
 ## Revenir au début
 

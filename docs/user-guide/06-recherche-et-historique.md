@@ -22,7 +22,7 @@ La recherche ne remplace pas définitivement la destination du panneau droit.
 
 ## Quels titres sont recherchés ?
 
-La recherche utilise le titre affiché dans Stage Music Player. Si vous avez renommé un morceau, son titre personnalisé est utilisé en priorité.
+La recherche utilise le titre affiché dans MusiMio. Si vous avez renommé un morceau, son titre personnalisé est utilisé en priorité.
 
 La recherche porte sur les morceaux jouables connus de la Bibliothèque. Un fichier non importé ou inaccessible peut ne pas apparaître.
 

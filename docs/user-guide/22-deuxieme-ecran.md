@@ -12,7 +12,7 @@ Le réseau ne pilote pas la lecture audio principale. Une perte de connexion ne 
 ## Préparer la connexion
 
 1. connectez les deux appareils au même Wi-Fi ou au même point d’accès local ;
-2. ouvrez Stage Music Player sur les deux ;
+2. ouvrez MusiMio sur les deux ;
 3. laissez l’écran Deuxième écran ouvert pendant la connexion ;
 4. vérifiez qu’Android n’isole pas les appareils sur le réseau invité.
 
@@ -75,4 +75,4 @@ Rapprochez les appareils du point d’accès et désactivez les économies d’�
 
 Ce n’est pas le comportement attendu du Deuxième écran. Continuez localement, désactivez la fonction réseau et ne la réactivez qu’après le morceau.
 
-Chapitre suivant : [Transférer une sélection avec SMP Sync](23-smp-sync.md).
+Chapitre suivant : [Transférer une sélection avec MusiMio Sync](23-smp-sync.md).

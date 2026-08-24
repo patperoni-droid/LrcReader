@@ -1,6 +1,6 @@
 # Régler le mixage du titre et le Bus principal
 
-Stage Music Player sépare les réglages propres à un morceau du mixage général des différentes sources audio. Cette séparation permet de préparer les titres à l’avance sans dérégler toute la prestation.
+MusiMio sépare les réglages propres à un morceau du mixage général des différentes sources audio. Cette séparation permet de préparer les titres à l’avance sans dérégler toute la prestation.
 
 ## Track Console : réglages du morceau
 
@@ -12,7 +12,7 @@ Ouvrez la Track Console depuis les outils du morceau ou le Lecteur. Selon la con
 - **EQ** : graves, médiums et aigus ;
 - **VU** : indication du niveau du signal.
 
-Ces réglages sont non destructifs. Ils s’appliquent à la lecture dans Stage Music Player et ne réécrivent pas le fichier audio source.
+Ces réglages sont non destructifs. Ils s’appliquent à la lecture dans MusiMio et ne réécrivent pas le fichier audio source.
 
 ## Régler un morceau
 

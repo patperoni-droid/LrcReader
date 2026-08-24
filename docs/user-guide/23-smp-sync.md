@@ -1,12 +1,12 @@
-# Transférer une sélection avec SMP Sync
+# Transférer une sélection avec MusiMio Sync
 
-SMP Sync copie des morceaux et des playlists d’un appareil principal vers un appareil de secours par réseau local. Le destinataire confirme ensuite leur import. Cette fonction de confort Premium ne remplace pas une sauvegarde externe.
+MusiMio Sync copie des morceaux et des playlists d’un appareil principal vers un appareil de secours par réseau local. Le destinataire confirme ensuite leur import. Cette fonction de confort Premium ne remplace pas une sauvegarde externe.
 
 ## Ce qui peut être transféré
 
 La version actuelle permet de choisir :
 
-- des morceaux SMP, avec leurs données transportées ;
+- des morceaux live, avec leurs données transportées ;
 - des playlists et les morceaux nécessaires.
 
 Le transfert des notes et des textes défilants est prévu pour une évolution future et ne doit pas être considéré comme disponible.
@@ -14,7 +14,7 @@ Le transfert des notes et des textes défilants est prévu pour une évolution f
 ## Préparer les deux appareils
 
 1. connectez-les au même Wi-Fi ou point d’accès local ;
-2. ouvrez **SMP Sync** sur les deux ;
+2. ouvrez **MusiMio Sync** sur les deux ;
 3. identifiez l’appareil principal et l’appareil de secours ;
 4. gardez les écrans Sync ouverts pendant l’opération ;
 5. assurez-vous que le téléphone de secours possède assez d’espace libre.
@@ -29,7 +29,7 @@ Le port peut être conservé pour faciliter une reconnexion. S’il est indispon
 
 ## Rejoindre depuis l’appareil principal
 
-1. ouvrez SMP Sync ;
+1. ouvrez MusiMio Sync ;
 2. saisissez l’adresse IP du téléphone de secours ;
 3. saisissez son port ;
 4. lancez la connexion ;
@@ -55,7 +55,7 @@ L’import n’est jamais silencieux :
 4. ouvrez la Bibliothèque ;
 5. testez un morceau et sa playlist.
 
-SMP Sync n’effectue pas une suppression automatique des éléments absents de l’envoi. Il ne doit pas être utilisé comme une copie miroir destructive.
+MusiMio Sync n’effectue pas une suppression automatique des éléments absents de l’envoi. Il ne doit pas être utilisé comme une copie miroir destructive.
 
 ## Reconnexion
 
@@ -85,6 +85,6 @@ Contrôlez le récapitulatif de transfert et l’espace disponible, puis renvoye
 
 ### Les notes ou textes défilants ne sont pas reçus
 
-C’est une limite actuelle de SMP Sync. Utilisez leur partage ou une sauvegarde adaptée.
+C’est une limite actuelle de MusiMio Sync. Utilisez leur partage ou une sauvegarde adaptée.
 
 Chapitre suivant : [Partager et exporter](24-partager-et-exporter.md).

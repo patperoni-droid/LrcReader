@@ -1,6 +1,6 @@
-# Découvrir Stage Music Player
+# Découvrir MusiMio
 
-Stage Music Player réunit dans une même application la préparation des morceaux, les playlists, la lecture audio, les paroles et plusieurs outils conçus pour la scène.
+MusiMio réunit dans une même application la préparation des morceaux, les playlists, la lecture audio, les paroles et plusieurs outils conçus pour la scène.
 
 ## Ce que permet l’application
 
@@ -13,13 +13,13 @@ Vous pouvez notamment :
 - créer des textes défilants sans audio ;
 - régler le niveau, la vitesse, la hauteur et les points de début ou de fin d’un morceau ;
 - créer des versions Arrangement sans modifier l’audio d’origine ;
-- partager un morceau et ses données au format SMP ;
+- partager un morceau et ses données au format `.smp` ;
 - sauvegarder et restaurer la Bibliothèque ;
 - utiliser un téléphone, une tablette ou un deuxième appareil d’affichage.
 
 ## Le principe d’un morceau live
 
-Dans Stage Music Player, un morceau ne se limite pas à son fichier audio. Il peut aussi contenir :
+Dans MusiMio, un morceau ne se limite pas à son fichier audio. Il peut aussi contenir :
 
 - des paroles ;
 - des accords ;
@@ -28,7 +28,7 @@ Dans Stage Music Player, un morceau ne se limite pas à son fichier audio. Il pe
 - des notes et des repères temporels ;
 - un Arrangement et ses variantes.
 
-Après l’import, Stage Music Player conserve une copie de travail interne. Modifier le titre affiché, les paroles ou les réglages ne modifie pas votre fichier audio d’origine.
+Après l’import, MusiMio conserve une copie de travail interne. Modifier le titre affiché, les paroles ou les réglages ne modifie pas votre fichier audio d’origine.
 
 ## Démarrage rapide
 
@@ -61,7 +61,7 @@ La Démo permet de parcourir l’application avant d’importer vos propres morc
 4. sélectionnez le fichier avec Android ;
 5. attendez que le morceau apparaisse dans la Bibliothèque.
 
-Vous pouvez aussi choisir **Importer un fichier SMP** si le morceau vous a été transmis depuis Stage Music Player.
+Vous pouvez aussi choisir **Importer un fichier SMP** si le morceau vous a été transmis depuis MusiMio.
 
 ### 4. Créer une playlist
 

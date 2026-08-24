@@ -2,7 +2,19 @@
 
 La sauvegarde complète copie la Bibliothèque dans un dossier externe choisi. Elle protège les morceaux, leurs variantes et l’organisation globale contre la perte ou le remplacement de l’appareil.
 
-Voir ses morceaux dans l’application ne constitue pas une sauvegarde : ces données restent sur le même appareil.
+## Importer n’est pas sauvegarder
+
+MusiMio distingue plusieurs éléments qu’il ne faut pas confondre.
+
+Le fichier audio source est le fichier que vous choisissez lors de l’import, par exemple un MP3 ou un WAV présent dans un dossier Android. MusiMio ne le modifie pas.
+
+La copie de travail MusiMio est la version préparée dans l’espace interne de l’application. C’est elle qui permet de lire le morceau sur scène, d’y associer des paroles, des accords, des variantes et des réglages sans dépendre de l’emplacement initial du fichier source.
+
+L’environnement MusiMio regroupe aussi les données que vous construisez progressivement : Bibliothèque, playlists, groupes, ordre, couleurs, paroles, réglages, variantes, textes défilants et autres informations prises en charge par la version courante.
+
+La sauvegarde externe est une copie exportée dans un dossier choisi en dehors de l’espace de travail interne. C’est elle qui sert à protéger et à déplacer votre environnement MusiMio. Voir ses morceaux dans l’application signifie qu’ils sont disponibles dans MusiMio sur cet appareil ; cela ne signifie pas que l’environnement est déjà sauvegardé ailleurs.
+
+Créez une sauvegarde dès que votre préparation commence à prendre forme, puis renouvelez-la après l’ajout de morceaux ou des changements importants de Bibliothèque, playlists, paroles, variantes ou réglages. Votre Bibliothèque MusiMio évolue → votre sauvegarde doit évoluer avec elle.
 
 ## Contenu d’une sauvegarde complète
 
@@ -84,7 +96,7 @@ Les playlists locales sont supprimées avant l’import de celles de la sauvegar
 
 ### Le dossier sélectionné n’est pas reconnu
 
-Choisissez le dossier racine créé par Stage Music Player, pas seulement l’un de ses sous-dossiers.
+Choisissez le dossier racine créé par MusiMio, pas seulement l’un de ses sous-dossiers.
 
 ### Des modifications récentes manquent
 

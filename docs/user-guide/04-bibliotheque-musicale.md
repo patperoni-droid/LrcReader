@@ -13,7 +13,7 @@ Selon la disposition de l’écran, la Bibliothèque propose plusieurs vues :
 
 ### Songs
 
-Affiche les morceaux live préparés par Stage Music Player. Ce sont les éléments à privilégier pour les playlists et la lecture sur scène.
+Affiche les morceaux live préparés par MusiMio. Ce sont les éléments à privilégier pour les playlists et la lecture sur scène.
 
 Un morceau live peut contenir l’audio, les paroles, les accords, les réglages et d’autres données associées.
 
@@ -38,7 +38,7 @@ Ouvre l’espace de préparation manuelle des niveaux sonores. Chaque morceau af
 Ces trois notions sont différentes :
 
 - le **fichier source** est le fichier que vous avez choisi sur l’appareil ;
-- le **morceau live** est la copie de travail préparée par Stage Music Player ;
+- le **morceau live** est la copie de travail préparée par MusiMio ;
 - la **playlist** contient une référence vers ce morceau live.
 
 Ajouter un morceau à plusieurs playlists ne crée pas plusieurs copies de l’audio.
@@ -91,7 +91,7 @@ Elle dépend toutefois de l’audio de son morceau parent. Supprimer le parent d
 
 ## Renommer un morceau
 
-L’action **Renommer** change le titre affiché dans Stage Music Player. Elle ne renomme pas automatiquement le fichier audio d’origine.
+L’action **Renommer** change le titre affiché dans MusiMio. Elle ne renomme pas automatiquement le fichier audio d’origine.
 
 Le nouveau titre doit rester visible après la lecture, le changement d’écran et le redémarrage de l’application.
 
@@ -128,7 +128,7 @@ La suppression d’un parent Arrangement peut supprimer plusieurs variantes. Le 
 
 - Importez les morceaux par l’action visible **Importer…**.
 - Effectuez les actions de renommage et de suppression depuis l’application.
-- Ne déplacez pas manuellement les données internes de Stage Music Player.
+- Ne déplacez pas manuellement les données internes de MusiMio.
 - Sauvegardez la Bibliothèque après une préparation importante.
 
 Chapitre suivant : [Importer et gérer ses morceaux](05-importer-et-gerer-les-morceaux.md).

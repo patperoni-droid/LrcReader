@@ -61,7 +61,7 @@ La position de référence reste celle du Lecteur principal. Un déplacement dan
 - Testez les déplacements dans le morceau, les pauses et les reprises.
 - N’utilisez pas une configuration non validée comme unique commande d’un effet critique.
 
-Certaines options ou sorties peuvent dépendre de l’édition de Stage Music Player et des périphériques Android compatibles.
+Certaines options ou sorties peuvent dépendre de l’édition de MusiMio et des périphériques Android compatibles.
 
 ## Variantes Arrangement
 

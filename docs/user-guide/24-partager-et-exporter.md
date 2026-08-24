@@ -1,12 +1,12 @@
 # Partager et exporter
 
-Stage Music Player utilise le format `.smp` pour transporter un morceau avec ses données. Le fichier peut être conservé, envoyé par une application Android ou importé sur un autre appareil.
+MusiMio utilise le format `.smp` pour transporter un morceau avec ses données. Le fichier peut être conservé, envoyé par une application Android ou importé sur un autre appareil.
 
 ## Exporter un morceau parent
 
 1. ouvrez la Bibliothèque ;
 2. ouvrez le menu du morceau ;
-3. choisissez **Partager** ou l’action d’export SMP ;
+3. choisissez **Partager** ou l’action d’export au format `.smp` ;
 4. attendez la préparation du fichier ;
 5. choisissez l’application ou l’emplacement de destination ;
 6. vérifiez que le fichier `.smp` a bien été créé.
@@ -54,13 +54,13 @@ Un conflit d’identité incohérent peut provoquer un refus d’import afin de 
 
 ## Partage Android
 
-Le sélecteur Android peut proposer messagerie, courrier, stockage en ligne ou application de fichiers. Stage Music Player prépare le fichier, mais la réussite de l’envoi dépend ensuite de l’application choisie.
+Le sélecteur Android peut proposer messagerie, courrier, stockage en ligne ou application de fichiers. MusiMio prépare le fichier, mais la réussite de l’envoi dépend ensuite de l’application choisie.
 
 Pour un fichier volumineux, préférez une destination qui accepte sa taille. Attendez la fin de l’envoi avant de supprimer le fichier local.
 
 ## Export d’une playlist isolée
 
-Un import/export JSON dédié peut rester disponible pour une playlist isolée. Il transporte l’organisation de la playlist, pas nécessairement tous les fichiers audio. Pour déplacer un ensemble jouable vers un autre appareil, utilisez plutôt SMP Sync ou une sauvegarde complète.
+Un import/export JSON dédié peut rester disponible pour une playlist isolée. Il transporte l’organisation de la playlist, pas nécessairement tous les fichiers audio. Pour déplacer un ensemble jouable vers un autre appareil, utilisez plutôt MusiMio Sync ou une sauvegarde complète.
 
 ## Problèmes courants
 

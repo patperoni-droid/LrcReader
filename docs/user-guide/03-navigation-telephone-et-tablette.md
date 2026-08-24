@@ -1,6 +1,6 @@
 # Se repérer sur téléphone et tablette
 
-Stage Music Player adapte son interface à la taille de l’écran. Les mêmes morceaux, playlists et réglages sont utilisés, mais la navigation diffère entre téléphone et tablette.
+MusiMio adapte son interface à la taille de l’écran. Les mêmes morceaux, playlists et réglages sont utilisés, mais la navigation diffère entre téléphone et tablette.
 
 ## Navigation sur téléphone
 

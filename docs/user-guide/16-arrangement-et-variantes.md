@@ -58,7 +58,7 @@ En rouvrant une variante, vous pouvez mettre à jour celle-ci ou enregistrer le 
 
 ## Assembler une version audio
 
-L’assemblage crée explicitement un nouveau rendu, notamment au format WAV, puis l’importe comme morceau SMP dans la Bibliothèque. Cette opération est différente d’une variante virtuelle : elle produit un nouvel audio et peut demander du temps et de l’espace de stockage.
+L’assemblage crée explicitement un nouveau rendu, notamment au format WAV, puis l’importe comme morceau live dans la Bibliothèque. Cette opération est différente d’une variante virtuelle : elle produit un nouvel audio et peut demander du temps et de l’espace de stockage.
 
 La compatibilité du rendu WAV et de la lecture assemblée doit être testée sur l’appareil utilisé avant une prestation.
 

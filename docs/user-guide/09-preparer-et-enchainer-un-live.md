@@ -1,6 +1,6 @@
 # Préparer et enchaîner une prestation
 
-Stage Music Player sépare la préparation du concert et son exécution. Le téléphone convient aux corrections rapides et aux répétitions ; la tablette offre une vue de scène plus large avec playlist, Lecteur et outils accessibles ensemble.
+MusiMio sépare la préparation du concert et son exécution. Le téléphone convient aux corrections rapides et aux répétitions ; la tablette offre une vue de scène plus large avec playlist, Lecteur et outils accessibles ensemble.
 
 ## Avant la prestation
 
@@ -47,7 +47,7 @@ L’option de retour automatique vers la playlist dix secondes avant la fin peut
 
 Le crossfade manuel peut utiliser une durée de 2, 3, 5, 8, 10 ou 20 secondes. Testez la durée choisie sur les morceaux concernés.
 
-Lorsque vitesse ou pitch ne sont pas neutres, Stage Music Player peut imposer une transition séquentielle plus sûre. Ne supposez donc pas qu’un chevauchement aura lieu sans l’avoir répété.
+Lorsque vitesse ou pitch ne sont pas neutres, MusiMio peut imposer une transition séquentielle plus sûre. Ne supposez donc pas qu’un chevauchement aura lieu sans l’avoir répété.
 
 ## Revenir en arrière
 

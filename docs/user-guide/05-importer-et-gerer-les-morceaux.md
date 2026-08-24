@@ -1,6 +1,6 @@
 # Importer et gérer ses morceaux
 
-Stage Music Player propose un point d’entrée commun pour importer un fichier audio ou un morceau complet au format SMP.
+MusiMio propose un point d’entrée commun pour importer un fichier audio ou un morceau complet au format `.smp`.
 
 ## Ouvrir le menu d’import
 
@@ -42,16 +42,16 @@ Après l’import, vérifiez toujours :
 - la présence éventuelle des accords ;
 - le titre affiché.
 
-## Importer un fichier SMP
+## Importer un fichier `.smp`
 
 Un fichier `.smp` transporte un morceau complet avec les données qui étaient présentes au moment de son export.
 
 1. choisissez **Importer un fichier SMP** ;
 2. sélectionnez l’archive dans le navigateur Android ;
-3. laissez Stage Music Player vérifier et extraire son contenu ;
+3. laissez MusiMio vérifier et extraire son contenu ;
 4. attendez son apparition dans la Bibliothèque.
 
-Un fichier SMP peut contenir :
+Un fichier `.smp` peut contenir :
 
 - l’audio ;
 - les paroles et accords ;
@@ -100,7 +100,7 @@ Une variante peut être ajoutée sans que son parent soit visible dans la même 
 3. saisissez le titre souhaité ;
 4. validez.
 
-Le renommage change l’affichage dans Stage Music Player, pas le nom du fichier audio d’origine.
+Le renommage change l’affichage dans MusiMio, pas le nom du fichier audio d’origine.
 
 ## Copier ou déplacer un fichier visible
 
@@ -118,7 +118,7 @@ Pour un morceau live, privilégiez les actions prévues par l’application afin
 
 Conséquences :
 
-- le morceau est retiré de Stage Music Player ;
+- le morceau est retiré de MusiMio ;
 - ses occurrences sont retirées des playlists ;
 - ses variantes sont également supprimées s’il s’agit de leur parent ;
 - les sauvegardes externes déjà créées ne sont pas supprimées.
@@ -137,7 +137,7 @@ Supprimer une variante seule ne supprime pas son parent ni les autres variantes.
 
 - Vérifiez l’espace libre.
 - Essayez de lire le fichier dans une autre application.
-- Pour un SMP, demandez une nouvelle exportation si l’archive est incomplète.
+- Pour un fichier `.smp`, demandez une nouvelle exportation si l’archive est incomplète.
 - Relancez l’import depuis la Bibliothèque, pas depuis une autre application : l’ouverture directe d’un `.smp` depuis Gmail ou Files n’est pas encore le parcours officiellement validé.
 
 ### Un doublon apparaît

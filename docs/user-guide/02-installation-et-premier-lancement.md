@@ -1,6 +1,6 @@
 # Installer et préparer l’application
 
-Ce chapitre décrit le premier lancement de la version bêta actuelle de Stage Music Player sur Android.
+Ce chapitre décrit le premier lancement de la version bêta actuelle de MusiMio sur Android.
 
 ## Prérequis
 
@@ -16,11 +16,11 @@ Le canal d’installation peut varier selon la phase de bêta. Utilisez uniqueme
 
 ### 1. Ouvrir l’écran de bienvenue
 
-L’application affiche **Bienvenue dans Stage Music Player**. Une seule action est nécessaire : **Continuer**.
+L’application affiche **Bienvenue dans MusiMio**. Une seule action est nécessaire : **Continuer**.
 
 ### 2. Choisir le dossier de travail
 
-Après avoir appuyé sur **Continuer**, Stage Music Player ouvre le sélecteur de dossiers d’Android. Le dossier **Music** est proposé par défaut lorsque le système le permet.
+Après avoir appuyé sur **Continuer**, MusiMio ouvre le sélecteur de dossiers d’Android. Le dossier **Music** est proposé par défaut lorsque le système le permet.
 
 Vous pouvez :
 
@@ -42,7 +42,7 @@ Cette autorisation permet à l’application de préparer son espace de travail.
 
 ### 4. Attendre la préparation
 
-Stage Music Player :
+MusiMio :
 
 - prépare le dossier de travail ;
 - installe automatiquement une Bibliothèque Démo ;
@@ -77,11 +77,11 @@ Vous pourrez ensuite importer votre musique depuis **Bibliothèque → Importer�
 
 Sur une tablette détectée comme telle, le mode partagé est activé automatiquement lors d’une installation neuve. La playlist reste à gauche et la destination active s’affiche à droite.
 
-Si vous aviez déjà choisi d’activer ou de désactiver ce mode, Stage Music Player conserve votre préférence.
+Si vous aviez déjà choisi d’activer ou de désactiver ce mode, MusiMio conserve votre préférence.
 
 ## Changer de langue
 
-Stage Music Player propose le français, l’anglais et l’espagnol.
+MusiMio propose le français, l’anglais et l’espagnol.
 
 1. ouvrez **Paramètres / Plus** ;
 2. choisissez **Langue** ;
@@ -114,8 +114,12 @@ Vérifiez l’accès au dossier de travail, puis recommencez la configuration. N
 
 Les autorisations DJ ou microphone peuvent être accordées plus tard depuis les réglages Android de l’application. L’accès au dossier de travail doit, lui, être rétabli pour importer et gérer les morceaux.
 
-## Précaution importante
+## Précaution importante : importer n’est pas sauvegarder
 
-Le dossier de travail et la Bibliothèque interne ne remplacent pas une sauvegarde. Une désinstallation ou une panne de l’appareil peut supprimer les données internes. Utilisez la fonction **Sauvegarder ma bibliothèque** dès que vous avez commencé à personnaliser vos morceaux.
+Rendre un morceau disponible dans MusiMio ne constitue pas une sauvegarde externe. Lors de l’import, MusiMio prépare une copie de travail interne pour la scène ; le fichier audio source reste séparé et n’est pas modifié.
+
+Prenez rapidement l’habitude de sauvegarder votre environnement MusiMio, puis de mettre cette sauvegarde à jour quand votre Bibliothèque évolue : nouveaux morceaux, playlists, paroles, réglages ou préparation de scène.
+
+Le bon réflexe : votre Bibliothèque MusiMio évolue → votre sauvegarde doit évoluer avec elle.
 
 Étape suivante : [Se repérer sur téléphone et tablette](03-navigation-telephone-et-tablette.md).

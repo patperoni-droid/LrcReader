@@ -10,7 +10,7 @@ Après une modification importante, revenez au Lecteur ou à la Bibliothèque po
 
 ## Langue
 
-Stage Music Player propose :
+MusiMio propose :
 
 - automatique, selon Android ;
 - français ;

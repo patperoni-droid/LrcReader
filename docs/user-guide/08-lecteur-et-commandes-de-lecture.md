@@ -1,6 +1,6 @@
 # Utiliser le Lecteur et ses commandes
 
-Le Lecteur pilote l’audio principal de Stage Music Player. Il synchronise également les paroles, les accords et les événements temporels du morceau actif.
+Le Lecteur pilote l’audio principal de MusiMio. Il synchronise également les paroles, les accords et les événements temporels du morceau actif.
 
 ## Ouvrir un morceau
 
@@ -111,7 +111,7 @@ Si le titre suivant n’est pas lisible ou semble incorrect, ne comptez pas sur 
 
 Une transition peut utiliser un fondu dont la durée est réglable dans **Paramètres / Plus**.
 
-Lorsque le morceau actuel ou le suivant utilise une vitesse ou un pitch non neutre, Stage Music Player privilégie une transition séquentielle sûre plutôt qu’un chevauchement audio complexe.
+Lorsque le morceau actuel ou le suivant utilise une vitesse ou un pitch non neutre, MusiMio privilégie une transition séquentielle sûre plutôt qu’un chevauchement audio complexe.
 
 Le résultat peut donc différer d’un crossfade normal, afin d’éviter un second lecteur audible ou des réglages hérités du mauvais morceau.
 

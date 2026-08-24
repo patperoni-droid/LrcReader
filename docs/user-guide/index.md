@@ -1,12 +1,12 @@
-# Manuel utilisateur de Stage Music Player
+# Manuel utilisateur de MusiMio
 
-Stage Music Player aide les musiciens à préparer leurs morceaux, organiser leurs playlists et piloter une prestation depuis un téléphone ou une tablette Android.
+MusiMio aide les musiciens à préparer leurs morceaux, organiser leurs playlists et piloter une prestation depuis un téléphone ou une tablette Android.
 
 Ce manuel décrit les fonctions présentes dans la version bêta actuelle. Une fonction encore expérimentale ou prévue pour une version future n’est pas présentée comme disponible.
 
 ## Bien commencer
 
-1. [Découvrir Stage Music Player](01-presentation-et-demarrage-rapide.md)
+1. [Découvrir MusiMio](01-presentation-et-demarrage-rapide.md)
 2. [Installer et préparer l’application](02-installation-et-premier-lancement.md)
 3. [Se repérer sur téléphone et tablette](03-navigation-telephone-et-tablette.md)
 
@@ -43,7 +43,7 @@ Ce manuel décrit les fonctions présentes dans la version bêta actuelle. Une f
 ## Connecter, transférer et protéger
 
 22. [Utiliser un Deuxième écran](22-deuxieme-ecran.md)
-23. [Transférer une sélection avec SMP Sync](23-smp-sync.md)
+23. [Transférer une sélection avec MusiMio Sync](23-smp-sync.md)
 24. [Partager et exporter](24-partager-et-exporter.md)
 25. [Sauvegarder et restaurer la Bibliothèque](25-sauvegarder-et-restaurer.md)
 
@@ -55,9 +55,9 @@ Ce manuel décrit les fonctions présentes dans la version bêta actuelle. Une f
 ## Vocabulaire essentiel
 
 **Morceau live**
-Un morceau importé dans Stage Music Player avec ses données associées : audio, paroles, accords, réglages et, le cas échéant, Arrangement ou Timeline.
+Un morceau importé dans MusiMio avec ses données associées : audio, paroles, accords, réglages et, le cas échéant, Arrangement ou Timeline.
 
-**Fichier SMP**
+**Fichier `.smp`**
 Un fichier de transport portant l’extension `.smp`. Il sert à importer, partager ou sauvegarder un morceau complet.
 
 **Playlist**
