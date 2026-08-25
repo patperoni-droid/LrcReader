@@ -91,7 +91,7 @@
     <string name="arrangement_preview_structure_empty">Ajoutez au moins un segment dans la Structure</string>
     <string name="arrangement_duration_label">Durée : %1$s</string>
     <string name="arrangement_songs_loading">Chargement des morceaux…</string>
-    <string name="arrangement_no_smp_song_available">Aucun morceau SMP disponible</string>
+    <string name="arrangement_no_smp_song_available">Aucun morceau au format .smp disponible</string>
     <string name="arrangement_segments_title">Segments</string>
     <string name="arrangement_segments_empty">Aucun segment</string>
     <string name="arrangement_structure_title">Structure</string>
@@ -259,8 +259,8 @@
     <string name="library_delete_smp_title">Supprimer ce morceau ?</string>
     <string name="library_delete_smp_confirm_text">Supprimer ce morceau de l’application ?</string>
     <string name="library_delete_smp_variants_cascade">Variantes Arrangement également supprimées : %1$d.</string>
-    <string name="library_delete_smp_failed">Suppression du morceau SMP impossible.</string>
-    <string name="library_share_smp_failed">Partage du morceau SMP impossible.</string>
+    <string name="library_delete_smp_failed">Suppression du morceau au format .smp impossible.</string>
+    <string name="library_share_smp_failed">Partage du morceau au format .smp impossible.</string>
     <string name="library_copy_failed">Copie impossible.</string>
     <string name="library_rename_title">Renommer</string>
     <string name="library_new_name_label">Nouveau nom</string>
@@ -350,7 +350,7 @@
     <string name="playlist_track_limit_reached">Vous avez atteint la limite de 10 morceaux. Passez à la version complète pour ajouter plus de titres.</string>
     <string name="library_smp_folder">Mes morceaux live</string>
     <string name="library_legacy_backing_tracks_folder">Mes morceaux live</string>
-    <string name="library_smp_empty_state">Aucun morceau live SMP pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>
+    <string name="library_smp_empty_state">Aucun morceau live au format .smp pour l’instant.\nImporte ou convertis un morceau pour le voir apparaître ici.</string>
     <string name="library_prompter_empty_state">Aucun texte défilant pour l’instant.\nCréez un texte défilant depuis une playlist pour le voir apparaître ici.</string>
     <string name="library_smp_detected_importing">Fichier .smp détecté, import du morceau…</string>
 
@@ -367,11 +367,11 @@
     <string name="search_start_typing">Commence à taper…</string>
 
     <string name="library_lrc_editing_title">Édition : %1$s</string>
-    <string name="library_converting_smp">Migration vers SMP…</string>
-    <string name="library_convert_smp_success_single">Morceau migré vers SMP</string>
-    <string name="library_convert_smp_failed_single">Migration SMP échouée</string>
+    <string name="library_converting_smp">Migration vers le format .smp…</string>
+    <string name="library_convert_smp_success_single">Morceau migré au format .smp</string>
+    <string name="library_convert_smp_failed_single">Échec de la migration vers le format .smp</string>
     <string name="library_convert_smp_no_mp3">Aucun fichier audio compatible à convertir dans ce dossier</string>
-    <string name="library_convert_smp_folder_summary">%1$d morceau(x) migré(s) vers SMP, %2$d échec(s)</string>
+    <string name="library_convert_smp_folder_summary">%1$d morceau(x) migré(s) au format .smp, %2$d échec(s)</string>
     <string name="smp_batch_notice_title">Préparation live nécessaire</string>
     <string name="smp_batch_notice_line_1">SPL doit préparer ces morceaux pour le live.</string>
     <string name="smp_batch_notice_line_2">Cette étape est nécessaire uniquement la première fois.</string>
@@ -379,7 +379,7 @@
     <string name="smp_batch_notice_hide_next_time">Ne plus afficher</string>
     <string name="smp_batch_notice_continue">Continuer</string>
     <string name="smp_batch_progress_title">Préparation des morceaux…</string>
-    <string name="smp_batch_stage_converting">Conversion en SMP</string>
+    <string name="smp_batch_stage_converting">Conversion au format .smp</string>
     <string name="smp_batch_stage_importing">Import du morceau</string>
     <string name="smp_batch_stage_persisting_archive">Persistance de l’archive</string>
     <string name="smp_batch_stage_playlist">Ajout à la playlist</string>
@@ -415,11 +415,11 @@
     <string name="backup_save_toast_success">Sauvegarde enregistrée</string>
     <string name="backup_save_toast_failed">Impossible d’enregistrer</string>
     <string name="backup_session_save_success">Session enregistrée</string>
-    <string name="backup_bundle_export_failed">Impossible d’exporter ces morceaux SMP :</string>
-    <string name="backup_bundle_export_missing_songs">Export bundle bloqué, morceaux SMP introuvables :</string>
+    <string name="backup_bundle_export_failed">Impossible d’exporter ces morceaux au format .smp :</string>
+    <string name="backup_bundle_export_missing_songs">Export bundle bloqué, morceaux au format .smp introuvables :</string>
     <string name="backup_bundle_import_invalid">Bundle .splbackup invalide</string>
-    <string name="backup_bundle_import_smp_failed">Échec de l’import bundle sur le morceau SMP</string>
-    <string name="backup_bundle_import_remap_failed">Restore bundle bloqué, références SMP non résolues :</string>
+    <string name="backup_bundle_import_smp_failed">Échec de l’import bundle sur le morceau au format .smp</string>
+    <string name="backup_bundle_import_remap_failed">Restore bundle bloqué, références aux morceaux au format .smp non résolues :</string>
     <string name="backup_import_success">Restauration réussie</string>
     <string name="backup_import_success_with_warnings">Restauration réussie (%1$d avertissement(s))</string>
     <string name="backup_import_empty_unreadable">Fichier vide ou illisible</string>
@@ -510,7 +510,7 @@
     <string name="timeline_config_pro_dialog_title">Fonction Pro</string>
     <string name="timeline_config_pro_dialog_message">Configurez vos actions et préparez votre show avec la version Pro.</string>
     <string name="timeline_markers_title">Repères posés</string>
-    <string name="timeline_empty_state">Aucun repère pour ce morceau SMP.</string>
+    <string name="timeline_empty_state">Aucun repère pour ce morceau au format .smp.</string>
     <string name="timeline_rename_title">Renommer le repère</string>
     <string name="timeline_rename_label">Libellé</string>
     <string name="timeline_note_duration_label">Durée (secondes)</string>
@@ -728,7 +728,10 @@
 
     <!-- Waveform preview -->
     <string name="waveform_title">Waveform</string>
-    <string name="waveform_no_song_selected">Aucun morceau SMP sélectionné</string>
+    <string name="waveform_no_song_selected">Aucun morceau au format .smp sélectionné</string>
+    <string name="smp_playback_song_not_found">Morceau au format .smp introuvable</string>
+    <string name="smp_playback_no_audio">Ce fichier .smp ne contient pas d’audio</string>
+    <string name="smp_playback_audio_not_found">Audio du fichier .smp introuvable</string>
     <string name="waveform_analyzing">Analyse…</string>
     <string name="waveform_generate_error">Impossible de générer la waveform</string>
     <string name="waveform_no_data">Aucune donnée de waveform</string>
@@ -859,13 +862,13 @@
     <string name="more_section_audio_interface">Audio &amp; Interface</string>
     <string name="more_section_advanced">Avancé</string>
     <string name="more_arrangement_compatibility_mode">Mode de compatibilité Arrangement</string>
-    <string name="more_arrangement_compatibility_mode_help">Désactivé : lecture directe recommandée des segments. Activez ce mode uniquement si les transitions sont instables sur ce téléphone ; SMP réutilisera alors la préparation WAV / Sampler historique.</string>
+    <string name="more_arrangement_compatibility_mode_help">Désactivé : lecture directe recommandée des segments. Activez ce mode uniquement si les transitions sont instables sur ce téléphone ; MusiMio réutilisera alors la préparation WAV / Sampler historique.</string>
     <string name="more_item_filler">🎧  Fond sonore</string>
     <string name="more_item_backup_restore">💾  Sauvegarde / Restauration</string>
     <string name="more_item_history">Historique</string>
     <string name="more_item_arrangement">🎼  Arrangement</string>
-    <string name="more_item_arrangement_disabled_hint">Ouvre d’abord un morceau SMP</string>
-    <string name="more_item_arrangement_requires_song">Ouvre d’abord un morceau SMP</string>
+    <string name="more_item_arrangement_disabled_hint">Ouvre d’abord un morceau au format .smp</string>
+    <string name="more_item_arrangement_requires_song">Ouvre d’abord un morceau au format .smp</string>
     <string name="more_item_export_live_songs">Sauvegarder ma bibliothèque</string>
     <string name="more_item_export_live_songs_subtitle">Crée une sauvegarde complète de vos morceaux et playlists. Vous pourrez restaurer votre bibliothèque à l’identique.</string>
     <string name="more_item_restore_library">Restaurer ma bibliothèque</string>
@@ -1123,7 +1126,7 @@
     <string name="local_link_receiver_setup_hint">Même Wi-Fi ou hotspot local. Internet n’est pas nécessaire.</string>
     <string name="local_link_invalid_address">Adresse ou port invalide.</string>
     <string name="local_link_connection_failed">Connexion impossible.</string>
-    <string name="second_screen_session_searching">Recherche d’une session SMP...</string>
+    <string name="second_screen_session_searching">Recherche d’une session MusiMio Sync...</string>
     <string name="second_screen_session_connecting">Connexion...</string>
     <string name="second_screen_session_connected">✓ Connecté</string>
     <string name="second_screen_session_lost">Connexion perdue</string>

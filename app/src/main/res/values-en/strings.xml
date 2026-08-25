@@ -91,7 +91,7 @@
     <string name="arrangement_preview_structure_empty">Add at least one segment to the structure</string>
     <string name="arrangement_duration_label">Duration: %1$s</string>
     <string name="arrangement_songs_loading">Loading songs…</string>
-    <string name="arrangement_no_smp_song_available">No SMP song available</string>
+    <string name="arrangement_no_smp_song_available">No song in .smp format available</string>
     <string name="arrangement_segments_title">Segments</string>
     <string name="arrangement_segments_empty">No segments yet</string>
     <string name="arrangement_structure_title">Structure</string>
@@ -266,8 +266,8 @@
     <string name="library_delete_smp_title">Delete this song?</string>
     <string name="library_delete_smp_confirm_text">Delete this song from the app?</string>
     <string name="library_delete_smp_variants_cascade">Arrangement variants also deleted: %1$d.</string>
-    <string name="library_delete_smp_failed">Unable to delete the SMP song.</string>
-    <string name="library_share_smp_failed">Unable to share the SMP song.</string>
+    <string name="library_delete_smp_failed">Unable to delete the song in .smp format.</string>
+    <string name="library_share_smp_failed">Unable to share the song in .smp format.</string>
     <string name="library_copy_failed">Copy failed.</string>
     <string name="library_rename_title">Rename</string>
     <string name="library_new_name_label">New name</string>
@@ -358,7 +358,7 @@
     <string name="playlist_track_limit_reached">You have reached the 10-track limit. Upgrade to the full version to add more tracks.</string>
     <string name="library_smp_folder">My Live Tracks</string>
     <string name="library_legacy_backing_tracks_folder">My Live Tracks</string>
-    <string name="library_smp_empty_state">No SMP live tracks yet.\nImport or convert a song to see it appear here.</string>
+    <string name="library_smp_empty_state">No live tracks in .smp format yet.\nImport or convert a song to see it appear here.</string>
     <string name="library_prompter_empty_state">No scrolling texts yet.\nCreate a scrolling text from a playlist to see it here.</string>
     <string name="library_smp_detected_importing">.smp file detected, importing track…</string>
 
@@ -375,11 +375,11 @@
     <string name="search_start_typing">Start typing…</string>
 
     <string name="library_lrc_editing_title">Editing: %1$s</string>
-    <string name="library_converting_smp">Migrating to SMP…</string>
-    <string name="library_convert_smp_success_single">Track migrated to SMP</string>
-    <string name="library_convert_smp_failed_single">SMP migration failed</string>
+    <string name="library_converting_smp">Migrating to .smp format…</string>
+    <string name="library_convert_smp_success_single">Track migrated to .smp format</string>
+    <string name="library_convert_smp_failed_single">Migration to .smp format failed</string>
     <string name="library_convert_smp_no_mp3">No compatible audio file to convert in this folder.</string>
-    <string name="library_convert_smp_folder_summary">%1$d track(s) migrated to SMP, %2$d failure(s)</string>
+    <string name="library_convert_smp_folder_summary">%1$d track(s) migrated to .smp format, %2$d failure(s)</string>
     <string name="smp_batch_notice_title">Live preparation required</string>
     <string name="smp_batch_notice_line_1">SPL needs to prepare these tracks for live use.</string>
     <string name="smp_batch_notice_line_2">This step is only required the first time.</string>
@@ -387,7 +387,7 @@
     <string name="smp_batch_notice_hide_next_time">Do not show again</string>
     <string name="smp_batch_notice_continue">Continue</string>
     <string name="smp_batch_progress_title">Preparing tracks…</string>
-    <string name="smp_batch_stage_converting">Converting to SMP</string>
+    <string name="smp_batch_stage_converting">Converting to .smp format</string>
     <string name="smp_batch_stage_importing">Importing track</string>
     <string name="smp_batch_stage_persisting_archive">Persisting archive</string>
     <string name="smp_batch_stage_playlist">Adding to playlist</string>
@@ -423,11 +423,11 @@
     <string name="backup_save_toast_success">Backup saved</string>
     <string name="backup_save_toast_failed">Unable to save</string>
     <string name="backup_session_save_success">Session saved</string>
-    <string name="backup_bundle_export_failed">Unable to export these SMP songs:</string>
-    <string name="backup_bundle_export_missing_songs">Bundle export blocked, missing SMP songs:</string>
+    <string name="backup_bundle_export_failed">Unable to export these songs in .smp format:</string>
+    <string name="backup_bundle_export_missing_songs">Bundle export blocked, songs in .smp format are missing:</string>
     <string name="backup_bundle_import_invalid">Invalid .splbackup bundle</string>
-    <string name="backup_bundle_import_smp_failed">Bundle import failed on SMP song</string>
-    <string name="backup_bundle_import_remap_failed">Bundle restore blocked, unresolved SMP references:</string>
+    <string name="backup_bundle_import_smp_failed">Bundle import failed on a song in .smp format</string>
+    <string name="backup_bundle_import_remap_failed">Bundle restore blocked, unresolved references to songs in .smp format:</string>
     <string name="backup_import_success">Restore successful</string>
     <string name="backup_import_success_with_warnings">Restore successful (%1$d warning(s))</string>
     <string name="backup_import_empty_unreadable">Empty or unreadable file</string>
@@ -631,7 +631,7 @@
     <string name="timeline_position_display_music">M</string>
     <string name="timeline_position_display_time">T</string>
     <string name="timeline_markers_title">Placed markers</string>
-    <string name="timeline_empty_state">No markers for this SMP track.</string>
+    <string name="timeline_empty_state">No markers for this track in .smp format.</string>
     <string name="timeline_rename_title">Rename marker</string>
     <string name="timeline_rename_label">Label</string>
     <string name="timeline_note_duration_label">Duration (seconds)</string>
@@ -730,7 +730,10 @@
 
     <!-- Waveform preview -->
     <string name="waveform_title">Waveform</string>
-    <string name="waveform_no_song_selected">No SMP song selected</string>
+    <string name="waveform_no_song_selected">No song in .smp format selected</string>
+    <string name="smp_playback_song_not_found">Song in .smp format not found</string>
+    <string name="smp_playback_no_audio">This .smp file contains no audio</string>
+    <string name="smp_playback_audio_not_found">Audio from the .smp file not found</string>
     <string name="waveform_analyzing">Analyzing…</string>
     <string name="waveform_generate_error">Unable to generate waveform</string>
     <string name="waveform_no_data">No waveform data</string>
@@ -853,13 +856,13 @@
     <string name="more_section_audio_interface">Audio &amp; Interface</string>
     <string name="more_section_advanced">Advanced</string>
     <string name="more_arrangement_compatibility_mode">Arrangement compatibility mode</string>
-    <string name="more_arrangement_compatibility_mode_help">Off: recommended direct segment playback. Enable this mode only if transitions are unstable on this phone; SMP will then reuse the historical WAV / Sampler preparation.</string>
+    <string name="more_arrangement_compatibility_mode_help">Off: recommended direct segment playback. Enable this mode only if transitions are unstable on this phone; MusiMio will then reuse the historical WAV / Sampler preparation.</string>
     <string name="more_item_filler">🎧  Background sound</string>
     <string name="more_item_backup_restore">💾  Backup / Restore</string>
     <string name="more_item_history">History</string>
     <string name="more_item_arrangement">🎼  Arrangement</string>
-    <string name="more_item_arrangement_disabled_hint">Open an SMP song first</string>
-    <string name="more_item_arrangement_requires_song">Open an SMP song first</string>
+    <string name="more_item_arrangement_disabled_hint">Open a song in .smp format first</string>
+    <string name="more_item_arrangement_requires_song">Open a song in .smp format first</string>
     <string name="more_item_export_live_songs">Back up my library</string>
     <string name="more_item_export_live_songs_subtitle">Creates a full backup of your songs and playlists. You can restore your library exactly as it is.</string>
     <string name="more_item_restore_library">Restore my library</string>
@@ -1117,7 +1120,7 @@
     <string name="local_link_receiver_setup_hint">Same Wi-Fi or local hotspot. Internet is not required.</string>
     <string name="local_link_invalid_address">Invalid address or port.</string>
     <string name="local_link_connection_failed">Connection failed.</string>
-    <string name="second_screen_session_searching">Searching for an SMP session...</string>
+    <string name="second_screen_session_searching">Searching for a MusiMio Sync session...</string>
     <string name="second_screen_session_connecting">Connecting...</string>
     <string name="second_screen_session_connected">✓ Connected</string>
     <string name="second_screen_session_lost">Connection lost</string>

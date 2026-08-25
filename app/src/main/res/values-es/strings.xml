@@ -89,7 +89,7 @@
     <string name="arrangement_preview_structure_empty">Añade al menos un segmento a la estructura</string>
     <string name="arrangement_duration_label">Duración: %1$s</string>
     <string name="arrangement_songs_loading">Cargando canciones…</string>
-    <string name="arrangement_no_smp_song_available">No hay canción SMP disponible</string>
+    <string name="arrangement_no_smp_song_available">No hay ninguna canción en formato .smp disponible</string>
     <string name="arrangement_segments_title">Segmentos</string>
     <string name="arrangement_segments_empty">No hay segmentos</string>
     <string name="arrangement_structure_title">Estructura</string>
@@ -262,8 +262,8 @@
     <string name="library_delete_smp_title">¿Eliminar esta canción?</string>
     <string name="library_delete_smp_confirm_text">¿Eliminar esta canción de la aplicación?</string>
     <string name="library_delete_smp_variants_cascade">Variantes de Arrangement que también se eliminarán: %1$d.</string>
-    <string name="library_delete_smp_failed">No se pudo eliminar la canción SMP.</string>
-    <string name="library_share_smp_failed">No se pudo compartir la canción SMP.</string>
+    <string name="library_delete_smp_failed">No se pudo eliminar la canción en formato .smp.</string>
+    <string name="library_share_smp_failed">No se pudo compartir la canción en formato .smp.</string>
     <string name="library_rename_title">Renombrar</string>
     <string name="library_new_name_label">Nuevo nombre</string>
 
@@ -348,7 +348,7 @@
     <string name="playlist_track_limit_reached">Has alcanzado el límite de 10 pistas. Pasa a la versión completa para añadir más títulos.</string>
     <string name="library_smp_folder">Mis pistas en vivo</string>
     <string name="library_legacy_backing_tracks_folder">Mis pistas en vivo</string>
-    <string name="library_smp_empty_state">Aún no hay pistas en vivo SMP.\nImporta o convierte una canción para verla aquí.</string>
+    <string name="library_smp_empty_state">Aún no hay pistas en vivo en formato .smp.\nImporta o convierte una canción para verla aquí.</string>
     <string name="library_prompter_empty_state">Aún no hay textos con desplazamiento.\nCrea un texto con desplazamiento desde una playlist para verlo aquí.</string>
 
     <string name="library_delete_backing_track_title">¿Eliminar esta pista?</string>
@@ -579,7 +579,7 @@
     <string name="timeline_position_display_music">M</string>
     <string name="timeline_position_display_time">T</string>
     <string name="timeline_markers_title">Marcas colocadas</string>
-    <string name="timeline_empty_state">No hay marcas para esta pista SMP.</string>
+    <string name="timeline_empty_state">No hay marcas para esta pista en formato .smp.</string>
     <string name="timeline_rename_title">Renombrar marca</string>
     <string name="timeline_rename_label">Etiqueta</string>
     <string name="timeline_note_duration_label">Duración (segundos)</string>
@@ -655,7 +655,10 @@
     <string name="timeline_measures_segment_out_action">OUT</string>
     <string name="timeline_measures_segment_pending">--:--.--</string>
     <string name="waveform_title">Forma de onda</string>
-    <string name="waveform_no_song_selected">No hay ninguna canción SMP seleccionada</string>
+    <string name="waveform_no_song_selected">No hay ninguna canción en formato .smp seleccionada</string>
+    <string name="smp_playback_song_not_found">No se encuentra la canción en formato .smp</string>
+    <string name="smp_playback_no_audio">Este archivo .smp no contiene audio</string>
+    <string name="smp_playback_audio_not_found">No se encuentra el audio del archivo .smp</string>
     <string name="waveform_analyzing">Analizando…</string>
     <string name="waveform_generate_error">No se pudo generar la forma de onda</string>
     <string name="waveform_no_data">No hay datos de forma de onda</string>
@@ -779,7 +782,7 @@
     <string name="more_section_audio_interface">Audio e interfaz</string>
     <string name="more_section_advanced">Avanzado</string>
     <string name="more_arrangement_compatibility_mode">Modo de compatibilidad de Arrangement</string>
-    <string name="more_arrangement_compatibility_mode_help">Desactivado: reproducción directa recomendada de los segmentos. Activa este modo solo si las transiciones son inestables en este teléfono; SMP reutilizará entonces la preparación WAV / Sampler histórica.</string>
+    <string name="more_arrangement_compatibility_mode_help">Desactivado: reproducción directa recomendada de los segmentos. Activa este modo solo si las transiciones son inestables en este teléfono; MusiMio reutilizará entonces la preparación WAV / Sampler histórica.</string>
     <string name="more_item_filler">🎧  Sonido de fondo</string>
     <string name="more_item_backup_restore">💾  Respaldo / Restauración</string>
     <string name="more_item_history">Historial</string>
@@ -1040,7 +1043,7 @@
     <string name="local_link_receiver_setup_hint">Misma Wi-Fi o hotspot local. No se necesita Internet.</string>
     <string name="local_link_invalid_address">Dirección o puerto inválido.</string>
     <string name="local_link_connection_failed">No se pudo conectar.</string>
-    <string name="second_screen_session_searching">Buscando una sesión SMP...</string>
+    <string name="second_screen_session_searching">Buscando una sesión de MusiMio Sync...</string>
     <string name="second_screen_session_connecting">Conectando...</string>
     <string name="second_screen_session_connected">✓ Conectado</string>
     <string name="second_screen_session_lost">Conexión perdida</string>
@@ -1243,8 +1246,8 @@ No olvides guardar.</string>
     <string name="main_menu_more">Ajustes / Más</string>
     <string name="main_menu_tuner">Afinador</string>
     <string name="more_item_arrangement">🎼  Arrangement</string>
-    <string name="more_item_arrangement_disabled_hint">Abre primero una canción SMP</string>
-    <string name="more_item_arrangement_requires_song">Abre primero una canción SMP</string>
+    <string name="more_item_arrangement_disabled_hint">Abre primero una canción en formato .smp</string>
+    <string name="more_item_arrangement_requires_song">Abre primero una canción en formato .smp</string>
     <string name="tablet_split_menu_library">Biblioteca</string>
     <string name="tablet_split_menu_main_bus">Bus principal</string>
     <string name="tablet_split_menu_playlist">Playlist</string>

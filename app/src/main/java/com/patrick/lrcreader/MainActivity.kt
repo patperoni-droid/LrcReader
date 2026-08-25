@@ -3427,7 +3427,11 @@ class MainActivity : AppCompatActivity() {
                         Log.w("SMP", "Lecture SMP impossible sans scan live: songId absent du cache=$songId playlist=$playlistName")
                         smpCacheRefreshTick++
                         if (showToastOnFailure) {
-                            Toast.makeText(ctx, "Morceau SMP introuvable", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                ctx,
+                                ctx.getString(R.string.smp_playback_song_not_found),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                         return null
                     }
@@ -3440,7 +3444,11 @@ class MainActivity : AppCompatActivity() {
                         )
                         Log.w("SMP", "Lecture SMP impossible sans audio: songId=${song.id} title=${song.title}")
                         if (showToastOnFailure) {
-                            Toast.makeText(ctx, "Ce SMP ne contient pas d'audio", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                ctx,
+                                ctx.getString(R.string.smp_playback_no_audio),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                         return null
                     }
@@ -3457,7 +3465,11 @@ class MainActivity : AppCompatActivity() {
                             "Lecture SMP impossible: fichier audio absent songId=${song.id} path=${audioFile.absolutePath}"
                         )
                         if (showToastOnFailure) {
-                            Toast.makeText(ctx, "Audio SMP introuvable", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(
+                                ctx,
+                                ctx.getString(R.string.smp_playback_audio_not_found),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                         return null
                     }
