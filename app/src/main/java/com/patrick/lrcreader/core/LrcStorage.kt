@@ -1503,8 +1503,7 @@ object LrcStorage {
     // ------------------------------------------------------------
 
     private fun isSafBackend(context: Context): Boolean {
-        val snapshot = WorkspaceResolver.resolve(context)
-        return snapshot.mode == StorageModePrefs.Mode.SAF
+        return StorageModePrefs.get(context) == StorageModePrefs.Mode.SAF
     }
 
     private fun logLyricsBackend(context: Context, safOnlyBackend: Boolean) {

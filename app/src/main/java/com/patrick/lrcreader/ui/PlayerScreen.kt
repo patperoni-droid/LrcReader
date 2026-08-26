@@ -2014,7 +2014,9 @@ fun PlayerScreen(
             return@LaunchedEffect
         }
 
-        val cacheScopeKey = LrcStorage.currentWorkspaceScopeKey(context)
+        val cacheScopeKey = withContext(Dispatchers.IO) {
+            LrcStorage.currentWorkspaceScopeKey(context)
+        }
         LyricsMemoryCache.updateScope(cacheScopeKey)
         Log.d(
             LYRICS_PIPELINE_TRACE_TAG,
@@ -2036,7 +2038,9 @@ fun PlayerScreen(
 
         val trackUri = runCatching { Uri.parse(currentTrackUri) }.getOrNull()
         val audioBase = baseNameFromTrackUriString(currentTrackUri)
-        val preferExternalLyricsFirst = LrcStorage.isWorkspaceSaf(context)
+        val preferExternalLyricsFirst = withContext(Dispatchers.IO) {
+            LrcStorage.isWorkspaceSaf(context)
+        }
         resolvedSource = "NONE"
         Log.d("LrcDebug", "TRACK uriString=$currentTrackUri")
         Log.d("LrcDebug", "TRACK uriParsed=$trackUri scheme=${trackUri?.scheme} authority=${trackUri?.authority}")
