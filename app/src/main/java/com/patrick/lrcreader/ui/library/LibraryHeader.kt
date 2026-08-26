@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.exo.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 
 internal enum class LibraryImportKind {
@@ -89,7 +91,8 @@ fun LibraryHeader(
     val sLegacyBackingTracksFolder = stringResource(R.string.library_legacy_backing_tracks_folder)
     val sFilesView = stringResource(R.string.library_view_mode_files)
 
-    val folderName = remember(
+    val folderName by produceState(
+        initialValue = folderNameOverride ?: sNoFolderSelected,
         currentFolderUri,
         folderNameOverride,
         sNoFolderSelected,
@@ -98,7 +101,7 @@ fun LibraryHeader(
         sLegacyBackingTracksFolder,
         sFilesView
     ) {
-        folderNameOverride ?: (
+        value = folderNameOverride ?: (
         currentFolderUri?.let { u ->
             when (u.scheme) {
                 "spl-prompter" -> sPrompter
@@ -109,8 +112,10 @@ fun LibraryHeader(
                     if (isLegacyBackingTracksFolderName(rawName)) sLegacyBackingTracksFolder else rawName
                 }
                 else -> {
-                    val rawName = (DocumentFile.fromTreeUri(context, u)
-                        ?: DocumentFile.fromSingleUri(context, u))?.name ?: "SPL_Music"
+                    val rawName = withContext(Dispatchers.IO) {
+                        (DocumentFile.fromTreeUri(context, u)
+                            ?: DocumentFile.fromSingleUri(context, u))?.name
+                    } ?: "SPL_Music"
                     if (isLegacyBackingTracksFolderName(rawName)) sLegacyBackingTracksFolder else rawName
                 }
             }

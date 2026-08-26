@@ -719,7 +719,7 @@ fun LibraryScreen(
         backend.getRootUri()
     }
     val hasGlobalAudioAccess = hasDjGlobalAudioAccess(context)
-    val filesNavigationRoot = remember(
+    var filesNavigationRoot by remember(
         context,
         hasGlobalAudioAccess,
         workspaceVersion,
@@ -727,12 +727,36 @@ fun LibraryScreen(
         workspaceSnapshot.setupTreeUri,
         workspaceSnapshot.workspaceRootUri
     ) {
-        resolveFilesNavigationRootForLibrary(
-            context = context,
-            storageMode = storageMode,
-            setupTreeUri = workspaceSnapshot.setupTreeUri,
-            workspaceRootUri = workspaceRootUri
-        )
+        mutableStateOf<Uri?>(null)
+    }
+    var filesNavigationRootResolved by remember(
+        context,
+        hasGlobalAudioAccess,
+        workspaceVersion,
+        storageMode,
+        workspaceSnapshot.setupTreeUri,
+        workspaceSnapshot.workspaceRootUri
+    ) {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(
+        context,
+        hasGlobalAudioAccess,
+        workspaceVersion,
+        storageMode,
+        workspaceSnapshot.setupTreeUri,
+        workspaceSnapshot.workspaceRootUri
+    ) {
+        filesNavigationRootResolved = false
+        filesNavigationRoot = withContext(Dispatchers.IO) {
+            resolveFilesNavigationRootForLibrary(
+                context = context,
+                storageMode = storageMode,
+                setupTreeUri = workspaceSnapshot.setupTreeUri,
+                workspaceRootUri = workspaceRootUri
+            )
+        }
+        filesNavigationRootResolved = true
     }
 
     val initialFolder = remember(
@@ -1651,7 +1675,7 @@ fun LibraryScreen(
             libraryViewMode != LIBRARY_VIEW_MODE_FILES &&
                 !isPrompterFolderUri(currentFolder) &&
                 !isSmpFolderUri(currentFolder) &&
-                resolveFolderName(context, currentFolder)
+                withContext(Dispatchers.IO) { resolveFolderName(context, currentFolder) }
                     ?.let(::shouldHideFromMainLibrary) == true
 
         val folderToShow = if (shouldRedirectToRoot) root else currentFolder
@@ -2062,10 +2086,16 @@ fun LibraryScreen(
         )
     }
 
-    val canImportBackupJsonFromCurrentFolder = remember(context, currentFolderUri) {
+    val canImportBackupJsonFromCurrentFolder by produceState(
+        initialValue = false,
+        context,
         currentFolderUri
-            ?.let { resolveFolderName(context, it) }
-            ?.let(::isBackupFolderName) == true
+    ) {
+        value = withContext(Dispatchers.IO) {
+            currentFolderUri
+                ?.let { resolveFolderName(context, it) }
+                ?.let(::isBackupFolderName) == true
+        }
     }
     val activeSearchableCount = when {
         isSongBasedViewMode -> searchableSongItems.size
@@ -3219,8 +3249,10 @@ fun LibraryScreen(
             return
         }
 
-        val preparedDest = prepareTransferDestination(destUri)
         scope.launch {
+            val preparedDest = withContext(Dispatchers.IO) {
+                prepareTransferDestination(destUri)
+            }
             startLoading(sMoving, determinate = true)
             try {
                 val movedCount = runSelectionTransfer(
@@ -3257,8 +3289,10 @@ fun LibraryScreen(
             return
         }
 
-        val preparedDest = prepareTransferDestination(destUri)
         scope.launch {
+            val preparedDest = withContext(Dispatchers.IO) {
+                prepareTransferDestination(destUri)
+            }
             startLoading(sCopying, determinate = true)
             try {
                 val copiedCount = runSelectionTransfer(
@@ -3322,7 +3356,7 @@ fun LibraryScreen(
     }
 
     suspend fun importBackupJson(uri: Uri) {
-        val fileLabel = resolveEntryDisplayName(uri)
+        val fileLabel = withContext(Dispatchers.IO) { resolveEntryDisplayName(uri) }
         backupImportInProgress = true
         startLoading(sBackupImporting, determinate = false)
         try {
@@ -3368,11 +3402,13 @@ fun LibraryScreen(
             scope.launch {
                 startLoading(sScanning, determinate = false)
                 try {
-                    val folders = initializeSafWorkspaceFromPickedTree(
-                        context = context,
-                        pickedTreeUri = uri,
-                        stage = "library_screen:pick_root"
-                    ) ?: return@launch
+                    val folders = withContext(Dispatchers.IO) {
+                        initializeSafWorkspaceFromPickedTree(
+                            context = context,
+                            pickedTreeUri = uri,
+                            stage = "library_screen:pick_root"
+                        )
+                    } ?: return@launch
                     BackupFolderPrefs.setDone(context, true)
 
                     currentFolderUri = folders.rootUri
@@ -3424,18 +3460,22 @@ fun LibraryScreen(
 
     fun openAuthorizedTransferFolders(kind: ExternalTransferKind) {
         val root = backend.getRootUri()
-        val reusableFolders = LibraryTransferFolderPrefs.getReusableFolders(context)
-            .filterNot { uri -> isUriInsideTree(uri, root) }
-            .map { uri -> buildAuthorizedTransferFolderOption(context, uri) }
+        scope.launch {
+            val reusableFolders = withContext(Dispatchers.IO) {
+                LibraryTransferFolderPrefs.getReusableFolders(context)
+                    .filterNot { uri -> isUriInsideTree(uri, root) }
+                    .map { uri -> buildAuthorizedTransferFolderOption(context, uri) }
+            }
 
-        if (reusableFolders.isEmpty()) {
-            launchTransferFolderPicker(kind)
-            return
+            if (reusableFolders.isEmpty()) {
+                launchTransferFolderPicker(kind)
+                return@launch
+            }
+
+            pendingExternalTransferKind = kind
+            authorizedTransferFolders = reusableFolders
+            showAuthorizedTransferFoldersDialog = true
         }
-
-        pendingExternalTransferKind = kind
-        authorizedTransferFolders = reusableFolders
-        showAuthorizedTransferFoldersDialog = true
     }
 
     val importAudioLauncher = rememberLauncherForActivityResult(
@@ -3445,8 +3485,13 @@ fun LibraryScreen(
 
         scope.launch {
             val singlePickedUri = pickedUris.singleOrNull()
-            if (singlePickedUri != null && isSmpFile(singlePickedUri)) {
-                val displayName = resolveEntryDisplayName(singlePickedUri)
+            val singlePickedIsSmp = singlePickedUri?.let { uri ->
+                withContext(Dispatchers.IO) { isSmpFile(uri) }
+            } == true
+            if (singlePickedUri != null && singlePickedIsSmp) {
+                val displayName = withContext(Dispatchers.IO) {
+                    resolveEntryDisplayName(singlePickedUri)
+                }
                 Log.i(
                     IMPORT_TRACE_TAG,
                     "elapsedMs=${SystemClock.elapsedRealtime()} step=redirect_audio_to_smp_import uri=$singlePickedUri name=$displayName"
@@ -3475,7 +3520,8 @@ fun LibraryScreen(
 
     // ---------- initial load ----------
     Log.e("SIG_LIB", "SIG#1 JUST BEFORE LaunchedEffect 2026-02-08 18:00 Z")
-    LaunchedEffect(workspaceVersion) {
+    LaunchedEffect(workspaceVersion, filesNavigationRootResolved, filesNavigationRoot) {
+        if (!filesNavigationRootResolved) return@LaunchedEffect
         val callId = initialLoadEffectPerfCounter.incrementAndGet()
         val startMs = SystemClock.elapsedRealtime()
         var effectResult = "done"
@@ -3577,20 +3623,6 @@ fun LibraryScreen(
 
 
     // ---------- UI ----------
-    val currentFolderName = currentFolderUri?.let { u ->
-        if (isPrompterFolderUri(u)) {
-            sPrompterFolder
-        } else if (isSmpFolderUri(u)) {
-            sSmpFolder
-        } else if (isSharedAudioFolderUri(u)) {
-            sharedAudioFolderDisplayName(u, sFilesView)
-        } else if (u.scheme == "file") {
-            java.io.File(u.path ?: "").name.ifBlank { "SPL_Music" }
-        } else {
-            val doc = DocumentFile.fromTreeUri(context, u) ?: DocumentFile.fromSingleUri(context, u)
-            doc?.name ?: "SPL_Music"
-        }
-    } ?: sNoFolderSelected
     val headerFolderUri = when {
         isSongViewMode && currentFolderUri != null -> SMP_FOLDER_URI
         isPlaylistsViewMode -> null
@@ -4694,17 +4726,21 @@ fun LibraryScreen(
 
                                 onOpenLrcEditor = { lrcUri ->
                                     stopQuickPlay()
-
-                                    lrcEditorUri = lrcUri
-                                    lrcEditorName = runCatching {
-                                        DocumentFile.fromSingleUri(context, lrcUri)?.name
-                                            ?: DocumentFile.fromTreeUri(context, lrcUri)?.name
-                                            ?: "lyrics.lrc"
-                                    }.getOrNull() ?: "lyrics.lrc"
-
-                                    lrcEditorText = readTextFromUri(lrcUri) ?: ""
-                                    lrcEditorSavedText = lrcEditorText
-                                    showLrcEditor = true
+                                    scope.launch {
+                                        val (name, text) = withContext(Dispatchers.IO) {
+                                            val resolvedName = runCatching {
+                                                DocumentFile.fromSingleUri(context, lrcUri)?.name
+                                                    ?: DocumentFile.fromTreeUri(context, lrcUri)?.name
+                                                    ?: "lyrics.lrc"
+                                            }.getOrNull() ?: "lyrics.lrc"
+                                            resolvedName to (readTextFromUri(lrcUri) ?: "")
+                                        }
+                                        lrcEditorUri = lrcUri
+                                        lrcEditorName = name
+                                        lrcEditorText = text
+                                        lrcEditorSavedText = text
+                                        showLrcEditor = true
+                                    }
                                 },
 
                                 onConvertOneToSmp = { mp3Uri ->
@@ -5110,6 +5146,12 @@ fun LibraryScreen(
             }
             if (pendingBackupImportUri != null) {
                 val importUri = pendingBackupImportUri!!
+                val importDisplayName by produceState(
+                    initialValue = importUri.lastPathSegment ?: "backup.json",
+                    importUri
+                ) {
+                    value = withContext(Dispatchers.IO) { resolveEntryDisplayName(importUri) }
+                }
                 androidx.compose.material3.AlertDialog(
                     onDismissRequest = {
                         if (backupImportInProgress) return@AlertDialog
@@ -5119,7 +5161,7 @@ fun LibraryScreen(
                         androidx.compose.material3.Text(sBackupImportAction)
                     },
                     text = {
-                        androidx.compose.material3.Text(resolveEntryDisplayName(importUri))
+                        androidx.compose.material3.Text(importDisplayName)
                     },
                     confirmButton = {
                         androidx.compose.material3.TextButton(
@@ -5151,7 +5193,17 @@ fun LibraryScreen(
             if (showDeleteConfirmDialog && pendingDeletePlan != null) {
                 val deletePlan = pendingDeletePlan!!
                 val hasAssociated = deletePlan.isAudioTarget && deletePlan.hasAssociated
-                val isDirectoryTarget = isDirectoryUri(deletePlan.target.uri)
+                val isDirectoryTarget by produceState(
+                    initialValue = indexAll.firstOrNull {
+                        it.uriString == deletePlan.target.uri.toString()
+                    }?.isDirectory == true,
+                    deletePlan.target.uri,
+                    indexAll
+                ) {
+                    value = withContext(Dispatchers.IO) {
+                        isDirectoryUri(deletePlan.target.uri)
+                    }
+                }
 
                 suspend fun executeDeletion(includeAssociated: Boolean) {
                     if (deleteInProgress) return

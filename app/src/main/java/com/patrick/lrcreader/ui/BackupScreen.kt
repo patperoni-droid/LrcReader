@@ -168,6 +168,12 @@ fun BackupScreen(
     // ✅ Détecte le mode INTERNAL via le root "file://"
     val rootUri = remember { BackupFolderPrefs.getLibraryRootUri(context) }
     val isInternalMode = rootUri?.scheme == "file"
+    var backupsInitialUri by remember { mutableStateOf<Uri?>(null) }
+    LaunchedEffect(rootUri) {
+        backupsInitialUri = withContext(Dispatchers.IO) {
+            resolveBackupsInitialUri(context)
+        }
+    }
 
     // ✅ Liste des backups internes (SPL_Music/Backups)
     var internalBackupFiles by remember { mutableStateOf<List<File>>(emptyList()) }
@@ -384,7 +390,7 @@ fun BackupScreen(
         contract = object : ActivityResultContracts.OpenDocument() {
             override fun createIntent(context: Context, input: Array<String>): Intent {
                 val intent = super.createIntent(context, input)
-                resolveBackupsInitialUri(context)?.let { initial ->
+                backupsInitialUri?.let { initial ->
                     intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI, initial)
                 }
                 return intent
@@ -413,7 +419,9 @@ fun BackupScreen(
                     )
                     data
                 }
-                val selectionInfo = resolveBackupImportSelectionInfo(context, uri)
+                val selectionInfo = withContext(Dispatchers.IO) {
+                    resolveBackupImportSelectionInfo(context, uri)
+                }
                 val bundleByName = BackupBundleImporter.isBundleFileName(selectionInfo.resolvedFileLabel)
                 val bundleByPayload = if (!bundleByName && bytes != null) {
                     withContext(Dispatchers.IO) {

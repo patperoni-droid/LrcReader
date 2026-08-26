@@ -37,7 +37,9 @@ import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.pow
 
 private fun defaultDocumentsTreeUriOrNull(): Uri? {
@@ -226,23 +228,27 @@ fun FillerSoundScreen(
 
             val treeUri = normalizeToTreeUri(picked) ?: picked
 
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    treeUri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-            } catch (_: Exception) {
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    try {
+                        context.contentResolver.takePersistableUriPermission(
+                            treeUri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+                    } catch (_: Exception) {
+                    }
+                    FillerSoundPrefs.saveFillerFolder(context, treeUri)
+                    FillerSoundPrefs.setUseCustomFolder(context, true)
+                }
+                isUsingCustomSource = true
+                fillerUri = treeUri
+                fillerName = treeUri.lastPathSegment ?: sAssetsIntegrated
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.filler_folder_linked, fillerName),
+                    Toast.LENGTH_SHORT
+                ).show()
             }
-            FillerSoundPrefs.saveFillerFolder(context, treeUri)
-            FillerSoundPrefs.setUseCustomFolder(context, true)
-            isUsingCustomSource = true
-            fillerUri = treeUri
-            fillerName = treeUri.lastPathSegment ?: sAssetsIntegrated
-            Toast.makeText(
-                context,
-                context.getString(R.string.filler_folder_linked, fillerName),
-                Toast.LENGTH_SHORT
-            ).show()
         }
     )
 

@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -669,9 +670,14 @@ private fun MoreRootScreen(
     val sUpgradeToPro = stringResource(R.string.library_upgrade_to_pro)
     val isLite = EditionConfig.isLite
     val showSmpSyncDebug = BuildConfig.DEBUG && BuildConfig.FLAVOR == "labo"
-    val workspaceSnapshot = remember(context) { WorkspaceResolver.resolve(context) }
+    val workspaceSnapshot by produceState<WorkspaceResolver.Snapshot?>(
+        initialValue = null,
+        context
+    ) {
+        value = withContext(Dispatchers.IO) { WorkspaceResolver.resolve(context) }
+    }
     val workingFolderPath = remember(workspaceSnapshot) {
-        workspaceSnapshot.workspaceRootUri?.let { uri ->
+        workspaceSnapshot?.workspaceRootUri?.let { uri ->
             when (uri.scheme?.lowercase()) {
                 "file" -> uri.path.orEmpty()
                 else -> uri.toString()
@@ -719,15 +725,17 @@ private fun MoreRootScreen(
         val requestedFolderName = pendingExportLiveSongsFolderName
             ?: buildDefaultLiveSongsExportName()
         pendingExportLiveSongsFolderName = null
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                pickedUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-        }
         exportLiveSongsTreeUri = pickedUri
         MoreLiveSongsExportPrefs.setTreeUri(context, pickedUri)
         scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        pickedUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                }
+            }
             isExportingLiveSongs = true
             exportLiveSongsDone = 0
             exportLiveSongsTotal = 0
@@ -913,15 +921,17 @@ private fun MoreRootScreen(
             return@rememberLauncherForActivityResult
         }
         restoreLibraryStageText = sLibraryRestoreAnalyzing
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                pickedUri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            )
-        }
         exportLiveSongsTreeUri = pickedUri
         MoreLiveSongsExportPrefs.setTreeUri(context, pickedUri)
         scope.launch {
+            withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        pickedUri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                }
+            }
             val scanResult = withContext(Dispatchers.IO) {
                 scanLibraryRestoreFolder(
                     context = context.applicationContext,

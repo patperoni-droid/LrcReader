@@ -124,11 +124,13 @@ suspend fun libraryMoveOneFile(
     indexAll: List<LibraryIndexCache.CachedEntry>,
     onProgress: (Float?, String?) -> Unit,
 ): MoveResult {
-    val rootTree = resolveUsableWorkspaceSnapshot(
-        context = context,
-        expectedMode = StorageModePrefs.Mode.SAF,
-        stage = "library_actions:move_one_file"
-    )?.workspaceRootUri
+    val rootTree = withContext(Dispatchers.IO) {
+        resolveUsableWorkspaceSnapshot(
+            context = context,
+            expectedMode = StorageModePrefs.Mode.SAF,
+            stage = "library_actions:move_one_file"
+        )?.workspaceRootUri
+    }
         ?: return MoveResult(false, null)
     val srcParent = indexAll
         .firstOrNull { it.uriString == srcUri.toString() }
@@ -161,11 +163,13 @@ suspend fun libraryCopyOneFile(
     indexAll: List<LibraryIndexCache.CachedEntry>,
     onProgress: (Float?, String?) -> Unit,
 ): MoveResult {
-    val rootTree = resolveUsableWorkspaceSnapshot(
-        context = context,
-        expectedMode = StorageModePrefs.Mode.SAF,
-        stage = "library_actions:copy_one_file"
-    )?.workspaceRootUri
+    val rootTree = withContext(Dispatchers.IO) {
+        resolveUsableWorkspaceSnapshot(
+            context = context,
+            expectedMode = StorageModePrefs.Mode.SAF,
+            stage = "library_actions:copy_one_file"
+        )?.workspaceRootUri
+    }
         ?: return MoveResult(false, null)
 
     val destFixed = asTreeDocumentUri(rootTree, destUri)

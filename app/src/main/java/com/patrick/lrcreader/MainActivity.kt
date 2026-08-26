@@ -1056,32 +1056,34 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     val distinctUris = uris.distinctBy { it.toString() }
-                    distinctUris.forEach { uri ->
-                        runCatching {
-                            ctx.contentResolver.takePersistableUriPermission(
-                                uri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION
-                            )
-                        }.onFailure { error ->
-                            Log.w("SMP", "Permission persistante non obtenue pour $uri", error)
-                        }
-
-                        val pickedName = displayNameOf(uri)
-                        if (!pickedName.endsWith(".smp", ignoreCase = true)) {
-                            Log.w("SMP", "Fichier sélectionné sans extension .smp: name=$pickedName uri=$uri")
-                        }
-                        Log.w(
-                            "IMPORT_PROOF",
-                            "elapsedMs=${SystemClock.elapsedRealtime()} file=MainActivity.kt phase=library_external_smp_picker detail=name=$pickedName uri=$uri"
-                        )
-                    }
-
                     scope.launch {
+                        val pickedNames = withContext(Dispatchers.IO) {
+                            distinctUris.associateWith { uri ->
+                                runCatching {
+                                    ctx.contentResolver.takePersistableUriPermission(
+                                        uri,
+                                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                    )
+                                }.onFailure { error ->
+                                    Log.w("SMP", "Permission persistante non obtenue pour $uri", error)
+                                }
+                                displayNameOf(uri)
+                            }
+                        }
+                        pickedNames.forEach { (uri, pickedName) ->
+                            if (!pickedName.endsWith(".smp", ignoreCase = true)) {
+                                Log.w("SMP", "Fichier sélectionné sans extension .smp: name=$pickedName uri=$uri")
+                            }
+                            Log.w(
+                                "IMPORT_PROOF",
+                                "elapsedMs=${SystemClock.elapsedRealtime()} file=MainActivity.kt phase=library_external_smp_picker detail=name=$pickedName uri=$uri"
+                            )
+                        }
                         var successCount = 0
                         var failureCount = 0
 
                         distinctUris.forEach { uri ->
-                            val pickedName = displayNameOf(uri)
+                            val pickedName = pickedNames[uri] ?: uri.lastPathSegment.orEmpty()
                             val importedSong = importSmpIntoApp(uri, libraryRuntimeReadyFirst = true)
                             if (importedSong != null) {
                                 successCount += 1
@@ -1155,23 +1157,25 @@ class MainActivity : AppCompatActivity() {
                     contract = ActivityResultContracts.OpenMultipleDocuments()
                 ) { uris ->
                     if (uris.isNullOrEmpty()) return@rememberLauncherForActivityResult
-                    val libraryFolders = ensureWorkspaceLibraryFolders(
-                        context = ctx,
-                        providedSnapshot = workspaceSnapshot,
-                        expectedMode = workspaceSnapshot.mode,
-                        stage = "main_activity:pick_audio_files"
-                    )
-                    if (libraryFolders == null) {
-                        android.util.Log.e(
-                            "WORKSPACE_C1",
-                            "stage=main_activity:pick_audio_files error=workspace_unavailable status=${workspaceSnapshot.status} root=${workspaceSnapshot.workspaceRootUri}"
-                        )
-                        return@rememberLauncherForActivityResult
-                    }
-                    val internalModeNow = libraryFolders.snapshot.mode == StorageModePrefs.Mode.INTERNAL
+                    scope.launch {
+                        val libraryFolders = withContext(Dispatchers.IO) {
+                            ensureWorkspaceLibraryFolders(
+                                context = ctx,
+                                providedSnapshot = workspaceSnapshot,
+                                expectedMode = workspaceSnapshot.mode,
+                                stage = "main_activity:pick_audio_files"
+                            )
+                        }
+                        if (libraryFolders == null) {
+                            android.util.Log.e(
+                                "WORKSPACE_C1",
+                                "stage=main_activity:pick_audio_files error=workspace_unavailable status=${workspaceSnapshot.status} root=${workspaceSnapshot.workspaceRootUri}"
+                            )
+                            return@launch
+                        }
+                        val internalModeNow = libraryFolders.snapshot.mode == StorageModePrefs.Mode.INTERNAL
 
-                    if (internalModeNow) {
-                        scope.launch {
+                        if (internalModeNow) {
                             isImporting = true
                             try {
                                 val audioDir = File(libraryFolders.audioUri.path!!)
@@ -1202,8 +1206,6 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 }
 
-                                // ✅ Refresh : si tu veux, tu peux juste dire "refreshKey++" plus tard
-                                // Ici on force le setup ok
                                 BackupFolderPrefs.setDone(ctx, true)
                                 forceSetup = false
                                 setupTick++
@@ -1214,11 +1216,9 @@ class MainActivity : AppCompatActivity() {
                             } finally {
                                 isImporting = false
                             }
+                            return@launch
                         }
-                        return@rememberLauncherForActivityResult
-                    }
 
-                    scope.launch {
                         isImporting = true
                         try {
                             val result = withContext(Dispatchers.IO) {
@@ -4670,7 +4670,10 @@ class MainActivity : AppCompatActivity() {
                                         when {
                                             uri.isNullOrBlank() -> emptyList()
                                             else -> {
-                                                LyricsMemoryCache.updateScope(LrcStorage.currentWorkspaceScopeKey(ctx))
+                                                val cacheScopeKey = withContext(Dispatchers.IO) {
+                                                    LrcStorage.currentWorkspaceScopeKey(ctx)
+                                                }
+                                                LyricsMemoryCache.updateScope(cacheScopeKey)
                                                 LyricsMemoryCache.get(uri)?.parsedLines?.takeIf { it.isNotEmpty() }
                                                     ?: withContext(Dispatchers.IO) {
                                                         LrcStorage.loadForTrack(ctx, uri)
@@ -5398,7 +5401,10 @@ class MainActivity : AppCompatActivity() {
                                                 parsedLines.isNotEmpty() -> parsedLines
                                                 uri.isNullOrBlank() -> emptyList()
                                                 else -> {
-                                                    LyricsMemoryCache.updateScope(LrcStorage.currentWorkspaceScopeKey(ctx))
+                                                    val cacheScopeKey = withContext(Dispatchers.IO) {
+                                                        LrcStorage.currentWorkspaceScopeKey(ctx)
+                                                    }
+                                                    LyricsMemoryCache.updateScope(cacheScopeKey)
                                                     LyricsMemoryCache.get(uri)?.parsedLines?.takeIf { it.isNotEmpty() }
                                                         ?: withContext(Dispatchers.IO) {
                                                             LrcStorage.loadForTrack(ctx, uri)
@@ -6770,7 +6776,10 @@ class MainActivity : AppCompatActivity() {
                                                 parsedLines.isNotEmpty() -> parsedLines
                                                 uri.isNullOrBlank() -> emptyList()
                                                 else -> {
-                                                    LyricsMemoryCache.updateScope(LrcStorage.currentWorkspaceScopeKey(ctx))
+                                                    val cacheScopeKey = withContext(Dispatchers.IO) {
+                                                        LrcStorage.currentWorkspaceScopeKey(ctx)
+                                                    }
+                                                    LyricsMemoryCache.updateScope(cacheScopeKey)
                                                     LyricsMemoryCache.get(uri)?.parsedLines?.takeIf { it.isNotEmpty() }
                                                         ?: withContext(Dispatchers.IO) {
                                                             LrcStorage.loadForTrack(ctx, uri)

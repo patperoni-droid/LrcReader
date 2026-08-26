@@ -460,40 +460,39 @@ fun DjScreen(
 
             android.util.Log.i(DJ_FOLDER_TAG, "picker:selected uri=$uri")
 
-            // 1) persister la permission SAF
-            var persistPermissionOk = false
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
-                persistPermissionOk = true
-            } catch (error: Exception) {
-                android.util.Log.w(
+            scope.launch {
+                val (persistPermissionOk, resolvedDjRoot) = withContext(Dispatchers.IO) {
+                    var persisted = false
+                    try {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+                        persisted = true
+                    } catch (error: Exception) {
+                        android.util.Log.w(
+                            DJ_FOLDER_TAG,
+                            "picker:persist_permission_failed uri=$uri reason=${error.message}",
+                            error
+                        )
+                    }
+                    val resolved = DjFolderPrefs.resolveFixedDjRootFromPickedTree(context, uri) ?: uri
+                    DjFolderPrefs.save(context, resolved)
+                    persisted to resolved
+                }
+                android.util.Log.i(
                     DJ_FOLDER_TAG,
-                    "picker:persist_permission_failed uri=$uri reason=${error.message}",
-                    error
+                    "picker:resolved picked=$uri persistPermissionOk=$persistPermissionOk resolved=$resolvedDjRoot"
                 )
+                android.util.Log.i(
+                    DJ_FOLDER_TAG,
+                    "picker:saved saved=${DjFolderPrefs.get(context)}"
+                )
+                syncBrowserToRoot(resolvedDjRoot)
+                indexAll = emptyList()
+                refreshFromIndex()
+                launchDjScan(resolvedDjRoot, showToast = false)
             }
-
-            val resolvedDjRoot = DjFolderPrefs.resolveFixedDjRootFromPickedTree(context, uri) ?: uri
-            android.util.Log.i(
-                DJ_FOLDER_TAG,
-                "picker:resolved picked=$uri persistPermissionOk=$persistPermissionOk resolved=$resolvedDjRoot"
-            )
-
-            // 2) sauver la racine DJ + mettre à jour le browser
-            DjFolderPrefs.save(context, resolvedDjRoot)
-            android.util.Log.i(
-                DJ_FOLDER_TAG,
-                "picker:saved saved=${DjFolderPrefs.get(context)}"
-            )
-            syncBrowserToRoot(resolvedDjRoot)
-            indexAll = emptyList()
-            refreshFromIndex()
-
-            // 3) scanner
-            launchDjScan(resolvedDjRoot, showToast = false)
         }
     )
 
@@ -502,15 +501,14 @@ fun DjScreen(
         onResult = { uri ->
             if (uri == null) return@rememberLauncherForActivityResult
 
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
-
             scope.launch {
                 val tracks = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }
                     val root = DocumentFile.fromTreeUri(context, uri) ?: return@withContext emptyList()
                     root.listFiles()
                         .asSequence()
@@ -547,19 +545,22 @@ fun DjScreen(
         onResult = { uris ->
             if (uris.isNullOrEmpty()) return@rememberLauncherForActivityResult
 
-            val appRoot = BackupFolderPrefs.get(context) ?: return@rememberLauncherForActivityResult
-
-            isLoading = true
-            try {
-                com.patrick.lrcreader.core.ImportAudioManager.importAudioFiles(
-                    context = context,
-                    appRootTreeUri = appRoot,
-                    sourceUris = uris,
-                    destFolderName = "backingtracks",
-                    overwriteIfExists = false
-                )
-            } finally {
-                isLoading = false
+            scope.launch {
+                val appRoot = BackupFolderPrefs.get(context) ?: return@launch
+                isLoading = true
+                try {
+                    withContext(Dispatchers.IO) {
+                        com.patrick.lrcreader.core.ImportAudioManager.importAudioFiles(
+                            context = context,
+                            appRootTreeUri = appRoot,
+                            sourceUris = uris,
+                            destFolderName = "backingtracks",
+                            overwriteIfExists = false
+                        )
+                    }
+                } finally {
+                    isLoading = false
+                }
             }
         }
     )
@@ -805,10 +806,22 @@ fun DjScreen(
                     Spacer(Modifier.width(10.dp))
 
                     val shownUri = browserVm.currentFolderUri ?: browserVm.rootFolderUri
-                    val shownLocation = if (isGlobalAudioMode) {
-                        mediaCurrentFolder?.folderName ?: globalMusicLabel
-                    } else {
-                        djRootDisplayName(shownUri)
+                    val shownLocation by produceState(
+                        initialValue = if (isGlobalAudioMode) {
+                            mediaCurrentFolder?.folderName ?: globalMusicLabel
+                        } else {
+                            context.getString(R.string.common_ellipsis)
+                        },
+                        isGlobalAudioMode,
+                        mediaCurrentFolder,
+                        globalMusicLabel,
+                        shownUri
+                    ) {
+                        value = if (isGlobalAudioMode) {
+                            mediaCurrentFolder?.folderName ?: globalMusicLabel
+                        } else {
+                            withContext(Dispatchers.IO) { djRootDisplayName(shownUri) }
+                        }
                     }
                     Text(
                         text = shownLocation,

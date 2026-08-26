@@ -178,10 +178,13 @@ class LibraryBackendSaf(
                 onIndexAll(idx)
             },
             onEntries = {
-                // DJ reste hors index bibliothèque, donc on reconstruit l'affichage dossier via listFolder.
-                onEntries(listFolder(folderToShow, latestIndex, djReason))
+                // Reconstruit ci-dessous hors du thread principal.
             }
         )
+        val visibleEntries = withContext(Dispatchers.IO) {
+            listFolder(folderToShow, latestIndex, djReason)
+        }
+        onEntries(visibleEntries)
     }
 
     override fun listFolder(
@@ -234,13 +237,13 @@ class LibraryBackendSaf(
         pickedUris: List<Uri>,
         destFolderUri: Uri?,
         currentFolderUri: Uri?
-    ): Uri? {
+    ): Uri? = withContext(Dispatchers.IO) {
         val folders = ensureWorkspaceLibraryFolders(
             context = context,
             providedSnapshot = resolvedWorkspaceSnapshot,
             expectedMode = StorageModePrefs.Mode.SAF,
             stage = "library_backend_saf:import_audio"
-        ) ?: return null
+        ) ?: return@withContext null
         val root = folders.rootUri
         val rawDest = destFolderUri ?: currentFolderUri ?: root
         val destFolder = resolveAudioImportTarget(
@@ -256,7 +259,7 @@ class LibraryBackendSaf(
             overwriteIfExists = false
         )
 
-        return destFolder
+        destFolder
     }
 
     private fun resolveAudioImportTarget(
@@ -306,7 +309,7 @@ class LibraryBackendSaf(
         destUri: Uri,
         indexAll: List<LibraryIndexCache.CachedEntry>,
         onProgress: (Float?, String?) -> Unit
-    ): MoveResult {
+    ): MoveResult = withContext(Dispatchers.IO) {
         val srcDoc = resolveDocument(srcUri)
         if (srcDoc?.isDirectory == true) {
             val rootTree = resolveUsableWorkspaceSnapshot(
@@ -314,26 +317,25 @@ class LibraryBackendSaf(
                 providedSnapshot = resolvedWorkspaceSnapshot,
                 expectedMode = StorageModePrefs.Mode.SAF,
                 stage = "library_backend_saf:move_dir"
-            )?.workspaceRootUri ?: return MoveResult(false)
+            )?.workspaceRootUri ?: return@withContext MoveResult(false)
             val destFixed = asTreeDocumentUri(rootTree, destUri)
-            val destDir = resolveDocument(destFixed) ?: return MoveResult(false)
-            if (!destDir.isDirectory) return MoveResult(false)
-            if (isInsideTree(destDir.uri, srcDoc.uri)) return MoveResult(false)
+            val destDir = resolveDocument(destFixed) ?: return@withContext MoveResult(false)
+            if (!destDir.isDirectory) return@withContext MoveResult(false)
+            if (isInsideTree(destDir.uri, srcDoc.uri)) return@withContext MoveResult(false)
 
-            return withContext(Dispatchers.IO) {
-                mainHandler.post { onProgress(null, "Déplacement…") }
-                val copied = copyDocumentEntryRecursively(srcDoc, destDir) ?: return@withContext MoveResult(false)
-                val deleted = deleteDocumentRecursively(srcDoc)
-                if (deleted) {
-                    MoveResult(ok = true, newUri = copied.uri)
-                } else {
-                    deleteDocumentRecursively(copied)
-                    MoveResult(false)
-                }
+            mainHandler.post { onProgress(null, "Déplacement…") }
+            val copied = copyDocumentEntryRecursively(srcDoc, destDir)
+                ?: return@withContext MoveResult(false)
+            val deleted = deleteDocumentRecursively(srcDoc)
+            return@withContext if (deleted) {
+                MoveResult(ok = true, newUri = copied.uri)
+            } else {
+                deleteDocumentRecursively(copied)
+                MoveResult(false)
             }
         }
 
-        return libraryMoveOneFile(
+        libraryMoveOneFile(
             context = context,
             mainHandler = mainHandler,
             srcUri = srcUri,
@@ -349,7 +351,7 @@ class LibraryBackendSaf(
         destUri: Uri,
         indexAll: List<LibraryIndexCache.CachedEntry>,
         onProgress: (Float?, String?) -> Unit
-    ): MoveResult {
+    ): MoveResult = withContext(Dispatchers.IO) {
         val srcDoc = resolveDocument(srcUri)
         if (srcDoc?.isDirectory == true) {
             val rootTree = resolveUsableWorkspaceSnapshot(
@@ -357,20 +359,18 @@ class LibraryBackendSaf(
                 providedSnapshot = resolvedWorkspaceSnapshot,
                 expectedMode = StorageModePrefs.Mode.SAF,
                 stage = "library_backend_saf:copy_dir"
-            )?.workspaceRootUri ?: return MoveResult(false)
+            )?.workspaceRootUri ?: return@withContext MoveResult(false)
             val destFixed = asTreeDocumentUri(rootTree, destUri)
-            val destDir = resolveDocument(destFixed) ?: return MoveResult(false)
-            if (!destDir.isDirectory) return MoveResult(false)
-            if (isInsideTree(destDir.uri, srcDoc.uri)) return MoveResult(false)
+            val destDir = resolveDocument(destFixed) ?: return@withContext MoveResult(false)
+            if (!destDir.isDirectory) return@withContext MoveResult(false)
+            if (isInsideTree(destDir.uri, srcDoc.uri)) return@withContext MoveResult(false)
 
-            return withContext(Dispatchers.IO) {
-                mainHandler.post { onProgress(null, "Copie…") }
-                val copied = copyDocumentEntryRecursively(srcDoc, destDir)
-                MoveResult(ok = copied != null, newUri = copied?.uri)
-            }
+            mainHandler.post { onProgress(null, "Copie…") }
+            val copied = copyDocumentEntryRecursively(srcDoc, destDir)
+            return@withContext MoveResult(ok = copied != null, newUri = copied?.uri)
         }
 
-        return libraryCopyOneFile(
+        libraryCopyOneFile(
             context = context,
             mainHandler = mainHandler,
             srcUri = srcUri,
