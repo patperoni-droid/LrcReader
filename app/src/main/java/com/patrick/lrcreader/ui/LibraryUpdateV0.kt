@@ -174,6 +174,28 @@ internal fun libraryUpdateReferenceAfterBackup(
 internal fun isLibraryUpdateAvailable(reference: LibraryUpdateReference?): Boolean =
     reference != null
 
+internal fun isLibraryBackupUpdateNeeded(
+    reference: LibraryUpdateReference,
+    runtimeSongs: List<SongUnit>,
+    calculateFingerprint: (SongUnit, SmpFamilyAudioHashCache?) -> SmpFamilyFingerprintResult?,
+    isArchiveOwnedBySong: (archiveUri: String, songId: String) -> Boolean = { _, _ -> true }
+): Boolean = runtimeSongs
+    .asSequence()
+    .filter { it.arrangementSourceSongId == null }
+    .distinctBy { it.id.trim() }
+    .filter { it.id.isNotBlank() }
+    .any { song ->
+        val songId = song.id.trim()
+        val archiveUri = reference.archivesBySongId[songId]
+        val previousAudioHash = reference.audioHashesBySongId[songId]
+        val runtimeFingerprint = calculateFingerprint(song, previousAudioHash)
+        archiveUri == null ||
+            !isArchiveOwnedBySong(archiveUri, songId) ||
+            runtimeFingerprint == null ||
+            reference.fingerprintsBySongId[songId] != runtimeFingerprint.fingerprint ||
+            previousAudioHash != runtimeFingerprint.audioHashCache
+    }
+
 internal data class LibraryUpdateResult(
     val reference: LibraryUpdateReference,
     val updatedCount: Int,

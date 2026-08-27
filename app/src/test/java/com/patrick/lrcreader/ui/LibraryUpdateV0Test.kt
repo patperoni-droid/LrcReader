@@ -434,6 +434,71 @@ class LibraryUpdateV0Test {
     }
 
     @Test
+    fun matchingFamilyFingerprintNeedsNoBackupUpdate() {
+        val unchanged = fingerprint("parent", 'a')
+        val reference = reference(
+            archives = mapOf("parent" to "content://backup/parent.smp"),
+            fingerprints = mapOf("parent" to unchanged.fingerprint),
+            audioHashes = mapOf("parent" to requireNotNull(unchanged.audioHashCache))
+        )
+
+        assertFalse(
+            isLibraryBackupUpdateNeeded(
+                reference = reference,
+                runtimeSongs = listOf(song("parent")),
+                calculateFingerprint = { _, _ -> unchanged }
+            )
+        )
+    }
+
+    @Test
+    fun changedOrMissingFamilyNeedsBackupUpdate() {
+        val previous = fingerprint("parent", 'a')
+        val changed = fingerprint("parent", 'b')
+        val reference = reference(
+            archives = mapOf("parent" to "content://backup/parent.smp"),
+            fingerprints = mapOf("parent" to previous.fingerprint),
+            audioHashes = mapOf("parent" to requireNotNull(previous.audioHashCache))
+        )
+
+        assertTrue(
+            isLibraryBackupUpdateNeeded(
+                reference = reference,
+                runtimeSongs = listOf(song("parent")),
+                calculateFingerprint = { _, _ -> changed }
+            )
+        )
+        assertTrue(
+            isLibraryBackupUpdateNeeded(
+                reference = reference,
+                runtimeSongs = listOf(song("parent"), song("new-parent")),
+                calculateFingerprint = { song, _ ->
+                    if (song.id == "parent") previous else changed
+                }
+            )
+        )
+    }
+
+    @Test
+    fun missingOrForeignBackupArchiveNeedsUpdate() {
+        val unchanged = fingerprint("parent", 'a')
+        val reference = reference(
+            archives = mapOf("parent" to "content://backup/parent.smp"),
+            fingerprints = mapOf("parent" to unchanged.fingerprint),
+            audioHashes = mapOf("parent" to requireNotNull(unchanged.audioHashCache))
+        )
+
+        assertTrue(
+            isLibraryBackupUpdateNeeded(
+                reference = reference,
+                runtimeSongs = listOf(song("parent")),
+                calculateFingerprint = { _, _ -> unchanged },
+                isArchiveOwnedBySong = { _, _ -> false }
+            )
+        )
+    }
+
+    @Test
     fun changedFamilyIsExportedAndItsFingerprintIsReplaced() {
         val gateway = FakeGateway(mapOf("archive-old" to "parent"))
         val old = fingerprint("parent", 'a')
@@ -456,6 +521,14 @@ class LibraryUpdateV0Test {
         assertEquals(listOf("parent"), gateway.publishedSongs.map(SongUnit::id))
         assertEquals(changed.fingerprint, result.reference.fingerprintsBySongId["parent"])
         assertEquals(changed.audioHashCache, result.reference.audioHashesBySongId["parent"])
+        assertFalse(
+            isLibraryBackupUpdateNeeded(
+                reference = result.reference,
+                runtimeSongs = listOf(song("parent")),
+                calculateFingerprint = { _, _ -> changed },
+                isArchiveOwnedBySong = gateway::isArchiveOwnedBySong
+            )
+        )
     }
 
     @Test

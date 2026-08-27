@@ -555,6 +555,7 @@ private fun MoreRootScreen(
     var libraryUpdateReference by remember {
         mutableStateOf(LibraryUpdateReferenceStore.load(context))
     }
+    var libraryBackupUpdateNeeded by remember { mutableStateOf(false) }
     var isUpdatingLibrary by remember { mutableStateOf(false) }
     var libraryUpdateResultMessage by remember { mutableStateOf<String?>(null) }
     var showExportLiveSongsNameDialog by remember { mutableStateOf(false) }
@@ -623,6 +624,26 @@ private fun MoreRootScreen(
 
     androidx.compose.runtime.LaunchedEffect(tabletExperimentalModeEnabled) {
         tabletExperimentalMode = tabletExperimentalModeEnabled
+    }
+    LaunchedEffect(libraryUpdateReference) {
+        val reference = libraryUpdateReference
+        libraryBackupUpdateNeeded = if (reference == null) {
+            false
+        } else {
+            withContext(Dispatchers.IO) {
+                val runtimeSongs = SmpLibraryScanner(context.applicationContext).listSongs()
+                val fingerprint = SmpFamilyFingerprint()
+                val gateway = SafLibraryUpdateArchiveGateway(context.applicationContext)
+                isLibraryBackupUpdateNeeded(
+                    reference = reference,
+                    runtimeSongs = runtimeSongs,
+                    calculateFingerprint = { song, cachedAudio ->
+                        fingerprint.calculate(context.applicationContext, song, cachedAudio)
+                    },
+                    isArchiveOwnedBySong = gateway::isArchiveOwnedBySong
+                )
+            }
+        }
     }
 
     val currentLanguageLabel = when (selectedLanguageTag) {
@@ -1127,12 +1148,19 @@ private fun MoreRootScreen(
                             showExportLiveSongsNameDialog = true
                         }
                     )
-                    libraryUpdateReference
-                        ?.takeIf { isLibraryUpdateAvailable(it) }
-                        ?.let { reference ->
+                    libraryUpdateReference?.let { reference ->
                         SettingsItem(
                             icon = Icons.Filled.Sync,
-                            label = stringResource(R.string.more_item_update_library),
+                            label = stringResource(
+                                if (libraryBackupUpdateNeeded) {
+                                    R.string.more_item_update_library
+                                } else {
+                                    R.string.more_item_library_backup_up_to_date
+                                }
+                            ),
+                            enabled = libraryBackupUpdateNeeded &&
+                                !isExportingLiveSongs &&
+                                !isUpdatingLibrary,
                             onClick = {
                                 if (isExportingLiveSongs || isUpdatingLibrary) return@SettingsItem
                                 if (isLite) {
@@ -1194,6 +1222,8 @@ private fun MoreRootScreen(
                                         )
                                     }
                                     libraryUpdateReference = result.reference
+                                    libraryBackupUpdateNeeded = result.folderInaccessible ||
+                                        result.failedCount > 0
                                     libraryUpdateResultMessage = if (result.folderInaccessible) {
                                         context.getString(R.string.more_library_update_inaccessible)
                                     } else {
@@ -1984,20 +2014,24 @@ private fun SettingsItem(
     value: String? = null,
     helpText: String? = subtitle,
     onHelpClick: (String) -> Unit = {},
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Row(
         Modifier
             .fillMaxWidth()
             .height(SettingsMainRowHeight)
-            .clickable(onClick = onClick)
+            .clickable(enabled = enabled, onClick = onClick)
             .padding(horizontal = SettingsMainRowHorizontalPadding),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        SettingsLeadingIcon(icon)
+        SettingsLeadingIcon(
+            icon = icon,
+            tint = if (enabled) Color(0xFFB0BEC5) else Color(0xFF616161)
+        )
         Text(
             text = label,
-            color = Color(0xFFF5F5F5),
+            color = if (enabled) Color(0xFFF5F5F5) else Color(0xFF757575),
             fontSize = 14.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -2335,11 +2369,14 @@ private val SettingsMainRowHorizontalPadding = 14.dp
 private val SettingsMainRowIconSpacing = 16.dp
 
 @Composable
-private fun SettingsLeadingIcon(icon: ImageVector) {
+private fun SettingsLeadingIcon(
+    icon: ImageVector,
+    tint: Color = Color(0xFFB0BEC5)
+) {
     Icon(
         imageVector = icon,
         contentDescription = null,
-        tint = Color(0xFFB0BEC5),
+        tint = tint,
         modifier = Modifier
             .width(24.dp)
             .height(24.dp)
