@@ -9,6 +9,9 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
@@ -28,6 +32,7 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -99,6 +104,16 @@ internal suspend fun persistManualLyricsSave(
     return persisted
 }
 
+internal suspend fun showTemporaryLyricsSaveConfirmation(
+    durationMs: Long = LYRICS_SAVE_CONFIRMATION_DURATION_MS,
+    wait: suspend (Long) -> Unit = { delay(it) },
+    onVisibilityChange: (Boolean) -> Unit
+) {
+    onVisibilityChange(true)
+    wait(durationMs)
+    onVisibilityChange(false)
+}
+
 internal object LyricsEditorPersistenceBarrier {
     private val pendingFlushes = linkedSetOf<Deferred<Boolean>>()
     private val activeFlushes = linkedMapOf<Any, suspend () -> Boolean>()
@@ -143,6 +158,7 @@ private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
 private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
 private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
 private const val LYRICS_AUTOSAVE_CRASH_DIAG_TAG = "LYRICS_AUTOSAVE_CRASH_DIAG"
+private const val LYRICS_SAVE_CONFIRMATION_DURATION_MS = 1_800L
 
 internal fun lyricsPersistenceSignature(rawText: String, lines: List<LrcLine>): String =
     buildString {
@@ -246,6 +262,8 @@ fun LyricsEditorSection(
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
     var isPersistBusy by remember { mutableStateOf(false) }
+    var saveConfirmationRequestToken by remember { mutableIntStateOf(0) }
+    var showSaveConfirmation by remember { mutableStateOf(false) }
     var showTimingsInLyricsTab by remember(currentTrackUri) { mutableStateOf(false) }
     var rawTextFieldValue by remember(currentTrackUri, showChordPalette) {
         mutableStateOf(
@@ -278,6 +296,12 @@ fun LyricsEditorSection(
     var showChordHelpDialog by remember { mutableStateOf(false) }
     var lastAutoSavedLyricsSignature by remember(currentTrackUri, showChordPalette) { mutableStateOf<String?>(null) }
     val displayedPalette = paletteChords
+    LaunchedEffect(saveConfirmationRequestToken) {
+        if (saveConfirmationRequestToken == 0) return@LaunchedEffect
+        showTemporaryLyricsSaveConfirmation { isVisible ->
+            showSaveConfirmation = isVisible
+        }
+    }
     LaunchedEffect(tabletLineEditFocusActive) {
         onTabletFocusModeChange(
             if (tabletLineEditFocusActive) {
@@ -804,7 +828,7 @@ fun LyricsEditorSection(
             persistManualLyricsSave(
                 persist = { persistCurrentDraft(closeAfterSave = false) },
                 onSuccess = {
-                    Toast.makeText(context, lyricsSavedMessage, Toast.LENGTH_SHORT).show()
+                    saveConfirmationRequestToken++
                 }
             )
         }
@@ -948,11 +972,12 @@ fun LyricsEditorSection(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 6.dp)
+        ) {
         if (showEditorHintDialog || showChordHelpDialog) {
             val isManualChordHelp = showChordHelpDialog && showChordPalette
             AlertDialog(
@@ -1606,9 +1631,44 @@ fun LyricsEditorSection(
             }     // <-- ferme "1 -> {"
         }         // <-- ferme when
 
-        Spacer(Modifier.height(8.dp))
-        playbackControlContent()
-    }             // <-- ferme Column principale
+            Spacer(Modifier.height(8.dp))
+            playbackControlContent()
+        }         // <-- ferme Column principale
+
+        AnimatedVisibility(
+            visible = showSaveConfirmation,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 58.dp, end = 16.dp),
+            enter = fadeIn(),
+            exit = fadeOut()
+        ) {
+            Surface(
+                color = Color(0xFF173D34),
+                contentColor = Color(0xFFB9F6CA),
+                shape = RoundedCornerShape(18.dp),
+                tonalElevation = 4.dp,
+                shadowElevation = 4.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = Color(0xFF80CBC4)
+                    )
+                    Text(
+                        text = lyricsSavedMessage,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
+    }             // <-- ferme Box principale
 }                 // <-- ferme composable
 // ─────────────────────────────
 //  FONCTIONS UTILITAIRES

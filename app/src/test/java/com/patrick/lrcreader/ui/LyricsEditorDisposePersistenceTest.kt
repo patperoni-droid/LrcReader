@@ -4,11 +4,26 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.yield
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LyricsEditorDisposePersistenceTest {
+
+    @Test
+    fun saveConfirmationBecomesVisibleThenDismissesAutomatically() = runBlocking {
+        val visibilityChanges = mutableListOf<Boolean>()
+        var waitedDurationMs = 0L
+
+        showTemporaryLyricsSaveConfirmation(
+            wait = { durationMs -> waitedDurationMs = durationMs },
+            onVisibilityChange = visibilityChanges::add
+        )
+
+        assertEquals(listOf(true, false), visibilityChanges)
+        assertEquals(1_800L, waitedDurationMs)
+    }
 
     @Test
     fun changedLyricsAreFlushedWhenEditorLeavesComposition() {
