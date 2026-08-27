@@ -630,19 +630,24 @@ private fun MoreRootScreen(
         libraryBackupUpdateNeeded = if (reference == null) {
             false
         } else {
-            withContext(Dispatchers.IO) {
-                val runtimeSongs = SmpLibraryScanner(context.applicationContext).listSongs()
-                val fingerprint = SmpFamilyFingerprint()
-                val gateway = SafLibraryUpdateArchiveGateway(context.applicationContext)
-                isLibraryBackupUpdateNeeded(
-                    reference = reference,
-                    runtimeSongs = runtimeSongs,
-                    calculateFingerprint = { song, cachedAudio ->
-                        fingerprint.calculate(context.applicationContext, song, cachedAudio)
-                    },
-                    isArchiveOwnedBySong = gateway::isArchiveOwnedBySong
-                )
-            }
+            detectLibraryBackupUpdateNeededAfterPendingWrites(
+                awaitPendingWrites = LyricsEditorPersistenceBarrier::awaitPending,
+                detectPersistedChanges = {
+                    withContext(Dispatchers.IO) {
+                        val runtimeSongs = SmpLibraryScanner(context.applicationContext).listSongs()
+                        val fingerprint = SmpFamilyFingerprint()
+                        val gateway = SafLibraryUpdateArchiveGateway(context.applicationContext)
+                        isLibraryBackupUpdateNeeded(
+                            reference = reference,
+                            runtimeSongs = runtimeSongs,
+                            calculateFingerprint = { song, cachedAudio ->
+                                fingerprint.calculate(context.applicationContext, song, cachedAudio)
+                            },
+                            isArchiveOwnedBySong = gateway::isArchiveOwnedBySong
+                        )
+                    }
+                }
+            )
         }
     }
 

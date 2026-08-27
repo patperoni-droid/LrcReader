@@ -40,7 +40,7 @@ import java.util.zip.ZipFile
 class LibraryUpdateLyricsRoundTripTest {
 
     @Test
-    fun updateThenRestore_usesLatestParentAndVariantLyricsOnly() = runBlocking {
+    fun lyricsEdit_marksBackupDirtyThenUpdateRestoresCleanStateAndLatestLyrics() = runBlocking {
         val root = Files.createTempDirectory(TEMP_PREFIX).toFile()
         val filesDir = root.resolve("files").apply { mkdirs() }
         val cacheDir = root.resolve("cache").apply { mkdirs() }
@@ -155,11 +155,34 @@ class LibraryUpdateLyricsRoundTripTest {
             assertEquals(1, unchangedUpdate.unchangedCount)
             assertEquals(publishedAfterFirstUpdate, gateway.publishedCount)
 
-            writeLyrics(tracksRoot.resolve(PARENT_ID), THIRD_LRC, THIRD_RAW)
+            val pendingLyricsFlush = LyricsEditorPersistenceBarrier.registerActive {
+                writeLyrics(tracksRoot.resolve(PARENT_ID), THIRD_LRC, THIRD_RAW)
+                true
+            }
+            val dirtyAfterLyricsEdit = try {
+                detectLibraryBackupUpdateNeededAfterPendingWrites(
+                    awaitPendingWrites = LyricsEditorPersistenceBarrier::awaitPending,
+                    detectPersistedChanges = {
+                        detectUpdateNeeded(context, gateway, reference)
+                    }
+                )
+            } finally {
+                LyricsEditorPersistenceBarrier.unregisterActive(pendingLyricsFlush)
+            }
+            assertTrue(dirtyAfterLyricsEdit)
+
             val secondUpdate = runUpdate(context, gateway, reference) { reference = it }
 
             assertEquals(1, secondUpdate.updatedCount)
             assertEquals(0, secondUpdate.failedCount)
+            assertFalse(
+                detectLibraryBackupUpdateNeededAfterPendingWrites(
+                    awaitPendingWrites = LyricsEditorPersistenceBarrier::awaitPending,
+                    detectPersistedChanges = {
+                        detectUpdateNeeded(context, gateway, reference)
+                    }
+                )
+            )
             assertEquals(1, activeArchives(backupDir, PARENT_ID).size)
             assertArchiveLyrics(
                 File(reference.archivesBySongId.getValue(PARENT_ID)),
@@ -228,6 +251,22 @@ class LibraryUpdateLyricsRoundTripTest {
                 fingerprint.calculate(context, song, cachedAudio)
             },
             saveReference = { next -> save(next); true }
+        )
+    }
+
+    private fun detectUpdateNeeded(
+        context: Context,
+        gateway: RealArchiveGateway,
+        reference: LibraryUpdateReference
+    ): Boolean {
+        val fingerprint = SmpFamilyFingerprint()
+        return isLibraryBackupUpdateNeeded(
+            reference = reference,
+            runtimeSongs = SmpLibraryScanner(context).listSongs(),
+            calculateFingerprint = { song, cachedAudio ->
+                fingerprint.calculate(context, song, cachedAudio)
+            },
+            isArchiveOwnedBySong = gateway::isArchiveOwnedBySong
         )
     }
 
@@ -352,6 +391,13 @@ class LibraryUpdateLyricsRoundTripTest {
 
         override fun isFolderWritable(reference: LibraryUpdateReference): Boolean = backupDir.isDirectory
 
+        override fun isArchiveOwnedBySong(archiveUri: String, songId: String): Boolean {
+            val archive = File(archiveUri)
+            return archive.isFile && archive.inputStream().use {
+                SmpArchiveSongIdResolver.readStableSongId(it)
+            } == songId
+        }
+
         override fun publishFamily(reference: LibraryUpdateReference, song: SongUnit): String? {
             publishedCount += 1
             val current = SmpLibraryScanner(context).findSongById(song.id) ?: return null
@@ -362,10 +408,7 @@ class LibraryUpdateLyricsRoundTripTest {
 
         override fun deleteArchiveIfOwnedBySong(archiveUri: String, songId: String): Boolean {
             val archive = File(archiveUri)
-            val owned = archive.isFile && archive.inputStream().use {
-                SmpArchiveSongIdResolver.readStableSongId(it)
-            } == songId
-            return owned && archive.delete()
+            return isArchiveOwnedBySong(archiveUri, songId) && archive.delete()
         }
     }
 

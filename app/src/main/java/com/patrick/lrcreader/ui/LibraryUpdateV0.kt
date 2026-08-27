@@ -196,6 +196,15 @@ internal fun isLibraryBackupUpdateNeeded(
             previousAudioHash != runtimeFingerprint.audioHashCache
     }
 
+internal suspend fun detectLibraryBackupUpdateNeededAfterPendingWrites(
+    awaitPendingWrites: suspend () -> Boolean,
+    detectPersistedChanges: suspend () -> Boolean
+): Boolean = if (awaitPendingWrites()) {
+    detectPersistedChanges()
+} else {
+    true
+}
+
 internal data class LibraryUpdateResult(
     val reference: LibraryUpdateReference,
     val updatedCount: Int,
