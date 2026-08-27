@@ -41,7 +41,7 @@
 
     <string name="dj_hint_first_scan">El modo DJ usa siempre la carpeta %1$s.</string>
     <string name="dj_authorize_title">Autorizar carpeta DJ</string>
-    <string name="dj_authorize_body">El modo DJ usa la carpeta obligatoria de SPL:\n\n%1$s\n\nColoca allí tus pistas DJ y luego autorízala para activar el escaneo automático.</string>
+    <string name="dj_authorize_body">El modo DJ usa la carpeta obligatoria de MusiMio:\n\n%1$s\n\nColoca allí tus pistas DJ y luego autorízala para activar el escaneo automático.</string>
     <string name="dj_empty_title">No se encontraron pistas DJ</string>
     <string name="dj_empty_body">No se encontraron pistas DJ en:\n\n%1$s\n\nAñade tus archivos DJ a esa carpeta y vuelve a la pantalla DJ. La app volverá a escanear automáticamente si el contenido cambió.</string>
     <string name="dj_empty_global_body">No se encontraron archivos de audio en %1$s.\n\nComprueba el acceso a la música o vuelve a escanear.</string>
@@ -450,9 +450,9 @@
     <string name="setup_workspace_unavailable_title">Esta carpeta no funcionará</string>
     <string name="setup_workspace_unavailable_message">Vuelve a intentarlo desde el selector de Android y elige una carpeta de trabajo accesible.</string>
     <string name="setup_workspace_prepare_error">No se pudo preparar esta carpeta de trabajo.</string>
-    <string name="setup_documents_folder_explainer">SPL creará y usará esta carpeta:\nDocuments / SPL_Music</string>
+    <string name="setup_documents_folder_explainer">MusiMio creará y usará esta carpeta:\nDocuments / SPL_Music</string>
     <string name="setup_allow_documents">Permitir Documents</string>
-    <string name="setup_control_hint">Tienes el control: SPL solo usa su propia carpeta.</string>
+    <string name="setup_control_hint">Tienes el control: MusiMio solo usa su propia carpeta.</string>
     <string name="setup_downloads_blocked_title">Tu teléfono bloquea Downloads</string>
     <string name="setup_downloads_blocked_message">Este teléfono no te permite volver a subir hasta Documents.\n\n✅ Solución: cambia al modo interno (confiable en teléfonos antiguos).\n➡️ Sin impacto en tu teléfono principal.</string>
     <string name="setup_continue_internal_mode">Continuar (modo interno)</string>

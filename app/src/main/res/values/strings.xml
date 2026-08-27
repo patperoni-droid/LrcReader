@@ -373,7 +373,7 @@
     <string name="library_convert_smp_no_mp3">Aucun fichier audio compatible à convertir dans ce dossier</string>
     <string name="library_convert_smp_folder_summary">%1$d morceau(x) migré(s) au format .smp, %2$d échec(s)</string>
     <string name="smp_batch_notice_title">Préparation live nécessaire</string>
-    <string name="smp_batch_notice_line_1">SPL doit préparer ces morceaux pour le live.</string>
+    <string name="smp_batch_notice_line_1">MusiMio doit préparer ces morceaux pour le live.</string>
     <string name="smp_batch_notice_line_2">Cette étape est nécessaire uniquement la première fois.</string>
     <string name="smp_batch_notice_line_3">Cela peut prendre quelques instants.</string>
     <string name="smp_batch_notice_hide_next_time">Ne plus afficher</string>
@@ -627,9 +627,9 @@
     <string name="setup_choose_another_workspace">Choisir un autre dossier</string>
     <string name="setup_workspace_recommended_error">Impossible d’ouvrir le dossier recommandé.</string>
     <string name="setup_workspace_prepare_error">Impossible de préparer ce dossier de travail.</string>
-    <string name="setup_documents_folder_explainer">SPL va créer et utiliser ce dossier :\nDocuments / SPL_Music</string>
+    <string name="setup_documents_folder_explainer">MusiMio va créer et utiliser ce dossier :\nDocuments / SPL_Music</string>
     <string name="setup_allow_documents">Autoriser Documents</string>
-    <string name="setup_control_hint">Tu gardes le contrôle : SPL ne touche qu’à son dossier.</string>
+    <string name="setup_control_hint">Tu gardes le contrôle : MusiMio ne touche qu’à son dossier.</string>
     <string name="setup_downloads_blocked_title">Ton téléphone bloque sur Téléchargements</string>
     <string name="setup_downloads_blocked_message">Ce téléphone ne te laisse pas remonter vers Documents.\n\n✅ Solution : passer en mode interne (fiable sur vieux téléphones).\n➡️ Aucun impact sur ton téléphone principal.</string>
     <string name="setup_continue_internal_mode">Continuer (mode interne)</string>

@@ -381,7 +381,7 @@
     <string name="library_convert_smp_no_mp3">No compatible audio file to convert in this folder.</string>
     <string name="library_convert_smp_folder_summary">%1$d track(s) migrated to .smp format, %2$d failure(s)</string>
     <string name="smp_batch_notice_title">Live preparation required</string>
-    <string name="smp_batch_notice_line_1">SPL needs to prepare these tracks for live use.</string>
+    <string name="smp_batch_notice_line_1">MusiMio needs to prepare these tracks for live use.</string>
     <string name="smp_batch_notice_line_2">This step is only required the first time.</string>
     <string name="smp_batch_notice_line_3">It may take a few moments.</string>
     <string name="smp_batch_notice_hide_next_time">Do not show again</string>
@@ -501,9 +501,9 @@
     <string name="setup_choose_another_workspace">Choose another folder</string>
     <string name="setup_workspace_recommended_error">Could not open the recommended folder.</string>
     <string name="setup_workspace_prepare_error">Could not prepare this work folder.</string>
-    <string name="setup_documents_folder_explainer">SPL will create and use this folder:\nDocuments / SPL_Music</string>
+    <string name="setup_documents_folder_explainer">MusiMio will create and use this folder:\nDocuments / SPL_Music</string>
     <string name="setup_allow_documents">Allow Documents</string>
-    <string name="setup_control_hint">You stay in control: SPL only touches its own folder.</string>
+    <string name="setup_control_hint">You stay in control: MusiMio only touches its own folder.</string>
     <string name="setup_downloads_blocked_title">Your phone blocks Downloads</string>
     <string name="setup_downloads_blocked_message">This phone does not let you go back up to Documents.\n\n✅ Solution: switch to internal mode (reliable on older phones).\n➡️ No impact on your main phone.</string>
     <string name="setup_continue_internal_mode">Continue (internal mode)</string>
