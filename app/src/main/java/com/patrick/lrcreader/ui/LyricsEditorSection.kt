@@ -90,6 +90,15 @@ internal fun shouldFlushLyricsDraftOnEditorDispose(
     lastPersistedSignature != null &&
     lastPersistedSignature != currentSignature
 
+internal suspend fun persistManualLyricsSave(
+    persist: suspend () -> Boolean,
+    onSuccess: () -> Unit
+): Boolean {
+    val persisted = persist()
+    if (persisted) onSuccess()
+    return persisted
+}
+
 internal object LyricsEditorPersistenceBarrier {
     private val pendingFlushes = linkedSetOf<Deferred<Boolean>>()
     private val activeFlushes = linkedMapOf<Any, suspend () -> Boolean>()
@@ -232,6 +241,7 @@ fun LyricsEditorSection(
     BackHandler(onBack = onCloseEditor)
 
     val context = LocalContext.current
+    val lyricsSavedMessage = stringResource(R.string.lyrics_editor_saved_confirmation)
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
     val lazyListState = rememberLazyListState()
@@ -790,7 +800,14 @@ fun LyricsEditorSection(
 
     // 🔹 Enregistrer
     fun handleSave() {
-        scope.launch { persistCurrentDraft(closeAfterSave = false) }
+        scope.launch {
+            persistManualLyricsSave(
+                persist = { persistCurrentDraft(closeAfterSave = false) },
+                onSuccess = {
+                    Toast.makeText(context, lyricsSavedMessage, Toast.LENGTH_SHORT).show()
+                }
+            )
+        }
     }
 
     val autoSaveLyricsLines = remember(

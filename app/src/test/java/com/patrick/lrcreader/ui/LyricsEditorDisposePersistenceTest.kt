@@ -83,4 +83,36 @@ class LyricsEditorDisposePersistenceTest {
 
         assertFalse(LyricsEditorPersistenceBarrier.awaitPending())
     }
+
+    @Test
+    fun manualValidationConfirmsOnlyAfterPersistenceSucceeds() = runBlocking {
+        val persistence = CompletableDeferred<Boolean>()
+        var confirmationShown = false
+        val save = launch {
+            persistManualLyricsSave(
+                persist = { persistence.await() },
+                onSuccess = { confirmationShown = true }
+            )
+        }
+
+        yield()
+        assertFalse(confirmationShown)
+        persistence.complete(true)
+        save.join()
+
+        assertTrue(confirmationShown)
+    }
+
+    @Test
+    fun failedManualValidationNeverShowsSuccessConfirmation() = runBlocking {
+        var confirmationShown = false
+
+        assertFalse(
+            persistManualLyricsSave(
+                persist = { false },
+                onSuccess = { confirmationShown = true }
+            )
+        )
+        assertFalse(confirmationShown)
+    }
 }
