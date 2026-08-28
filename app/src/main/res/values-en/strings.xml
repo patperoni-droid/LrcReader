@@ -822,7 +822,7 @@
     <string name="quickplaylists_menu_insert_group_above">Insert group above</string>
     <string name="quickplaylists_menu_remove_from_group">Remove from group</string>
     <string name="quickplaylists_group_new_default">New group</string>
-    <string name="quickplaylists_group_current">Current group</string>
+    <string name="quickplaylists_group_current">Live</string>
     <string name="quickplaylists_add_track_button">Add tracks</string>
     <string name="quickplaylists_edit_prompter_title">Edit scrolling text</string>
     <string name="quickplaylists_new_prompter_title">New scrolling text</string>

@@ -1778,6 +1778,7 @@ class MainActivity : AppCompatActivity() {
                 var chainIndex by remember { mutableIntStateOf(-1) }
                 var isChaining by remember { mutableStateOf(false) }
                 var chainPlaylist by remember { mutableStateOf<String?>(null) }
+                var liveChainGroupHeaderKey by remember { mutableStateOf<String?>(null) }
                 var backingEndedSignal by remember { mutableIntStateOf(0) }
                 var trimStopJob by remember { mutableStateOf<Job?>(null) }
                 var trimAppliedForThisTrack by remember { mutableStateOf(false) }
@@ -2571,6 +2572,7 @@ class MainActivity : AppCompatActivity() {
                     chainQueue = emptyList()
                     chainIndex = -1
                     chainPlaylist = null
+                    liveChainGroupHeaderKey = null
                 }
 
                 fun applyTempoAndPitchToPlayer(speed: Float, pitchSemi: Int) {
@@ -5785,13 +5787,14 @@ class MainActivity : AppCompatActivity() {
                                             chainQueue = visibleQueue
                                             chainIndex = -1
                                             chainPlaylist = playlistName
+                                            liveChainGroupHeaderKey = null
                                             isChaining = true
                                             val resolvedStart = nextPlayableIndexAtOrAfter(visibleQueue, startIndex)
                                             if (resolvedStart == null || !playChainFrom(resolvedStart)) {
                                                 stopChainPlayback()
                                             }
                                         },
-                                        onArmChainFromCurrent = { visibleQueue, currentIndex, playlistName ->
+                                        onArmLiveChainFromCurrent = { visibleQueue, currentIndex, playlistName, headerKey ->
                                             val resolvedCurrent = nextPlayableIndexAtOrAfter(visibleQueue, currentIndex)
                                             if (resolvedCurrent == null) {
                                                 stopChainPlayback()
@@ -5799,8 +5802,18 @@ class MainActivity : AppCompatActivity() {
                                                 chainQueue = visibleQueue
                                                 chainIndex = resolvedCurrent
                                                 chainPlaylist = playlistName
+                                                liveChainGroupHeaderKey = headerKey
                                                 isChaining = true
                                             }
+                                        },
+                                        onGroupDeleted = { playlistName, headerKey ->
+                                            stopDeletedLiveChainIfOwned(
+                                                chainPlaylist = chainPlaylist,
+                                                liveGroupHeaderKey = liveChainGroupHeaderKey,
+                                                deletedPlaylist = playlistName,
+                                                deletedGroupHeaderKey = headerKey,
+                                                stopChain = ::stopChainPlayback
+                                            )
                                         },
                                         refreshKey = refreshKey,
                                         openPrompterSignal = openPrompterSignal,
@@ -5809,6 +5822,7 @@ class MainActivity : AppCompatActivity() {
                                         nextChainedUri = nextChainedUri,
                                         nextTrackUri = nextTrack?.uri,
                                         isPlaying = isPlaying,
+                                        playbackState = exoPlayer.playbackState,
                                         currentPlayingUri = currentPlayingUri,
                                         currentPlayingPlaylist = currentPlayingPlaylist,
                                         currentPlayingPlaylistItemKey = currentPlayingPlaylistItemKey,
@@ -6481,13 +6495,14 @@ class MainActivity : AppCompatActivity() {
                                         chainQueue = visibleQueue
                                         chainIndex = -1
                                         chainPlaylist = playlistName
+                                        liveChainGroupHeaderKey = null
                                         isChaining = true
                                         val resolvedStart = nextPlayableIndexAtOrAfter(visibleQueue, startIndex)
                                         if (resolvedStart == null || !playChainFrom(resolvedStart)) {
                                             stopChainPlayback()
                                         }
                                     },
-                                    onArmChainFromCurrent = { visibleQueue, currentIndex, playlistName ->
+                                    onArmLiveChainFromCurrent = { visibleQueue, currentIndex, playlistName, headerKey ->
                                         val resolvedCurrent = nextPlayableIndexAtOrAfter(visibleQueue, currentIndex)
                                         if (resolvedCurrent == null) {
                                             stopChainPlayback()
@@ -6495,8 +6510,18 @@ class MainActivity : AppCompatActivity() {
                                             chainQueue = visibleQueue
                                             chainIndex = resolvedCurrent
                                             chainPlaylist = playlistName
+                                            liveChainGroupHeaderKey = headerKey
                                             isChaining = true
                                         }
+                                    },
+                                    onGroupDeleted = { playlistName, headerKey ->
+                                        stopDeletedLiveChainIfOwned(
+                                            chainPlaylist = chainPlaylist,
+                                            liveGroupHeaderKey = liveChainGroupHeaderKey,
+                                            deletedPlaylist = playlistName,
+                                            deletedGroupHeaderKey = headerKey,
+                                            stopChain = ::stopChainPlayback
+                                        )
                                     },
                                     refreshKey = refreshKey,
                                     openPrompterSignal = openPrompterSignal,
@@ -6505,6 +6530,7 @@ class MainActivity : AppCompatActivity() {
                                     nextChainedUri = nextChainedUri,
                                     nextTrackUri = nextTrack?.uri,
                                     isPlaying = isPlaying,
+                                    playbackState = exoPlayer.playbackState,
                                     currentPlayingUri = currentPlayingUri,
                                     currentPlayingPlaylist = currentPlayingPlaylist,
                                     currentPlayingPlaylistItemKey = currentPlayingPlaylistItemKey,

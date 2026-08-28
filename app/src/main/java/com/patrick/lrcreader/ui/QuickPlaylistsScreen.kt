@@ -117,6 +117,7 @@ import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.PlaylistTrackLimitPolicy
 import com.patrick.lrcreader.core.renameGroupHeader
 import com.patrick.lrcreader.core.setGroupColorArgb
+import com.patrick.lrcreader.core.shouldIncludeCurrentTrackInNewLiveList
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
@@ -167,7 +168,8 @@ fun QuickPlaylistsScreen(
     modifier: Modifier = Modifier,
     onPlaySong: (String, String, Color) -> Unit,
     onPlayFromHere: (List<String>, Int, String) -> Unit = { _, _, _ -> },
-    onArmChainFromCurrent: (List<String>, Int, String) -> Unit = { _, _, _ -> },
+    onArmLiveChainFromCurrent: (List<String>, Int, String, String) -> Unit = { _, _, _, _ -> },
+    onGroupDeleted: (String, String) -> Unit = { _, _ -> },
     refreshKey: Int,
     openPrompterSignal: Int = 0,
     libraryLoadedSignal: Int = 0,
@@ -175,6 +177,7 @@ fun QuickPlaylistsScreen(
     nextChainedUri: String? = null,
     nextTrackUri: String? = null,
     isPlaying: Boolean = false,
+    playbackState: Int = androidx.media3.common.Player.STATE_IDLE,
     currentPlayingUri: String? = null,
     currentPlayingPlaylist: String? = null,
     currentPlayingPlaylistItemKey: String? = null,
@@ -1962,7 +1965,13 @@ fun QuickPlaylistsScreen(
                                                         val pl = internalSelected
                                                         if (pl != null) {
                                                             val (headerKey, createdNow) = ensureCurrentGroupHeader(pl)
-                                                            val currentTrackIndex = if (createdNow) {
+                                                            val currentTrackIndex = if (
+                                                                shouldIncludeCurrentTrackInNewLiveList(
+                                                                    createdNow = createdNow,
+                                                                    isPlaying = isPlaying,
+                                                                    playbackState = playbackState
+                                                                )
+                                                            ) {
                                                                 findCurrentPlayingTrackIndexInPlaylist(pl)
                                                             } else {
                                                                 null
@@ -2003,10 +2012,11 @@ fun QuickPlaylistsScreen(
                                                                         }
                                                                     val currentQueueIndex = groupQueue.indexOf(currentGroupedTrack)
                                                                     if (currentQueueIndex >= 0) {
-                                                                        onArmChainFromCurrent(
+                                                                        onArmLiveChainFromCurrent(
                                                                             resolveVariantFamilyPlaybackQueue(groupQueue, variantFamilyById),
                                                                             currentQueueIndex,
-                                                                            pl
+                                                                            pl,
+                                                                            headerKey
                                                                         )
                                                                     }
                                                                 }
@@ -2492,6 +2502,7 @@ fun QuickPlaylistsScreen(
                                                             if (activePlayingGroupHeaderKey == headerKey) {
                                                                 activePlayingGroupHeaderKey = null
                                                             }
+                                                            onGroupDeleted(pl, headerKey)
                                                             persistSongsOrder(pl, overwriteOriginal = true)
                                                         }
                                                     }
@@ -2982,7 +2993,13 @@ fun QuickPlaylistsScreen(
                                                 val pl = internalSelected
                                                 if (pl != null) {
                                                     val (headerKey, createdNow) = ensureCurrentGroupHeader(pl)
-                                                    val currentTrackIndex = if (createdNow) {
+                                                    val currentTrackIndex = if (
+                                                        shouldIncludeCurrentTrackInNewLiveList(
+                                                            createdNow = createdNow,
+                                                            isPlaying = isPlaying,
+                                                            playbackState = playbackState
+                                                        )
+                                                    ) {
                                                         findCurrentPlayingTrackIndexInPlaylist(pl)
                                                     } else {
                                                         null
@@ -3024,10 +3041,11 @@ fun QuickPlaylistsScreen(
                                                                 }
                                                             val currentQueueIndex = groupQueue.indexOf(currentGroupedTrack)
                                                             if (currentQueueIndex >= 0) {
-                                                                onArmChainFromCurrent(
+                                                                onArmLiveChainFromCurrent(
                                                                     resolveVariantFamilyPlaybackQueue(groupQueue, variantFamilyById),
                                                                     currentQueueIndex,
-                                                                    pl
+                                                                    pl,
+                                                                    headerKey
                                                                 )
                                                             }
                                                         }
