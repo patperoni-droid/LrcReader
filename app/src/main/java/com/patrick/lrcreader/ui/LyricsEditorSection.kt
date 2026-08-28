@@ -16,6 +16,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -84,6 +86,16 @@ import kotlinx.coroutines.yield
 
 private val INLINE_LRC_TIME_TAG_REGEX =
     Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
+
+@OptIn(ExperimentalFoundationApi::class)
+private val preserveLyricsEditorViewportOnFocus = object : BringIntoViewSpec {
+    // CoreTextField requests the stale selection before the tap updates the cursor position.
+    override fun calculateScrollDistance(
+        offset: Float,
+        size: Float,
+        containerSize: Float
+    ): Float = 0f
+}
 
 internal fun shouldFlushLyricsDraftOnEditorDispose(
     currentTrackUri: String?,
@@ -1182,39 +1194,43 @@ fun LyricsEditorSection(
                             }
                         )
                     } else {
-                        OutlinedTextField(
-                            value = rawTextFieldValue,
-                            onValueChange = { value ->
-                                if (rawContainsLrcTimestamps(value.text)) {
-                                    val parsed = parseLrc(value.text).filter { it.text.isNotBlank() }
-                                    if (parsed.isNotEmpty()) {
-                                        applyEditingLinesWithUndo(parsed)
+                        CompositionLocalProvider(
+                            LocalBringIntoViewSpec provides preserveLyricsEditorViewportOnFocus
+                        ) {
+                            OutlinedTextField(
+                                value = rawTextFieldValue,
+                                onValueChange = { value ->
+                                    if (rawContainsLrcTimestamps(value.text)) {
+                                        val parsed = parseLrc(value.text).filter { it.text.isNotBlank() }
+                                        if (parsed.isNotEmpty()) {
+                                            applyEditingLinesWithUndo(parsed)
+                                        } else {
+                                            rawTextFieldValue = value
+                                            onRawLyricsTextChange(value.text)
+                                        }
                                     } else {
                                         rawTextFieldValue = value
                                         onRawLyricsTextChange(value.text)
                                     }
-                                } else {
-                                    rawTextFieldValue = value
-                                    onRawLyricsTextChange(value.text)
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f)
-                                .onFocusChanged { focusState ->
-                                    rawTextFieldFocused = focusState.isFocused
                                 },
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                color = Color.White,
-                                fontSize = 16.sp
-                            ),
-                            label = {
-                                Text(
-                                    stringResource(inputLabelRes),
-                                    color = Color.LightGray
-                                )
-                            }
-                        )
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .weight(1f)
+                                    .onFocusChanged { focusState ->
+                                        rawTextFieldFocused = focusState.isFocused
+                                    },
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    color = Color.White,
+                                    fontSize = 16.sp
+                                ),
+                                label = {
+                                    Text(
+                                        stringResource(inputLabelRes),
+                                        color = Color.LightGray
+                                    )
+                                }
+                            )
+                        }
                     }
                 }
             }
