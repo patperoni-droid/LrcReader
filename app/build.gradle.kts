@@ -55,8 +55,8 @@ android {
         applicationId = "com.patrick.lrcreader.exo"
         minSdk = 23
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.4.5-beta"
+        versionCode = 10
+        versionName = "0.4.6-beta"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // ✅ on ship la lib sur arm64 + armeabi-v7a (comme ton tel)
