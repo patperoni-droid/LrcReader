@@ -312,7 +312,7 @@ Implémenté dans l'éditeur canonique partagé :
 - téléphone et tablette enregistrent le modèle V2 uniquement après une modification explicite dans l'éditeur canonique ;
 - les champs d'occurrence V2 participent au hash de synchronisation afin que répétition, mute et couleur soient transférés comme données de l'Arrangement.
 - la Structure est rendue comme une piste horizontale statique et défilable juste au-dessus du `Playback Control` ;
-- sur tablette, chaque bloc affiche son ordre, son nom et sa durée, avec une largeur liée à la durée et une largeur tactile minimale ;
+- sur tablette, chaque bloc affiche son nom sans préfixe automatique de position et sa durée, avec une largeur liée à la durée et une largeur tactile minimale ;
 - sur téléphone, seul le nom est affiché dans le bloc et détermine sa largeur, avec une sécurité tactile discrète de `48 dp` et une limite pour les noms très longs ;
 - la sélection active reste verte, la prochaine occurrence préparée reste jaune et la suppression conserve le comportement existant ;
 - le défilement horizontal est un état d'interface local : il ne modifie ni l'ordre, ni le stockage, ni la lecture audio ;
@@ -404,10 +404,14 @@ Chaque bloc :
 
 Présentation par appareil :
 
-- sur tablette, le bloc affiche l'ordre, le nom et la durée ; sa largeur est liée à la durée
+- sur tablette, le bloc affiche son nom sans préfixe automatique de position et sa durée ; sa largeur est liée à la durée
   et ses contrôles directs restent visibles ;
 - sur téléphone, seul le nom détermine la largeur, avec une sécurité tactile discrète ;
   l'appui long ouvre le menu complet et aucun bouton d'options ou poignée n'occupe le bloc.
+
+Sur les deux appareils, le libellé visible correspond exactement au nom du segment : `Couplet 2`,
+jamais `3. Couplet 2`. L'ordre interne des occurrences reste conservé ; les indications de
+répétition `×N` / `1/N` et les noms initiaux `Segment N` restent inchangés.
 
 La couleur est une information visuelle portable liée à l'occurrence. Elle n'a aucun effet audio et doit survivre à la sauvegarde, à l'export SMP et au transfert entre appareils.
 
