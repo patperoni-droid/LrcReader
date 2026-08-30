@@ -1,66 +1,98 @@
 # Créer un Arrangement et ses variantes
 
-Arrangement permet de construire une autre structure à partir d’un morceau existant : raccourcir une introduction, répéter un refrain, masquer une section ou réordonner des passages. L’audio source n’est pas réécrit.
+Arrangement permet de préparer une autre version d’un morceau pour la scène : raccourcir une introduction, répéter un refrain, masquer une partie ou changer l’ordre des passages. Le fichier audio d’origine n’est pas modifié.
 
-## Comprendre les variantes
+## Comprendre les segments et la Structure
 
-Une variante Arrangement appartient à la famille de son morceau parent. Elle réutilise son audio, mais possède sa propre Structure et peut conserver ses propres paroles, accords et réglages associés.
+Un **segment** est une partie du morceau, par exemple une intro, un couplet, un refrain ou un solo. Ses points IN et OUT indiquent où cette partie commence et se termine.
 
-Le morceau parent reste indispensable. Sa suppression entraîne également celle de ses variantes.
+La **Structure** est la suite de blocs qui sera lue. Chaque bloc représente un segment placé dans le morceau final. Un même segment peut y apparaître plusieurs fois sans copier le fichier audio.
 
 ## Ouvrir Arrangement
 
-1. sélectionnez le morceau parent dans la Bibliothèque ;
-2. ouvrez ses outils ;
-3. choisissez **Arrangement** ;
-4. vérifiez le titre et la forme d’onde ;
-5. définissez les points IN/OUT si nécessaire.
+1. ouvrez le morceau dans le Lecteur depuis la Bibliothèque ;
+2. appuyez sur **ARR** ;
+3. vérifiez le titre et la forme d’onde ;
+4. réglez la grille si vous souhaitez placer plus facilement les coupes sur le rythme.
 
-Sur tablette, la playlist peut être repliée pour donner toute la largeur à l’éditeur. Sur téléphone, un mode de compatibilité est disponible dans **Plus > Avancé** si la lecture directe de l’Arrangement pose problème.
+Sur tablette, vous pouvez masquer la playlist pour donner toute la largeur à l’éditeur. Sur téléphone, un mode de compatibilité est disponible dans **Plus > Avancé** si la lecture directe de la Structure pose problème.
 
-## Créer un premier segment
+## Créer un segment
 
-1. sélectionnez une zone sur la piste horizontale ;
-2. utilisez le mode `+` pour créer un segment avec la zone sélectionnée ;
-3. utilisez le mode `-` pour conserver les parties situées à l’extérieur de la sélection ;
-4. ajoutez le résultat à la Structure ;
-5. lancez une préécoute.
+1. placez les points **IN** et **OUT** autour de la partie à conserver ;
+2. choisissez le mode `+` ;
+3. appuyez sur **Ajouter** — ou **Ajout** sur l’affichage compact ;
+4. le nouveau segment est ajouté à la Structure ;
+5. faites un appui long sur son bloc pour le renommer, par exemple « Intro », « Couplet 1 » ou « Refrain ».
 
-Vous pouvez également ajouter un segment au début de la Structure.
+Le mode `-` sert plutôt à retirer la zone comprise entre IN et OUT : MusiMio conserve alors les parties situées avant et après cette zone.
 
 ## Organiser la Structure
 
-Pour chaque occurrence, les actions disponibles peuvent inclure :
+Faites un appui long sur un bloc pour ouvrir son menu. Vous pouvez alors :
 
-- renommer et choisir une couleur ;
-- déplacer dans l’ordre ;
-- dupliquer ;
-- copier et coller ;
-- rendre muette ;
-- définir un nombre de répétitions.
+- le renommer et choisir une couleur ;
+- le déplacer vers la gauche ou la droite ;
+- régler ses **Répétitions** avec `−` et `+` ;
+- choisir **Mettre en mute** pour le conserver dans la Structure sans le lire ;
+- le supprimer.
 
-Une occurrence est une utilisation d’un segment dans la Structure. Le même segment peut donc apparaître plusieurs fois sans dupliquer le fichier audio.
+Vous pouvez aussi déplacer les blocs directement lorsque les commandes de déplacement sont affichées. L’ordre visible de gauche à droite est l’ordre de lecture.
 
-## Écouter l’Arrangement
+## Remettre un passage plus loin avec « Coller ici »
 
-Par défaut, la préécoute utilise la lecture directe des segments. Le Playback Control pilote la Structure préparée et enchaîne ses occurrences.
+Dans Arrangement, **Coller ici** duplique directement le bloc choisi. Il n’y a pas de commande **Copier** à effectuer avant et il n’existe pas de presse-papiers Arrangement.
 
-Sur certains téléphones, la compatibilité de cette lecture directe doit encore être vérifiée sur plusieurs modèles. Si vous constatez des coupures ou un mauvais enchaînement, activez le **mode de compatibilité Arrangement (téléphone)** dans **Plus > Avancé**, puis refaites un essai complet.
+Pour remettre un refrain après un autre passage :
+
+1. dans la Structure, placez la tête de lecture sur la frontière où le nouveau bloc doit être ajouté ;
+2. faites ensuite un appui long sur le bloc **Refrain** à reproduire ;
+3. choisissez **Coller ici** ;
+4. une nouvelle copie du Refrain est ajoutée à la frontière choisie. Le bloc d’origine reste en place.
+
+Exemple :
+
+```text
+Avant : Intro · Couplet 1 · Refrain · Couplet 2
+Après : Intro · Couplet 1 · Refrain · Couplet 2 · Refrain
+```
+
+Si **Coller ici** est grisé, touchez d’abord une frontière précise dans la Structure, puis rouvrez le menu du bloc à reproduire.
+
+## Répéter ou dupliquer ?
+
+- utilisez **Répétitions** pour rejouer immédiatement le même bloc plusieurs fois de suite ;
+- utilisez **Coller ici** pour créer un nouveau bloc à un autre endroit, que vous pourrez ensuite déplacer ou modifier séparément.
+
+## Écouter la Structure
+
+Lancez la lecture de la Structure et écoutez-la du début à la fin. La tête de lecture suit les blocs dans leur ordre, tient compte des répétitions et saute les blocs en mute.
+
+Vérifiez surtout les raccords entre deux segments. Sur certains téléphones, si vous entendez des coupures ou un mauvais enchaînement, activez le **Mode de compatibilité Arrangement** dans **Plus > Avancé**, puis refaites un essai complet.
 
 ## Enregistrer une variante
 
-1. testez la Structure du début à la fin ;
-2. choisissez la création d’une variante virtuelle ;
-3. donnez-lui un titre distinct ;
-4. enregistrez-la dans la Bibliothèque.
+Une variante Arrangement apparaît dans la Bibliothèque comme une autre version du morceau. Elle réutilise l’audio du morceau parent, mais conserve sa propre Structure ainsi que ses paroles, accords et réglages associés.
 
-En rouvrant une variante, vous pouvez mettre à jour celle-ci ou enregistrer le travail sous un nouveau nom. Vérifiez soigneusement le choix proposé afin de ne pas remplacer une version que vous souhaitez conserver.
+1. testez la Structure du début à la fin ;
+2. appuyez sur **Bibliothèque** ;
+3. donnez un nom clair à la variante, par exemple « Radio », « Sans intro » ou « Rappel » ;
+4. enregistrez-la.
+
+Le morceau parent reste indispensable. Sa suppression entraîne également celle de ses variantes.
+
+## Modifier une variante existante
+
+Ouvrez la variante depuis la Bibliothèque, puis revenez dans Arrangement avec **ARR**. Après vos modifications :
+
+- choisissez **Mettre à jour** pour remplacer la Structure de cette variante ;
+- choisissez **Nouvelle variante** pour conserver la variante ouverte et enregistrer une autre version.
 
 ## Assembler une version audio
 
-L’assemblage crée explicitement un nouveau rendu, notamment au format WAV, puis l’importe comme morceau live dans la Bibliothèque. Cette opération est différente d’une variante virtuelle : elle produit un nouvel audio et peut demander du temps et de l’espace de stockage.
+**Assembler** crée un nouveau fichier audio, notamment au format WAV, puis l’importe comme morceau live dans la Bibliothèque. Cette opération est différente d’une variante : elle produit un nouvel audio et peut demander du temps et de l’espace de stockage.
 
-La compatibilité du rendu WAV et de la lecture assemblée doit être testée sur l’appareil utilisé avant une prestation.
+Testez toujours le fichier assemblé sur l’appareil utilisé avant une prestation.
 
 ## Partager une variante
 
@@ -69,12 +101,15 @@ Une variante peut être exportée en fichier `.smp`. L’export contient l’aud
 ## Précautions
 
 - Conservez toujours le morceau parent.
-- Donnez des noms explicites aux variantes : « radio », « sans intro », « rappel », etc.
 - Testez les raccords au casque puis sur la sonorisation.
-- Vérifiez paroles, accords et Timeline après une modification de Structure.
+- Vérifiez les paroles, les accords et la Timeline après une modification de Structure.
 - Sauvegardez la Bibliothèque avant une réorganisation importante.
 
 ## Problèmes courants
+
+### « Coller ici » est indisponible
+
+Touchez une frontière entre deux blocs, avant le premier bloc ou après le dernier, puis ouvrez de nouveau le menu du bloc à reproduire.
 
 ### Une variante n’apparaît plus
 
