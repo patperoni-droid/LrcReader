@@ -4626,11 +4626,7 @@ private fun TimelineMeasuresPlaceholder(
                 val entry = arrangementEntries.firstOrNull { it.entryId == segmentId }
                 ArrangementListItem(
                     id = index.toString(),
-                    title = if (compactArrangementTrackControls) {
-                        segment.name
-                    } else {
-                        "${index + 1}. ${segment.name}"
-                    },
+                    title = segment.name,
                     durationMs = (segment.endMs - segment.startMs).coerceAtLeast(0L),
                     repeatCount = entry?.repeatCount ?: 1,
                     isMuted = entry?.muted ?: false,

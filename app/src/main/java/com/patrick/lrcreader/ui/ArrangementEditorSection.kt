@@ -856,7 +856,7 @@ fun ArrangementEditorSection(
                     val segment = segments.firstOrNull { it.id == segmentId } ?: return@mapIndexedNotNull null
                     ArrangementListItem(
                         id = index.toString(),
-                        title = "${index + 1}. ${segment.name}",
+                        title = segment.name,
                         isActive = structurePlaybackActive && index == structurePlaybackIndex
                     )
                 },
