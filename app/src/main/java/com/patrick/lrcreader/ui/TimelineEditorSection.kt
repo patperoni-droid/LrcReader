@@ -2358,7 +2358,9 @@ private fun TimelineMeasuresPlaceholder(
         nextSegments: List<ArrangementSegmentData> = arrangementSegments,
         nextStructureSegmentIds: List<String> = structureSegmentIds,
         nextEntries: List<ArrangementEntryData> = arrangementEntries,
-        debugSegmentId: String? = null
+        debugSegmentId: String? = null,
+        persistVariantRename: Boolean = false,
+        variantRenameSegmentId: String? = null
     ) {
         val editingTarget = arrangementEditingTarget ?: return
         val ownerSongId = editingTarget.ownerSongId
@@ -2377,7 +2379,12 @@ private fun TimelineMeasuresPlaceholder(
             existingEntries = snapshotEntries,
             preservedLegacySegments = snapshotLegacySegments
         )
-        if (editingTarget.variantSongId != null) {
+        if (
+            shouldDeferVariantArrangementPersistence(
+                variantSongId = editingTarget.variantSongId,
+                persistVariantRename = persistVariantRename
+            )
+        ) {
             Log.d(
                 ARR_SEGMENT_PERSIST_TAG,
                 "SAVE_DEFERRED variantId=${editingTarget.variantSongId} sourceSongId=$sourceSongId"
@@ -2400,10 +2407,29 @@ private fun TimelineMeasuresPlaceholder(
         }
         scope.launch {
             arrangementSaveMutex.withLock {
+                val canonicalDataToPersist = if (
+                    editingTarget.variantSongId != null && persistVariantRename
+                ) {
+                    val targetSegmentId = variantRenameSegmentId ?: return@withLock
+                    val renamedSegment = snapshotSegments.firstOrNull { segment ->
+                        segment.id == targetSegmentId
+                    } ?: return@withLock
+                    val storedVariant = ArrangementStore.load(
+                        context.applicationContext,
+                        ownerSongId
+                    ) ?: return@withLock
+                    renamePersistedArrangementSegment(
+                        data = storedVariant,
+                        targetSegmentId = targetSegmentId,
+                        nextName = renamedSegment.name
+                    )
+                } else {
+                    dataToPersist
+                }
                 val saved = ArrangementStore.save(
                     context = context.applicationContext,
                     songId = ownerSongId,
-                    data = dataToPersist
+                    data = canonicalDataToPersist
                 )
                 debugSegmentId?.let { segmentId ->
                     val storedData = ArrangementStore.load(context.applicationContext, ownerSongId)
@@ -3301,6 +3327,7 @@ private fun TimelineMeasuresPlaceholder(
 
     fun updateArrangementOccurrence(
         targetId: String,
+        persistVariantRename: Boolean = false,
         transform: (ArrangementEntryData) -> ArrangementEntryData
     ) {
         val segment = arrangementSegments.firstOrNull { it.id == targetId } ?: return
@@ -3334,7 +3361,12 @@ private fun TimelineMeasuresPlaceholder(
         )
         arrangementSegments = nextSegments
         arrangementEntries = nextEntries
-        persistArrangementState(nextSegments = nextSegments, nextEntries = nextEntries)
+        persistArrangementState(
+            nextSegments = nextSegments,
+            nextEntries = nextEntries,
+            persistVariantRename = persistVariantRename,
+            variantRenameSegmentId = targetId.takeIf { persistVariantRename }
+        )
     }
 
     fun insertArrangementOccurrenceAt(
@@ -4801,7 +4833,10 @@ private fun TimelineMeasuresPlaceholder(
 	                            localRenameDraft.text.trim().ifBlank { segment.name }
 	                        } ?: return@Button
                         if (unifiedSegmentLayout) {
-                            updateArrangementOccurrence(targetId) { entry ->
+                            updateArrangementOccurrence(
+                                targetId = targetId,
+                                persistVariantRename = true
+                            ) { entry ->
                                 entry.copy(name = nextName)
                             }
                         } else {
@@ -4814,7 +4849,11 @@ private fun TimelineMeasuresPlaceholder(
                                 }
                             }
                             arrangementSegments = nextSegments
-                            persistArrangementState(nextSegments = nextSegments)
+                            persistArrangementState(
+                                nextSegments = nextSegments,
+                                persistVariantRename = true,
+                                variantRenameSegmentId = targetId
+                            )
                         }
                         renameSegmentId = null
                     }
@@ -6387,6 +6426,24 @@ internal fun arrangementPhoneDefaultSegmentName(sequenceIndex: Long): String {
     }
     return name.toString()
 }
+
+internal fun shouldDeferVariantArrangementPersistence(
+    variantSongId: String?,
+    persistVariantRename: Boolean
+): Boolean = variantSongId != null && !persistVariantRename
+
+internal fun renamePersistedArrangementSegment(
+    data: ArrangementData,
+    targetSegmentId: String,
+    nextName: String
+): ArrangementData = data.copy(
+    segments = data.segments.map { segment ->
+        if (segment.id == targetSegmentId) segment.copy(name = nextName) else segment
+    },
+    entries = data.entries.map { entry ->
+        if (entry.entryId == targetSegmentId) entry.copy(name = nextName) else entry
+    }
+)
 
 @Composable
 private fun TimelineGridEmptyState(
