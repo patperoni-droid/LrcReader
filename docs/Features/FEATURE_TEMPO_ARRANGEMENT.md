@@ -300,7 +300,7 @@ Implémenté dans l'éditeur canonique partagé :
 - au premier affichage, la waveform utilise une vue générale échantillonnée de 2 000 points et un cache distinct afin d'éviter le décodage complet du MP3 ; le placement de la tête et des points IN / OUT reste calculé en millisecondes et conserve sa précision ;
 - les deux points d'entrée Arrangement du téléphone ouvrent le même éditeur canonique et réutilisent le même extracteur échantillonné avec 720 points et le même cache ;
 - les colonnes `Segments` et `Structure` sont fusionnées visuellement en une seule liste ordonnée ;
-- le bouton `Ajouter` insère directement le nouveau segment en tête de cette liste et dans la Structure de lecture ;
+- le bouton `Ajouter` insère directement le nouveau segment en fin de cette liste et de la Structure de lecture, après la dernière occurrence existante ;
 - supprimer une ligne retire cette occurrence et supprime aussi son segment interne lorsqu'aucune autre occurrence ne le référence ;
 - sur téléphone uniquement, les nouveaux segments reçoivent par défaut un nom alphabétique compact : `A` à `Z`, puis `AA`, `AB`, etc. ;
 - sur tablette, le nom proposé reste `Segment N` ;
@@ -438,7 +438,7 @@ Flux cible :
 
 1. l'utilisateur place le point IN et le point OUT sur le titre ;
 2. il appuie sur `Ajouter` ;
-3. le nouveau segment est inséré au début de la piste horizontale ;
+3. le nouveau segment est inséré à la fin de la piste horizontale, après la dernière occurrence existante ;
 4. il déplace ensuite ce segment à la position désirée dans la Structure.
 
 Il n'existe donc plus d'étape intermédiaire consistant à créer un segment dans une bibliothèque locale puis à l'ajouter séparément à la Structure.
@@ -614,8 +614,8 @@ Règles :
 
 Bouton Ajouter :
 
-- mode + → 1 segment (IN → OUT), inséré au début de la piste horizontale
-- mode - → 2 segments (extérieur), insérés au début de la piste horizontale
+- mode + → 1 segment (IN → OUT), inséré à la fin de la piste horizontale
+- mode - → 2 segments (extérieur), insérés à la fin de la piste horizontale en conservant leur ordre interne
 
 ---
 

@@ -4391,12 +4391,12 @@ private fun TimelineMeasuresPlaceholder(
                             }
                         }
                         val nextSegments = if (unifiedSegmentLayout) {
-                            createdSegments + arrangementSegments
+                            arrangementSegments + createdSegments
                         } else {
                             arrangementSegments + createdSegments
                         }
                         val nextStructureSegmentIds = if (unifiedSegmentLayout) {
-                            createdSegments.map { segment -> segment.id } + structureSegmentIds
+                            structureSegmentIds + createdSegments.map { segment -> segment.id }
                         } else {
                             structureSegmentIds
                         }
