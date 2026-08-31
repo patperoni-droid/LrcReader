@@ -6762,7 +6762,7 @@ private fun buildNextVirtualArrangementName(
 private fun ArrangementHelpPageContent(
     message: String
 ) {
-    val sectionTitleRegex = Regex("^\\d+\\)")
+    val sectionTitleRegex = Regex("^\\d+[.)]")
     val lines = remember(message) { message.split('\n') }
 
     Column(
