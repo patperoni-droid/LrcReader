@@ -25,9 +25,16 @@ class ArrangementNavigationTest {
             segments = emptyList(),
             structureSegmentIds = listOf("intro", "chorus", "outro"),
             entries = listOf(
-                ArrangementEntryData("intro", "Intro", 0L, 1_000L),
-                ArrangementEntryData("chorus", "Refrain", 4_000L, 6_000L, repeatCount = 2),
-                ArrangementEntryData("outro", "FIN", 9_000L, 10_000L)
+                ArrangementEntryData("intro", "Intro", 0L, 1_000L, color = null),
+                ArrangementEntryData(
+                    "chorus",
+                    "Refrain",
+                    4_000L,
+                    6_000L,
+                    repeatCount = 2,
+                    color = "red"
+                ),
+                ArrangementEntryData("outro", "FIN", 9_000L, 10_000L, color = "blue")
             )
         )
 
@@ -35,6 +42,7 @@ class ArrangementNavigationTest {
 
         assertEquals(listOf("intro", "chorus", "outro"), items.map { it.entryId })
         assertEquals(listOf(0L, 4_000L, 9_000L), items.map { it.navigationPositionMs })
+        assertEquals(listOf(null, "red", "blue"), items.map { it.colorKey })
         assertEquals(2, items[1].repeatCount)
         assertTrue(items.all { it.ownerSongId == "song_parent" })
     }
@@ -47,9 +55,16 @@ class ArrangementNavigationTest {
             segments = emptyList(),
             structureSegmentIds = listOf("chorus_a", "muted", "chorus_b"),
             entries = listOf(
-                ArrangementEntryData("chorus_a", "Refrain", 1_000L, 2_000L),
-                ArrangementEntryData("muted", "Solo", 2_000L, 3_000L, muted = true),
-                ArrangementEntryData("chorus_b", "Refrain", 3_000L, 4_000L)
+                ArrangementEntryData("chorus_a", "Refrain", 1_000L, 2_000L, color = "green"),
+                ArrangementEntryData(
+                    "muted",
+                    "Solo",
+                    2_000L,
+                    3_000L,
+                    muted = true,
+                    color = "yellow"
+                ),
+                ArrangementEntryData("chorus_b", "Refrain", 3_000L, 4_000L, color = "violet")
             )
         )
 
@@ -57,6 +72,7 @@ class ArrangementNavigationTest {
 
         assertEquals(listOf("chorus_a", "chorus_b"), items.map { it.entryId })
         assertEquals(listOf("Refrain", "Refrain"), items.map { it.name })
+        assertEquals(listOf("green", "violet"), items.map { it.colorKey })
     }
 
     @Test
@@ -69,9 +85,23 @@ class ArrangementNavigationTest {
             ),
             structureSegmentIds = listOf("intro", "muted", "outro"),
             entries = listOf(
-                ArrangementEntryData("intro", "Intro", 10_000L, 12_000L, repeatCount = 2),
-                ArrangementEntryData("muted", "Couplet", 20_000L, 23_000L, muted = true),
-                ArrangementEntryData("outro", "FIN", 30_000L, 31_000L)
+                ArrangementEntryData(
+                    "intro",
+                    "Intro",
+                    10_000L,
+                    12_000L,
+                    repeatCount = 2,
+                    color = "blue"
+                ),
+                ArrangementEntryData(
+                    "muted",
+                    "Couplet",
+                    20_000L,
+                    23_000L,
+                    muted = true,
+                    color = "red"
+                ),
+                ArrangementEntryData("outro", "FIN", 30_000L, 31_000L, color = "orange")
             ),
             useOccurrenceModel = true
         )
@@ -80,6 +110,7 @@ class ArrangementNavigationTest {
 
         assertEquals(listOf("intro", "outro"), items.map { it.entryId })
         assertEquals(listOf(0L, 4_000L), items.map { it.navigationPositionMs })
+        assertEquals(listOf("blue", "orange"), items.map { it.colorKey })
         assertEquals(2, items.first().repeatCount)
         assertTrue(items.all { it.ownerSongId == "variant_live" })
     }

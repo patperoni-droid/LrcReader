@@ -5,7 +5,8 @@ data class ArrangementNavigationItem(
     val entryId: String,
     val name: String,
     val navigationPositionMs: Long,
-    val repeatCount: Int
+    val repeatCount: Int,
+    val colorKey: String?
 )
 
 internal fun ArrangementData.toLinearNavigationItems(
@@ -19,7 +20,8 @@ internal fun ArrangementData.toLinearNavigationItems(
             entryId = entry.entryId,
             name = entry.name,
             navigationPositionMs = entry.startMs.coerceAtLeast(0L),
-            repeatCount = entry.repeatCount.coerceAtLeast(1)
+            repeatCount = entry.repeatCount.coerceAtLeast(1),
+            colorKey = entry.color
         )
     }
     .toList()
@@ -34,7 +36,8 @@ internal fun List<PreparedArrangementOccurrence>.toVirtualNavigationItems(
             entryId = occurrence.segment.id,
             name = occurrence.segment.name,
             navigationPositionMs = occurrence.arrangementStartMs,
-            repeatCount = occurrence.repeatCount.coerceAtLeast(1)
+            repeatCount = occurrence.repeatCount.coerceAtLeast(1),
+            colorKey = occurrence.color
         )
     }
     .toList()

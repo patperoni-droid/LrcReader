@@ -3703,10 +3703,6 @@ fun PlayerScreen(
                                     lyricsTextSize = lyricsTextSize,
                                     onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                     highlightColor = highlightColor,
-                                    arrangementNavigationItems = arrangementNavigationItems,
-                                    onArrangementNavigationClick = { item ->
-                                        seekToMs(item.navigationPositionMs)
-                                    },
                                     onLineClick = { index, timeMs ->
                                         seekAndCenter(timeMs.toInt(), index)
                                         if (currentTrackUri != null && !isCurrentTrackSmp) {
@@ -3851,6 +3847,12 @@ fun PlayerScreen(
                                     modifier = Modifier.align(Alignment.CenterEnd)
                                 )
                             }
+                        }
+                        if (selectedViewMode == LyricsViewMode.LYRICS) {
+                            ArrangementNavigationRow(
+                                items = arrangementNavigationItems,
+                                onItemClick = { item -> seekToMs(item.navigationPositionMs) }
+                            )
                         }
                         OfficialPlaybackControl()
                     }

@@ -50,8 +50,6 @@ fun LyricsAreaLazy(
     lyricsTextSize: DisplayPrefs.LyricsTextSize,
     onLyricsBoxHeightChange: (Int) -> Unit,
     highlightColor: Color,
-    arrangementNavigationItems: List<ArrangementNavigationItem>,
-    onArrangementNavigationClick: (ArrangementNavigationItem) -> Unit,
     onLineClick: (index: Int, timeMs: Long) -> Unit
 ) {
     val adaptiveTokens = rememberSmpAdaptiveTokens()
@@ -61,56 +59,6 @@ fun LyricsAreaLazy(
             .fillMaxWidth()
             .onGloballyPositioned { onLyricsBoxHeightChange(it.size.height) }
     ) {
-        if (arrangementNavigationItems.isNotEmpty()) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(
-                    items = arrangementNavigationItems,
-                    key = { item -> "${item.ownerSongId}:${item.entryId}" }
-                ) { item ->
-                    Column(
-                        modifier = Modifier
-                            .heightIn(min = 48.dp)
-                            .background(
-                                color = highlightColor.copy(alpha = 0.14f),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .border(
-                                width = 1.dp,
-                                color = highlightColor.copy(alpha = 0.58f),
-                                shape = RoundedCornerShape(12.dp)
-                            )
-                            .clickable { onArrangementNavigationClick(item) }
-                            .padding(horizontal = 16.dp, vertical = 7.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = item.name,
-                            color = Color.White,
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 14.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (item.repeatCount > 1) {
-                            Text(
-                                text = stringResource(
-                                    R.string.arrangement_occurrence_repeat_value,
-                                    item.repeatCount
-                                ),
-                                color = Color.White.copy(alpha = 0.72f),
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             if (parsedLines.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -189,6 +137,69 @@ fun LyricsAreaLazy(
                             )
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun ArrangementNavigationRow(
+    items: List<ArrangementNavigationItem>,
+    onItemClick: (ArrangementNavigationItem) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) return
+
+    LazyRow(
+        modifier = modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(
+            items = items,
+            key = { item -> "${item.ownerSongId}:${item.entryId}" }
+        ) { item ->
+            val itemColor = arrangementTrackOccurrenceColor(item.colorKey)
+            Column(
+                modifier = Modifier
+                    .heightIn(min = 48.dp)
+                    .background(
+                        color = arrangementTrackOccurrenceContainerColor(
+                            color = itemColor,
+                            isMuted = false,
+                            isActive = false,
+                            isQueued = false
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = itemColor.copy(alpha = 0.82f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .clickable { onItemClick(item) }
+                    .padding(horizontal = 16.dp, vertical = 7.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = item.name,
+                    color = Color.White,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (item.repeatCount > 1) {
+                    Text(
+                        text = stringResource(
+                            R.string.arrangement_occurrence_repeat_value,
+                            item.repeatCount
+                        ),
+                        color = Color.White.copy(alpha = 0.72f),
+                        fontSize = 11.sp
+                    )
                 }
             }
         }
