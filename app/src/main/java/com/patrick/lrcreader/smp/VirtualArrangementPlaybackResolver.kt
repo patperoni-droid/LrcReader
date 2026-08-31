@@ -14,7 +14,8 @@ data class PreparedVirtualArrangementPlayback(
     val sourceAudioUri: String,
     val playbackProfile: SmpConfig.PlaybackConfig?,
     val mediaItems: List<MediaItem>,
-    val livePlan: LiveArrangementPlan
+    val livePlan: LiveArrangementPlan,
+    val navigationItems: List<ArrangementNavigationItem>
 ) {
     val occurrenceDurationsMs: List<Long> =
         livePlan.occurrences.map(LiveArrangementOccurrence::durationMs)
@@ -90,7 +91,8 @@ object VirtualArrangementPlaybackResolver {
                 parent = sourceSong
             ),
             mediaItems = mediaItems,
-            livePlan = livePlan
+            livePlan = livePlan,
+            navigationItems = occurrences.toVirtualNavigationItems(variantSong.id)
         )
     }
 }

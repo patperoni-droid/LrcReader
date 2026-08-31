@@ -4,10 +4,15 @@ package com.patrick.lrcreader.ui
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -26,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.DisplayPrefs
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.smp.ArrangementNavigationItem
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 
 @Composable
@@ -44,92 +50,145 @@ fun LyricsAreaLazy(
     lyricsTextSize: DisplayPrefs.LyricsTextSize,
     onLyricsBoxHeightChange: (Int) -> Unit,
     highlightColor: Color,
+    arrangementNavigationItems: List<ArrangementNavigationItem>,
+    onArrangementNavigationClick: (ArrangementNavigationItem) -> Unit,
     onLineClick: (index: Int, timeMs: Long) -> Unit
 ) {
     val adaptiveTokens = rememberSmpAdaptiveTokens()
     val lyricSizes = lyricsTextSizes(lyricsTextSize, adaptiveTokens.lyricsFontBoost)
-    Box(
+    Column(
         modifier = modifier
             .fillMaxWidth()
             .onGloballyPositioned { onLyricsBoxHeightChange(it.size.height) }
     ) {
-        if (parsedLines.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                val message = when {
-                    currentTrackUri == null -> stringResource(R.string.lyrics_none)
-                    lyricsLoading -> stringResource(R.string.lyrics_loading)
-                    else -> stringResource(R.string.lyrics_none)
+        if (arrangementNavigationItems.isNotEmpty()) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(
+                    items = arrangementNavigationItems,
+                    key = { item -> "${item.ownerSongId}:${item.entryId}" }
+                ) { item ->
+                    Column(
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .background(
+                                color = highlightColor.copy(alpha = 0.14f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = highlightColor.copy(alpha = 0.58f),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable { onArrangementNavigationClick(item) }
+                            .padding(horizontal = 16.dp, vertical = 7.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = item.name,
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (item.repeatCount > 1) {
+                            Text(
+                                text = stringResource(
+                                    R.string.arrangement_occurrence_repeat_value,
+                                    item.repeatCount
+                                ),
+                                color = Color.White.copy(alpha = 0.72f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
                 }
-                Text(message, color = Color.Gray)
             }
-            return
         }
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            state = listState,
-            // ✅ grosse marge haut/bas pour permettre le centrage
-            contentPadding = PaddingValues(
-                top = adaptiveTokens.lyricsVerticalContentPadding,
-                bottom = adaptiveTokens.lyricsVerticalContentPadding
-            )
-        ) {
-            itemsIndexed(parsedLines, key = { idx, _ -> idx }) { index, line ->
-                val isActiveLine = index == currentLrcIndex
-                val isNextActiveLine = !readabilityModeEnabled &&
-                    index == currentLrcIndex + 1
-                val manualColor = line.colorArgb?.let(::Color)
-                val guidedColor = if (guidedReadingColorsEnabled) {
-                    Color(if (index % 2 == 0) guidedReadingColorA else guidedReadingColorB)
-                } else {
-                    null
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (parsedLines.isEmpty()) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    val message = when {
+                        currentTrackUri == null -> stringResource(R.string.lyrics_none)
+                        lyricsLoading -> stringResource(R.string.lyrics_loading)
+                        else -> stringResource(R.string.lyrics_none)
+                    }
+                    Text(message, color = Color.Gray)
                 }
-                val baseColor = manualColor ?: guidedColor ?: Color.White
-                val activeColor = manualColor ?: guidedColor ?: highlightColor
-                val color = when {
-                    isActiveLine -> activeColor
-                    isNextActiveLine -> activeColor.copy(alpha = 0.62f)
-                    readabilityModeEnabled -> baseColor
-                    manualColor != null || guidedColor != null -> baseColor.copy(alpha = 0.72f)
-                    else -> Color.White.copy(alpha = 0.42f)
-                }
-                val animatedColor by animateColorAsState(
-                    targetValue = color,
-                    animationSpec = tween(durationMillis = 160),
-                    label = "lyricsLineColor"
-                )
-                val fontWeight = when {
-                    isActiveLine -> FontWeight.Bold
-                    isNextActiveLine -> FontWeight.Medium
-                    readabilityModeEnabled -> FontWeight.Medium
-                    else -> FontWeight.Normal
-                }
-                val fontSize = when {
-                    isActiveLine -> lyricSizes.activeSp.sp
-                    isNextActiveLine -> lyricSizes.nextSp.sp
-                    else -> lyricSizes.defaultSp.sp
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 10.dp, horizontal = adaptiveTokens.lyricsHorizontalPadding)
-                        .clickable { onLineClick(index, line.timeMs) },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = line.text,
-                        color = animatedColor,
-                        fontWeight = fontWeight,
-                        fontSize = fontSize,
-                        lineHeight = lyricSizes.lineHeightSp.sp,
-                        textAlign = TextAlign.Center,
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
-                        style = TextStyle(
-                            platformStyle = PlatformTextStyle(includeFontPadding = false)
-                        )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    state = listState,
+                    // ✅ grosse marge haut/bas pour permettre le centrage
+                    contentPadding = PaddingValues(
+                        top = adaptiveTokens.lyricsVerticalContentPadding,
+                        bottom = adaptiveTokens.lyricsVerticalContentPadding
                     )
+                ) {
+                    itemsIndexed(parsedLines, key = { idx, _ -> idx }) { index, line ->
+                        val isActiveLine = index == currentLrcIndex
+                        val isNextActiveLine = !readabilityModeEnabled &&
+                            index == currentLrcIndex + 1
+                        val manualColor = line.colorArgb?.let(::Color)
+                        val guidedColor = if (guidedReadingColorsEnabled) {
+                            Color(if (index % 2 == 0) guidedReadingColorA else guidedReadingColorB)
+                        } else {
+                            null
+                        }
+                        val baseColor = manualColor ?: guidedColor ?: Color.White
+                        val activeColor = manualColor ?: guidedColor ?: highlightColor
+                        val color = when {
+                            isActiveLine -> activeColor
+                            isNextActiveLine -> activeColor.copy(alpha = 0.62f)
+                            readabilityModeEnabled -> baseColor
+                            manualColor != null || guidedColor != null -> baseColor.copy(alpha = 0.72f)
+                            else -> Color.White.copy(alpha = 0.42f)
+                        }
+                        val animatedColor by animateColorAsState(
+                            targetValue = color,
+                            animationSpec = tween(durationMillis = 160),
+                            label = "lyricsLineColor"
+                        )
+                        val fontWeight = when {
+                            isActiveLine -> FontWeight.Bold
+                            isNextActiveLine -> FontWeight.Medium
+                            readabilityModeEnabled -> FontWeight.Medium
+                            else -> FontWeight.Normal
+                        }
+                        val fontSize = when {
+                            isActiveLine -> lyricSizes.activeSp.sp
+                            isNextActiveLine -> lyricSizes.nextSp.sp
+                            else -> lyricSizes.defaultSp.sp
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp, horizontal = adaptiveTokens.lyricsHorizontalPadding)
+                                .clickable { onLineClick(index, line.timeMs) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = line.text,
+                                color = animatedColor,
+                                fontWeight = fontWeight,
+                                fontSize = fontSize,
+                                lineHeight = lyricSizes.lineHeightSp.sp,
+                                textAlign = TextAlign.Center,
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis,
+                                style = TextStyle(
+                                    platformStyle = PlatformTextStyle(includeFontPadding = false)
+                                )
+                            )
+                        }
+                    }
                 }
             }
         }

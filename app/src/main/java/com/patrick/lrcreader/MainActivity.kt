@@ -118,9 +118,12 @@ import com.patrick.lrcreader.smp.SmpUserArchiveRebuilder
 import com.patrick.lrcreader.smp.SmpWorkspaceArchiveStore
 import com.patrick.lrcreader.smp.buildSmpSongDeletionPlan
 import com.patrick.lrcreader.smp.ArrangementData
+import com.patrick.lrcreader.smp.ArrangementNavigationItem
+import com.patrick.lrcreader.smp.ArrangementStore
 import com.patrick.lrcreader.smp.ArrangementVariantStore
 import com.patrick.lrcreader.smp.PreparedVirtualArrangementPlayback
 import com.patrick.lrcreader.smp.VirtualArrangementPlaybackResolver
+import com.patrick.lrcreader.smp.toLinearNavigationItems
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import com.patrick.lrcreader.ui.library.LibraryScreen
@@ -732,6 +735,9 @@ class MainActivity : AppCompatActivity() {
                 val smpLibraryScanner = remember(ctx) { SmpLibraryScanner(ctx) }
                 val smpUserArchiveRebuilder = remember(ctx) { SmpUserArchiveRebuilder(ctx) }
                 var smpCacheRefreshTick by remember { mutableIntStateOf(0) }
+                var arrangementNavigationRevisions by remember {
+                    mutableStateOf<Map<String, Int>>(emptyMap())
+                }
                 var smpUserRebuildAttemptedForRoot by remember { mutableStateOf<String?>(null) }
                 var playlistBatchProgressVisible by remember { mutableStateOf(false) }
                 var playlistBatchProgressValue by remember { mutableStateOf<Float?>(null) }
@@ -1414,6 +1420,49 @@ class MainActivity : AppCompatActivity() {
                 var currentPlayingPlaylistItemKey by rememberSaveable { mutableStateOf<String?>(null) }
                 val currentPlayingSongId = remember(currentPlayingUri) {
                     resolveSessionSongIdFromTrackUri(currentPlayingUri)
+                }
+                val currentArrangementSourceSongId = remember(
+                    currentPlayingSongId,
+                    smpSongsById
+                ) {
+                    currentPlayingSongId
+                        ?.let(smpSongsById::get)
+                        ?.arrangementSourceSongId
+                        ?.trim()
+                        ?.takeIf(String::isNotEmpty)
+                }
+                val currentArrangementNavigationRevision = currentPlayingSongId
+                    ?.let { songId -> arrangementNavigationRevisions[songId] }
+                    ?: 0
+                val arrangementNavigationItems by produceState<List<ArrangementNavigationItem>>(
+                    initialValue = emptyList(),
+                    currentPlayingSongId,
+                    currentArrangementSourceSongId,
+                    currentArrangementNavigationRevision,
+                    activeVirtualArrangementPlayback
+                ) {
+                    val ownerSongId = currentPlayingSongId?.trim().orEmpty()
+                    if (ownerSongId.isEmpty()) {
+                        value = emptyList()
+                        return@produceState
+                    }
+                    if (currentArrangementSourceSongId != null) {
+                        value = activeVirtualArrangementPlayback
+                            ?.takeIf { prepared -> prepared.variantSongId == ownerSongId }
+                            ?.navigationItems
+                            .orEmpty()
+                        return@produceState
+                    }
+                    value = ArrangementStore.load(ctx.applicationContext, ownerSongId)
+                        ?.toLinearNavigationItems(ownerSongId)
+                        .orEmpty()
+                }
+
+                fun markArrangementNavigationCommitted(songId: String) {
+                    val ownerSongId = songId.trim().takeIf(String::isNotEmpty) ?: return
+                    val nextRevision = (arrangementNavigationRevisions[ownerSongId] ?: 0) + 1
+                    arrangementNavigationRevisions = arrangementNavigationRevisions +
+                        (ownerSongId to nextRevision)
                 }
 
                 fun effectiveArrangementPlaybackPositionMs(
@@ -5104,9 +5153,9 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
                                         currentSongId = currentPlayingSongId,
-                                        currentArrangementSourceSongId = currentPlayingSongId
-                                            ?.let(smpSongsById::get)
-                                            ?.arrangementSourceSongId,
+                                        currentArrangementSourceSongId = currentArrangementSourceSongId,
+                                        arrangementNavigationItems = arrangementNavigationItems,
+                                        onArrangementCommitted = ::markArrangementNavigationCommitted,
                                         playbackProgressMode = mainPlaybackProgressMode,
                                         onPlaybackStructureSegmentSelected =
                                             ::defineNextFromPlaybackProgress,
@@ -6340,6 +6389,9 @@ class MainActivity : AppCompatActivity() {
                                         },
                                         onRequestShowPlaylist = { selectedTab = BottomTab.QuickPlaylists },
                                         currentSongId = currentPlayingSongId,
+                                        currentArrangementSourceSongId = currentArrangementSourceSongId,
+                                        arrangementNavigationItems = arrangementNavigationItems,
+                                        onArrangementCommitted = ::markArrangementNavigationCommitted,
                                         playbackProgressMode = mainPlaybackProgressMode,
                                         onPlaybackStructureSegmentSelected =
                                             ::defineNextFromPlaybackProgress,

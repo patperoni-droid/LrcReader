@@ -106,6 +106,7 @@ import com.patrick.lrcreader.core.TimelinePaletteStore
 import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.ArrangementData
+import com.patrick.lrcreader.smp.ArrangementNavigationItem
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpAnnotationsStore
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
@@ -216,6 +217,8 @@ fun PlayerScreen(
     onRequestShowPlaylist: () -> Unit,
     currentSongId: String? = null,
     currentArrangementSourceSongId: String? = null,
+    arrangementNavigationItems: List<ArrangementNavigationItem> = emptyList(),
+    onArrangementCommitted: (String) -> Unit = {},
     playbackProgressMode: PlaybackProgressMode = PlaybackProgressMode.Linear,
     onPlaybackStructureSegmentSelected: (String) -> Unit = {},
     onPlaybackStructureSegmentLongPressed: (String) -> Unit = {},
@@ -3404,6 +3407,7 @@ fun PlayerScreen(
                 onImportGeneratedSmp = onImportGeneratedSmp,
                 onSaveVirtualArrangement = onSaveVirtualArrangement,
                 onUpdateVirtualArrangement = onUpdateVirtualArrangement,
+                onArrangementCommitted = onArrangementCommitted,
                 isPreparedClipLoopTestActive = isTimelinePreparedLoopActive,
                 onStartPreparedClipLoopTest = startTimelinePreparedLoopTest,
                 onStopPreparedClipLoopTest = stopTimelinePreparedLoopTest,
@@ -3699,6 +3703,10 @@ fun PlayerScreen(
                                     lyricsTextSize = lyricsTextSize,
                                     onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                     highlightColor = highlightColor,
+                                    arrangementNavigationItems = arrangementNavigationItems,
+                                    onArrangementNavigationClick = { item ->
+                                        seekToMs(item.navigationPositionMs)
+                                    },
                                     onLineClick = { index, timeMs ->
                                         seekAndCenter(timeMs.toInt(), index)
                                         if (currentTrackUri != null && !isCurrentTrackSmp) {

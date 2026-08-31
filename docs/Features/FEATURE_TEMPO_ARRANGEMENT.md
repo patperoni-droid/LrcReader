@@ -202,6 +202,21 @@ contrat d'aller-retour avant d'être considérés comme persistants.
 - les anciennes archives sans accords propres restent compatibles ;
 - le comportement est commun au téléphone et à la tablette.
 
+### Navigation live depuis Paroles
+
+- la zone Paroles peut exposer les occurrences non muettes de l'Arrangement appartenant à la
+  SongUnit actuellement jouée comme destinations de navigation live ;
+- une chanson normale utilise son propre `songId` et cherche directement le `startMs` de
+  l'occurrence sélectionnée dans la lecture linéaire ;
+- une variante utilise son propre `songId`, son propre `arrangement.json` et la position cumulée
+  déjà préparée pour sa file de lecture, jamais les segments du parent ;
+- toucher une destination telle que `FIN` déplace immédiatement la lecture à son début et laisse
+  la lecture continuer, sans modifier l'Arrangement ni créer de variante ;
+- les répétitions sont présentées comme une seule destination `×N` visant la première répétition,
+  tandis que deux occurrences homonymes restent distinctes ;
+- la navigation repose exclusivement sur `timeMs` et ne réalise ni lecture JSON, ni écriture, ni
+  reconstruction de Structure au moment du toucher.
+
 ### Partager une variante
 
 - l'action `Partager` est disponible directement sur une variante dans la Bibliothèque ;

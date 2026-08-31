@@ -306,6 +306,7 @@ fun TimelineEditorSection(
     onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit? = { _, _ -> null },
     onUpdateVirtualArrangement: suspend (String, String, ArrangementData) -> SongUnit? =
         { _, _, _ -> null },
+    onArrangementCommitted: (String) -> Unit = {},
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -993,6 +994,7 @@ fun TimelineEditorSection(
                     onImportGeneratedSmp = onImportGeneratedSmp,
                     onSaveVirtualArrangement = onSaveVirtualArrangement,
                     onUpdateVirtualArrangement = onUpdateVirtualArrangement,
+                    onArrangementCommitted = onArrangementCommitted,
                     isPreparedClipLoopTestActive = isPreparedClipLoopTestActive,
                     onStartPreparedClipLoopTest = onStartPreparedClipLoopTest,
                     onStopPreparedClipLoopTest = onStopPreparedClipLoopTest,
@@ -1765,6 +1767,7 @@ private fun GridSetupHost(
     onImportGeneratedSmp: suspend (Uri) -> SongUnit?,
     onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit?,
     onUpdateVirtualArrangement: suspend (String, String, ArrangementData) -> SongUnit?,
+    onArrangementCommitted: (String) -> Unit,
     isPreparedClipLoopTestActive: Boolean,
     onStartPreparedClipLoopTest: (Long, Long) -> Unit,
     onStopPreparedClipLoopTest: () -> Unit,
@@ -1856,6 +1859,7 @@ private fun GridSetupHost(
         onImportGeneratedSmp = onImportGeneratedSmp,
         onSaveVirtualArrangement = onSaveVirtualArrangement,
         onUpdateVirtualArrangement = onUpdateVirtualArrangement,
+        onArrangementCommitted = onArrangementCommitted,
         onMeasureAnchorHere = { anchorMs ->
             gridSyncPointMs = anchorMs
             saveGridSetup(gridTempoBpm, anchorMs)
@@ -1921,6 +1925,7 @@ private fun TimelineMeasuresPlaceholder(
     onImportGeneratedSmp: suspend (Uri) -> SongUnit?,
     onSaveVirtualArrangement: suspend (String, ArrangementData) -> SongUnit?,
     onUpdateVirtualArrangement: suspend (String, String, ArrangementData) -> SongUnit?,
+    onArrangementCommitted: (String) -> Unit,
     onMeasureAnchorHere: (Long) -> Unit,
     onInitialSyncPointIfMissing: (Long) -> Unit,
     onSegmentInChange: (Long?) -> Unit,
@@ -2455,6 +2460,9 @@ private fun TimelineMeasuresPlaceholder(
                     songId = ownerSongId,
                     data = canonicalDataToPersist
                 )
+                if (saved) {
+                    onArrangementCommitted(ownerSongId)
+                }
                 debugSegmentId?.let { segmentId ->
                     val storedData = ArrangementStore.load(context.applicationContext, ownerSongId)
                     Log.d(
@@ -4463,6 +4471,9 @@ private fun TimelineMeasuresPlaceholder(
                                         variantTitle,
                                         variantData
                                     )
+                                    if (updatedSong != null) {
+                                        onArrangementCommitted(updatedSong.id)
+                                    }
                                     Toast.makeText(
                                         context,
                                         context.getString(
@@ -4938,6 +4949,9 @@ private fun TimelineMeasuresPlaceholder(
                         isVirtualArrangementSaving = true
                         scope.launch {
                             val savedSong = onSaveVirtualArrangement(chosenName, variantData)
+                            if (savedSong != null) {
+                                onArrangementCommitted(savedSong.id)
+                            }
                             Toast.makeText(
                                 context,
                                 context.getString(
@@ -5060,7 +5074,7 @@ private fun TimelineMeasuresPlaceholder(
                                         exportEditingTarget != null &&
                                         exportEditingTarget.variantSongId == null
                                     ) {
-                                        ArrangementStore.save(
+                                        val arrangementSaved = ArrangementStore.save(
                                             context = context.applicationContext,
                                             songId = exportEditingTarget.ownerSongId,
                                             data = buildArrangementDataForPersistence(
@@ -5073,6 +5087,9 @@ private fun TimelineMeasuresPlaceholder(
                                                 preservedLegacySegments = preservedLegacyArrangementSegments
                                             )
                                         )
+                                        if (arrangementSaved) {
+                                            onArrangementCommitted(exportEditingTarget.ownerSongId)
+                                        }
                                     }
                                     MediaScannerConnection.scanFile(
                                         context.applicationContext,
