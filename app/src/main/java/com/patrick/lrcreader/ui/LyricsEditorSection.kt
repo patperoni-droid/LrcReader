@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.PlayArrow
@@ -49,6 +50,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -86,6 +89,12 @@ import kotlinx.coroutines.yield
 
 private val INLINE_LRC_TIME_TAG_REGEX =
     Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
+
+private val CHORD_KEYBOARD_OPTIONS = KeyboardOptions(
+    capitalization = KeyboardCapitalization.None,
+    autoCorrectEnabled = false,
+    keyboardType = KeyboardType.Ascii
+)
 
 @OptIn(ExperimentalFoundationApi::class)
 private val preserveLyricsEditorViewportOnFocus = object : BringIntoViewSpec {
@@ -1141,6 +1150,7 @@ fun LyricsEditorSection(
                                 color = Color.White,
                                 fontSize = 14.sp
                             ),
+                            keyboardOptions = CHORD_KEYBOARD_OPTIONS,
                             singleLine = false
                         )
 
@@ -1228,6 +1238,11 @@ fun LyricsEditorSection(
                                         stringResource(inputLabelRes),
                                         color = Color.LightGray
                                     )
+                                },
+                                keyboardOptions = if (showChordPalette) {
+                                    CHORD_KEYBOARD_OPTIONS
+                                } else {
+                                    KeyboardOptions.Default
                                 }
                             )
                         }
@@ -1507,6 +1522,11 @@ fun LyricsEditorSection(
                                                     stringResource(R.string.lyrics_editor_line_text_label)
                                                 }
                                             )
+                                        },
+                                        keyboardOptions = if (showChordPalette) {
+                                            CHORD_KEYBOARD_OPTIONS
+                                        } else {
+                                            KeyboardOptions.Default
                                         },
                                         singleLine = false,
                                         textStyle = androidx.compose.ui.text.TextStyle(
