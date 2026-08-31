@@ -164,6 +164,7 @@ private enum class TimelineEditorMode {
 
 private const val ARRANGEMENT_WAVEFORM_MAX_ZOOM = 240f
 private const val ARRANGEMENT_WAVEFORM_VISUAL_PREROLL_MS = 2_000L
+private const val ARRANGEMENT_HELP_URL = "https://www.musimio.com/docs/arrangement"
 private const val ARR_STRUCTURE_QUEUE_TAG = "ARR_STRUCTURE_QUEUE"
 private const val ARR_STRUCTURE_WAV_TAG = "ARR_STRUCTURE_WAV"
 private const val ARR_STRUCTURE_FLOW_TAG = "ARR_STRUCTURE_FLOW"
@@ -424,6 +425,29 @@ fun TimelineEditorSection(
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold
                 )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            OutlinedButton(
+                onClick = {
+                    val intent = Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse(ARRANGEMENT_HELP_URL)
+                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    try {
+                        context.startActivity(intent)
+                    } catch (_: ActivityNotFoundException) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.arrangement_help_open_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(text = stringResource(R.string.arrangement_help_open_full_action))
             }
 
             Spacer(Modifier.height(8.dp))
