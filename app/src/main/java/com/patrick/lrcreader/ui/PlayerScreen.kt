@@ -3100,7 +3100,7 @@ fun PlayerScreen(
                 showChordPalette = editingTargetMode == LyricsViewMode.CHORDS,
                 saveAndCloseRequestToken = saveAndCloseRequestToken,
                 chordPaletteStorageKey = if (editingTargetMode == LyricsViewMode.CHORDS) {
-                    editingResolvedLrcFileName
+                    currentSongId
                 } else {
                     null
                 },
