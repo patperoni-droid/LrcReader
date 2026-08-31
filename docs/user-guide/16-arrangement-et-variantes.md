@@ -39,23 +39,43 @@ Faites un appui long sur un bloc pour ouvrir son menu. Vous pouvez alors :
 
 Vous pouvez aussi déplacer les blocs directement lorsque les commandes de déplacement sont affichées. L’ordre visible de gauche à droite est l’ordre de lecture.
 
-## Remettre un passage plus loin avec « Coller ici »
+## Dupliquer un segment avec « Coller ici »
 
-Dans Arrangement, **Coller ici** duplique directement le bloc choisi. Il n’y a pas de commande **Copier** à effectuer avant et il n’existe pas de presse-papiers Arrangement.
+Le **segment source** est celui sur lequel vous venez de faire l’appui long. C’est ainsi que MusiMio sait quel segment reproduire : il n’existe ni commande **Copier** préalable, ni presse-papiers Arrangement.
 
-Pour remettre un refrain après un autre passage :
-
-1. dans la Structure, placez la tête de lecture sur la frontière où le nouveau bloc doit être ajouté ;
-2. faites ensuite un appui long sur le bloc **Refrain** à reproduire ;
+1. placez la tête de lecture sur la limite de Structure où vous voulez insérer la copie ;
+2. faites un appui long sur le segment que vous voulez reproduire ;
 3. choisissez **Coller ici** ;
-4. une nouvelle copie du Refrain est ajoutée à la frontière choisie. Le bloc d’origine reste en place.
+4. MusiMio crée une nouvelle occurrence de ce segment à l’emplacement choisi. Le segment original reste à sa place.
 
-Exemple :
+Exemple — ajouter une nouvelle occurrence de **Refrain** après **Couplet 2** :
+
+**Structure initiale**
 
 ```text
-Avant : Intro · Couplet 1 · Refrain · Couplet 2
-Après : Intro · Couplet 1 · Refrain · Couplet 2 · Refrain
+Intro
+Couplet 1
+Refrain
+Couplet 2
 ```
+
+**Procédure**
+
+- placez la tête après **Couplet 2** ;
+- faites un appui long sur **Refrain** ;
+- choisissez **Coller ici**.
+
+**Résultat**
+
+```text
+Intro
+Couplet 1
+Refrain
+Couplet 2
+Refrain
+```
+
+Le premier **Refrain** reste présent.
 
 Si **Coller ici** est grisé, touchez d’abord une frontière précise dans la Structure, puis rouvrez le menu du bloc à reproduire.
 
