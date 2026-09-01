@@ -19,6 +19,27 @@ internal data class ArrangementPlaybackGroupKey(
     val entryId: String
 )
 
+internal data class ArrangementPlaybackClockSnapshot(
+    val occurrenceId: ArrangementPlaybackOccurrenceId,
+    val occurrenceIndex: Int,
+    val groupKey: ArrangementPlaybackGroupKey,
+    val localPositionMs: Long,
+    val sourcePositionMs: Long,
+    val arrangementPositionMs: Long,
+    val occurrenceDurationMs: Long,
+    val sourceDurationMs: Long?,
+    val arrangementDurationMs: Long,
+    val assetTimeDomain: ArrangementAssetTimeDomain
+) {
+    fun positionMs(domain: ArrangementAssetTimeDomain): Long = when (domain) {
+        ArrangementAssetTimeDomain.SOURCE -> sourcePositionMs
+        ArrangementAssetTimeDomain.ARRANGEMENT -> arrangementPositionMs
+    }
+
+    val assetPositionMs: Long
+        get() = positionMs(assetTimeDomain)
+}
+
 internal data class PreparedArrangementPlaybackOccurrence(
     val id: ArrangementPlaybackOccurrenceId,
     val groupKey: ArrangementPlaybackGroupKey,
@@ -75,6 +96,60 @@ internal data class PreparedArrangementPlayback(
         occurrence.durationMs
     }
     val durationMs: Long = livePlan.durationMs
+
+    fun clockSnapshot(
+        occurrenceId: ArrangementPlaybackOccurrenceId,
+        localPositionMs: Long,
+        sourceDurationMs: Long? = null
+    ): ArrangementPlaybackClockSnapshot? {
+        val occurrenceIndex = occurrences.indexOfFirst { occurrence ->
+            occurrence.id == occurrenceId
+        }
+        return clockSnapshotAt(
+            occurrenceIndex = occurrenceIndex,
+            localPositionMs = localPositionMs,
+            sourceDurationMs = sourceDurationMs
+        )
+    }
+
+    fun clockSnapshotForMediaId(
+        mediaId: String,
+        localPositionMs: Long,
+        sourceDurationMs: Long? = null
+    ): ArrangementPlaybackClockSnapshot? {
+        val occurrenceIndex = occurrences.indexOfFirst { occurrence ->
+            occurrence.mediaId == mediaId
+        }
+        return clockSnapshotAt(
+            occurrenceIndex = occurrenceIndex,
+            localPositionMs = localPositionMs,
+            sourceDurationMs = sourceDurationMs
+        )
+    }
+
+    fun clockSnapshotAt(
+        occurrenceIndex: Int,
+        localPositionMs: Long,
+        sourceDurationMs: Long? = null
+    ): ArrangementPlaybackClockSnapshot? {
+        require(sourceDurationMs == null || sourceDurationMs >= 0L) {
+            "Source duration must be non-negative"
+        }
+        val occurrence = occurrences.getOrNull(occurrenceIndex) ?: return null
+        val safeLocalPositionMs = localPositionMs.coerceIn(0L, occurrence.durationMs)
+        return ArrangementPlaybackClockSnapshot(
+            occurrenceId = occurrence.id,
+            occurrenceIndex = occurrenceIndex,
+            groupKey = occurrence.groupKey,
+            localPositionMs = safeLocalPositionMs,
+            sourcePositionMs = occurrence.sourcePositionMs(safeLocalPositionMs),
+            arrangementPositionMs = occurrence.arrangementPositionMs(safeLocalPositionMs),
+            occurrenceDurationMs = occurrence.durationMs,
+            sourceDurationMs = sourceDurationMs,
+            arrangementDurationMs = durationMs,
+            assetTimeDomain = assetTimeDomain
+        )
+    }
 
     fun arrangementPositionFromSourceMs(
         occurrenceId: ArrangementPlaybackOccurrenceId,

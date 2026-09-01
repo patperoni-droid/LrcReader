@@ -23,6 +23,26 @@ class PreparedVirtualArrangementPlayback internal constructor(
     internal val occurrences: List<PreparedArrangementPlaybackOccurrence> =
         preparedPlayback.occurrences
     internal val assetTimeDomain: ArrangementAssetTimeDomain = preparedPlayback.assetTimeDomain
+
+    internal fun clockSnapshot(
+        currentMediaId: String?,
+        fallbackOccurrenceIndex: Int,
+        localPositionMs: Long,
+        sourceDurationMs: Long? = null
+    ): ArrangementPlaybackClockSnapshot? = currentMediaId
+        ?.takeIf(String::isNotEmpty)
+        ?.let { mediaId ->
+            preparedPlayback.clockSnapshotForMediaId(
+                mediaId = mediaId,
+                localPositionMs = localPositionMs,
+                sourceDurationMs = sourceDurationMs
+            )
+        }
+        ?: preparedPlayback.clockSnapshotAt(
+            occurrenceIndex = fallbackOccurrenceIndex,
+            localPositionMs = localPositionMs,
+            sourceDurationMs = sourceDurationMs
+        )
 }
 
 object VirtualArrangementPlaybackResolver {

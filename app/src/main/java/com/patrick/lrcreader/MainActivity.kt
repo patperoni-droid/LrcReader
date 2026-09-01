@@ -1468,18 +1468,12 @@ class MainActivity : AppCompatActivity() {
                     player: ExoPlayer,
                     arrangement: PreparedVirtualArrangementPlayback
                 ): Long {
-                    val currentMediaId = player.currentMediaItem?.mediaId.orEmpty()
-                    val currentIndex = arrangement.livePlan.occurrences
-                        .indexOfFirst { occurrence -> occurrence.key == currentMediaId }
-                        .takeIf { it >= 0 }
-                        ?: player.currentMediaItemIndex.coerceAtLeast(0)
-                    val elapsedBefore = arrangement.occurrenceDurationsMs
-                        .take(currentIndex)
-                        .fold(0L) { total, duration ->
-                            if (duration > Long.MAX_VALUE - total) Long.MAX_VALUE else total + duration
-                        }
-                    return (elapsedBefore + player.currentPosition.coerceAtLeast(0L))
-                        .coerceIn(0L, arrangement.durationMs)
+                    return arrangement.clockSnapshot(
+                        currentMediaId = player.currentMediaItem?.mediaId,
+                        fallbackOccurrenceIndex = player.currentMediaItemIndex.coerceAtLeast(0),
+                        localPositionMs = player.currentPosition
+                    )?.arrangementPositionMs
+                        ?: player.currentPosition.coerceIn(0L, arrangement.durationMs)
                 }
 
                 fun effectiveMainPlaybackPositionMs(): Long {
