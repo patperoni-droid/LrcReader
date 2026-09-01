@@ -204,18 +204,20 @@ contrat d'aller-retour avant d'être considérés comme persistants.
 
 ### Navigation live depuis Paroles
 
-- la zone Paroles peut exposer les occurrences non muettes de l'Arrangement appartenant à la
-  SongUnit actuellement jouée comme destinations de navigation live ;
-- une chanson normale utilise son propre `songId` et cherche directement le `startMs` de
-  l'occurrence sélectionnée dans la lecture linéaire ;
-- une variante utilise son propre `songId`, son propre `arrangement.json` et la position cumulée
-  déjà préparée pour sa file de lecture, jamais les segments du parent ;
+- pour une chanson normale, la zone Paroles expose les occurrences non muettes de l'Arrangement
+  appartenant à la SongUnit actuellement jouée comme destinations de navigation live ;
+- cette chanson utilise son propre `songId` et cherche directement le `startMs` de l'occurrence
+  sélectionnée dans la lecture linéaire ;
 - toucher une destination telle que `FIN` déplace immédiatement la lecture à son début et laisse
   la lecture continuer, sans modifier l'Arrangement ni créer de variante ;
 - les répétitions sont présentées comme une seule destination `×N` visant la première répétition,
   tandis que deux occurrences homonymes restent distinctes ;
 - la navigation repose exclusivement sur `timeMs` et ne réalise ni lecture JSON, ni écriture, ni
-  reconstruction de Structure au moment du toucher.
+  reconstruction de Structure au moment du toucher ;
+- pour une variante, aucune seconde piste de navigation n'est affichée dans Paroles : la Structure
+  native du `Playback Control` reste l'unique représentation live de son Arrangement ;
+- dans cette Structure native, l'appui court conserve `Define Next` et l'appui long conserve la
+  boucle du segment ; aucun seek direct par segment n'est proposé pour une variante.
 
 ### Partager une variante
 

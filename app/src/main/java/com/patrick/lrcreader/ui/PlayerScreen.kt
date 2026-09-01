@@ -151,6 +151,11 @@ internal fun shouldExpandTabletArrangementPane(
     arrangementPlaylistVisible: Boolean
 ): Boolean = focusMode == TabletPlayerFocusMode.ARRANGEMENT && !arrangementPlaylistVisible
 
+internal fun shouldShowArrangementNavigationRow(
+    isLyricsView: Boolean,
+    playbackProgressMode: PlaybackProgressMode
+): Boolean = isLyricsView && playbackProgressMode !is PlaybackProgressMode.Structure
+
 internal fun editorRawTextAfterPersistence(
     persistedMode: LyricsViewMode,
     activeMode: LyricsViewMode,
@@ -3848,7 +3853,12 @@ fun PlayerScreen(
                                 )
                             }
                         }
-                        if (selectedViewMode == LyricsViewMode.LYRICS) {
+                        if (
+                            shouldShowArrangementNavigationRow(
+                                isLyricsView = selectedViewMode == LyricsViewMode.LYRICS,
+                                playbackProgressMode = playbackProgressMode
+                            )
+                        ) {
                             ArrangementNavigationRow(
                                 items = arrangementNavigationItems,
                                 onItemClick = { item -> seekToMs(item.navigationPositionMs) }
