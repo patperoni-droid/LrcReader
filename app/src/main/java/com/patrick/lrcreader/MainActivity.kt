@@ -89,8 +89,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.patrick.lrcreader.core.*
 import com.patrick.lrcreader.core.audio.AudioEngine
 import com.patrick.lrcreader.core.audio.EmbeddedLyricsListener
-import com.patrick.lrcreader.core.arrangement.DefineNextQueueOperation
-import com.patrick.lrcreader.core.arrangement.decideDefineNextQueue
+import com.patrick.lrcreader.core.arrangement.decideGroupedDefineNextQueue
 import com.patrick.lrcreader.core.dj.DjEngine
 import com.patrick.lrcreader.core.exoCrossfadePlay
 import com.patrick.lrcreader.core.history.HistoryRepository
@@ -1656,49 +1655,48 @@ class MainActivity : AppCompatActivity() {
                     exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
                     val selectedOccurrenceIndex = arrangement.livePlan.occurrences
                         .indexOfFirst { occurrence -> occurrence.key == segmentKey }
-                    val decision = decideDefineNextQueue(
+                    val currentMediaId = exoPlayer.currentMediaItem?.mediaId.orEmpty()
+                    val currentOccurrenceIndex = arrangement.livePlan.occurrences
+                        .indexOfFirst { occurrence -> occurrence.key == currentMediaId }
+                    val currentGroupRange = playbackDisplayGroupRange(
+                        arrangement = arrangement,
+                        segmentKey = currentMediaId
+                    )
+                    val selectedGroupRange = playbackDisplayGroupRange(
+                        arrangement = arrangement,
+                        segmentKey = segmentKey
+                    )
+                    val decision = decideGroupedDefineNextQueue(
                         selectedOccurrenceIndex = selectedOccurrenceIndex,
                         occurrenceCount = arrangement.livePlan.occurrences.size,
-                        currentMediaItemIndex = exoPlayer.currentMediaItemIndex,
-                        mediaItemCount = exoPlayer.mediaItemCount
+                        currentOccurrenceIndex = currentOccurrenceIndex,
+                        currentGroupLastOccurrenceIndex =
+                            currentGroupRange?.last ?: currentOccurrenceIndex,
+                        selectedBelongsToCurrentGroup =
+                            selectedGroupRange?.contains(currentOccurrenceIndex) == true
                     ) ?: return
-                    val selectedMediaItem = arrangement.mediaItems
-                        .getOrNull(decision.armedOccurrenceIndex)
-                        ?: return
+                    val futureMediaItems = decision.futureOccurrenceIndices.map { occurrenceIndex ->
+                        arrangement.mediaItems.getOrNull(occurrenceIndex) ?: return
+                    }
 
                     val queued = runCatching {
-                        when (decision.operation) {
-                            DefineNextQueueOperation.ADD -> {
-                                exoPlayer.addMediaItem(selectedMediaItem)
-                            }
-
-                            DefineNextQueueOperation.REPLACE -> {
-                                exoPlayer.replaceMediaItem(
-                                    decision.insertionIndex,
-                                    selectedMediaItem
-                                )
-                            }
+                        val currentQueueIndex = exoPlayer.currentMediaItemIndex
+                        if (currentQueueIndex !in 0 until exoPlayer.mediaItemCount) {
+                            return@runCatching false
                         }
-
-                        val tailStartIndex = decision.insertionIndex + 1
-                        if (exoPlayer.mediaItemCount > tailStartIndex) {
-                            exoPlayer.removeMediaItems(
-                                tailStartIndex,
-                                exoPlayer.mediaItemCount
-                            )
-                        }
-                        val followingOccurrences = arrangement.mediaItems
-                            .drop(decision.armedOccurrenceIndex + 1)
-                        if (followingOccurrences.isNotEmpty()) {
-                            exoPlayer.addMediaItems(followingOccurrences)
-                        }
+                        exoPlayer.replaceMediaItems(
+                            currentQueueIndex + 1,
+                            exoPlayer.mediaItemCount,
+                            futureMediaItems
+                        )
+                        true
                     }.onFailure { error ->
                         Log.w(
                             "ARR_PLAYER_DEFINE_NEXT",
                             "QUEUE_FAILED selected=${decision.armedOccurrenceIndex}",
                             error
                         )
-                    }.isSuccess
+                    }.getOrDefault(false)
 
                     if (queued) {
                         armedVirtualArrangementOccurrenceIndex =
@@ -1706,8 +1704,8 @@ class MainActivity : AppCompatActivity() {
                         Log.d(
                             "ARR_PLAYER_DEFINE_NEXT",
                             "ARMED index=${decision.armedOccurrenceIndex} " +
-                                "insertion=${decision.insertionIndex} " +
-                                "operation=${decision.operation}"
+                                "current=$currentOccurrenceIndex " +
+                                "groupEnd=${currentGroupRange?.last ?: currentOccurrenceIndex}"
                         )
                     }
                 }
