@@ -93,4 +93,72 @@ class PlaybackStructureProgressTest {
         assertEquals(104f, playbackStructurePlayheadOffsetDp(model, widths, 0.85f), 0.001f)
         assertEquals(152f, playbackStructurePlayheadOffsetDp(model, widths, 0.95f), 0.001f)
     }
+
+    @Test
+    fun `minimum touch width still leaves the label visible inside the card`() {
+        val visualWidthDp = 48f - 2f * ArrangementTrackSegmentVisualInset.value
+
+        assertTrue(shouldShowPlaybackStructureSegmentLabel(visualWidthDp))
+    }
+
+    @Test
+    fun `active and queued backgrounds keep their existing emphasis`() {
+        assertEquals(
+            Color.Red.copy(alpha = 0.82f),
+            arrangementTrackOccurrenceContainerColor(
+                color = Color.Red,
+                isMuted = false,
+                isActive = true,
+                isQueued = false
+            )
+        )
+        assertEquals(
+            Color.Red.copy(alpha = 0.68f),
+            arrangementTrackOccurrenceContainerColor(
+                color = Color.Red,
+                isMuted = false,
+                isActive = false,
+                isQueued = true
+            )
+        )
+    }
+
+    @Test
+    fun `normal structure segment uses the shared colored border`() {
+        val border = arrangementTrackSegmentBorder(
+            color = Color.Red,
+            isQueued = false,
+            isLooped = false
+        )
+
+        assertEquals(ArrangementTrackSegmentNormalBorderWidth, border.width)
+        assertEquals(Color.Red.copy(alpha = 0.82f), border.color)
+    }
+
+    @Test
+    fun `queued border replaces the normal border`() {
+        val border = arrangementTrackSegmentBorder(
+            color = Color.Red,
+            isQueued = true,
+            isLooped = false
+        )
+
+        assertEquals(ArrangementTrackSegmentStateBorderWidth, border.width)
+        assertEquals(ArrangementTrackQueuedBorderColor, border.color)
+    }
+
+    @Test
+    fun `loop border has priority over queued border`() {
+        val border = arrangementTrackSegmentBorder(
+            color = Color.Red,
+            isQueued = true,
+            isLooped = true
+        )
+
+        assertEquals(ArrangementTrackSegmentStateBorderWidth, border.width)
+        assertEquals(
+            androidx.compose.ui.graphics.lerp(Color.Red, Color.White, 0.42f),
+            border.color
+        )
+    }
 }

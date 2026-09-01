@@ -35,7 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -352,7 +351,12 @@ private fun PlaybackStructureTrack(
                         isActive = index == activeSegmentIndex,
                         isQueued = isQueued
                     )
-                    BoxWithConstraints(
+                    val border = arrangementTrackSegmentBorder(
+                        color = segment.color,
+                        isQueued = isQueued,
+                        isLooped = isLooped
+                    )
+                    Box(
                         modifier = Modifier
                             .width(segmentWidthsDp.getOrElse(index) { 0f }.dp)
                             .fillMaxHeight()
@@ -369,55 +373,39 @@ private fun PlaybackStructureTrack(
                                 } else {
                                     Modifier
                                 }
-                            )
-                            .background(
-                                if (isLooped) {
-                                    lerp(containerColor, Color.White, 0.27f)
-                                } else {
-                                    containerColor
-                                }
-                            )
-                            .then(
-                                if (isLooped) {
-                                    Modifier.border(
-                                        width = 2.dp,
-                                        color = lerp(segment.color, Color.White, 0.42f)
-                                    )
-                                } else if (isQueued) {
-                                    Modifier.border(
-                                        width = 2.dp,
-                                        color = Color(0xFFFFD54F)
-                                    )
-                                } else {
-                                    Modifier
-                                }
-                            )
-                            .drawWithContent {
-                                drawContent()
-                                if (index < model.segments.lastIndex) {
-                                    val separatorWidth = 1.dp.toPx()
-                                    drawLine(
-                                        color = Color.LightGray.copy(alpha = 0.55f),
-                                        start = Offset(size.width - separatorWidth / 2f, 0f),
-                                        end = Offset(
-                                            size.width - separatorWidth / 2f,
-                                            size.height
-                                        ),
-                                        strokeWidth = separatorWidth
-                                    )
-                                }
-                            },
+                            ),
                         contentAlignment = Alignment.Center
                     ) {
-                        if (maxWidth >= 28.dp) {
-                            Text(
-                                text = segment.label,
-                                color = Color.LightGray,
-                                fontSize = 16.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(horizontal = 3.dp)
-                            )
+                        BoxWithConstraints(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(ArrangementTrackSegmentVisualInset)
+                                .background(
+                                    color = if (isLooped) {
+                                        lerp(containerColor, Color.White, 0.27f)
+                                    } else {
+                                        containerColor
+                                    },
+                                    shape = ArrangementTrackSegmentShape
+                                )
+                                .border(
+                                    width = border.width,
+                                    color = border.color,
+                                    shape = ArrangementTrackSegmentShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (shouldShowPlaybackStructureSegmentLabel(maxWidth.value)) {
+                                Text(
+                                    text = segment.label,
+                                    color = ArrangementTrackSegmentTextColor,
+                                    fontSize = ArrangementTrackSegmentTextSize,
+                                    fontWeight = ArrangementTrackSegmentTextWeight,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(horizontal = 3.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -459,6 +447,9 @@ internal fun findActivePlaybackStructureSegmentIndex(
 
     return model.segments.lastIndex
 }
+
+internal fun shouldShowPlaybackStructureSegmentLabel(visualWidthDp: Float): Boolean =
+    visualWidthDp >= 28f
 
 internal fun playbackStructureSegmentWidthsDp(
     model: PlaybackStructureModel,

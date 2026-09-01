@@ -12,7 +12,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -161,9 +160,14 @@ internal fun ArrangementNavigationRow(
             key = { item -> "${item.ownerSongId}:${item.entryId}" }
         ) { item ->
             val itemColor = arrangementTrackOccurrenceColor(item.colorKey)
+            val border = arrangementTrackSegmentBorder(
+                color = itemColor,
+                isQueued = false,
+                isLooped = false
+            )
             Column(
                 modifier = Modifier
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = ArrangementTrackSegmentMinHeight)
                     .background(
                         color = arrangementTrackOccurrenceContainerColor(
                             color = itemColor,
@@ -171,12 +175,12 @@ internal fun ArrangementNavigationRow(
                             isActive = false,
                             isQueued = false
                         ),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = ArrangementTrackSegmentShape
                     )
                     .border(
-                        width = 1.dp,
-                        color = itemColor.copy(alpha = 0.82f),
-                        shape = RoundedCornerShape(12.dp)
+                        width = border.width,
+                        color = border.color,
+                        shape = ArrangementTrackSegmentShape
                     )
                     .clickable { onItemClick(item) }
                     .padding(horizontal = 16.dp, vertical = 7.dp),
@@ -185,9 +189,9 @@ internal fun ArrangementNavigationRow(
             ) {
                 Text(
                     text = item.name,
-                    color = Color.White,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 14.sp,
+                    color = ArrangementTrackSegmentTextColor,
+                    fontWeight = ArrangementTrackSegmentTextWeight,
+                    fontSize = ArrangementTrackSegmentTextSize,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
