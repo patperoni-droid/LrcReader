@@ -7,19 +7,22 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
-data class PreparedVirtualArrangementPlayback(
-    val variantSongId: String,
-    val title: String,
-    val sourceSongId: String,
-    val sourceAudioUri: String,
-    val playbackProfile: SmpConfig.PlaybackConfig?,
-    val mediaItems: List<MediaItem>,
-    val livePlan: LiveArrangementPlan,
-    val navigationItems: List<ArrangementNavigationItem>
+class PreparedVirtualArrangementPlayback internal constructor(
+    private val preparedPlayback: PreparedArrangementPlayback
 ) {
-    val occurrenceDurationsMs: List<Long> =
-        livePlan.occurrences.map(LiveArrangementOccurrence::durationMs)
-    val durationMs: Long = livePlan.durationMs
+    val variantSongId: String = preparedPlayback.ownerSongId
+    val title: String = preparedPlayback.title
+    val sourceSongId: String = preparedPlayback.audioSourceSongId
+    val sourceAudioUri: String = preparedPlayback.sourceAudioUri.toString()
+    val playbackProfile: SmpConfig.PlaybackConfig? = preparedPlayback.playbackProfile
+    val mediaItems: List<MediaItem> = preparedPlayback.mediaItems
+    val livePlan: LiveArrangementPlan = preparedPlayback.livePlan
+    val navigationItems: List<ArrangementNavigationItem> = preparedPlayback.navigationItems
+    val occurrenceDurationsMs: List<Long> = preparedPlayback.occurrenceDurationsMs
+    val durationMs: Long = preparedPlayback.durationMs
+    internal val occurrences: List<PreparedArrangementPlaybackOccurrence> =
+        preparedPlayback.occurrences
+    internal val assetTimeDomain: ArrangementAssetTimeDomain = preparedPlayback.assetTimeDomain
 }
 
 object VirtualArrangementPlaybackResolver {
@@ -39,60 +42,35 @@ object VirtualArrangementPlaybackResolver {
         val arrangement = ArrangementStore.load(context, variantSong.id) ?: return@withContext null
         if (arrangement.sourceSongId != sourceSongId) return@withContext null
 
-        val projection = arrangement.toOccurrenceProjection()
-        val occurrences = prepareArrangementOccurrences(
-            segments = projection.segments,
-            structureSegmentIds = projection.structureSegmentIds,
-            entries = projection.entries,
-            useOccurrenceModel = projection.entries.isNotEmpty()
-        )
-        if (occurrences.isEmpty()) return@withContext null
-
         val sourceUri = Uri.fromFile(sourceAudioFile)
-        val livePlan = LiveArrangementPlan(
-            occurrences = occurrences.map { occurrence ->
-                LiveArrangementOccurrence(
-                    key = "${variantSong.id}:${occurrence.entryIndex}:${occurrence.repeatIndex}",
-                    label = occurrence.segment.name,
-                    durationMs = occurrence.durationMs,
-                    color = occurrence.color
-                )
-            }
-        )
-        val mediaItems = occurrences.zip(livePlan.occurrences).map { (occurrence, liveOccurrence) ->
-            val startMs = minOf(
-                occurrence.segment.startMs,
-                occurrence.segment.endMs
-            ).coerceAtLeast(0L)
-            val endMs = maxOf(
-                occurrence.segment.startMs,
-                occurrence.segment.endMs
-            ).coerceAtLeast(startMs + 1L)
-            MediaItem.Builder()
-                .setUri(sourceUri)
-                .setMediaId(liveOccurrence.key)
-                .setClippingConfiguration(
-                    MediaItem.ClippingConfiguration.Builder()
-                        .setStartPositionMs(startMs)
-                        .setEndPositionMs(endMs)
-                        .build()
-                )
-                .build()
-        }
-
-        PreparedVirtualArrangementPlayback(
+        prepareVirtualArrangementPlayback(
             variantSongId = variantSong.id,
             title = variantSong.title,
             sourceSongId = sourceSongId,
-            sourceAudioUri = sourceUri.toString(),
+            sourceAudioUri = sourceUri,
             playbackProfile = SmpVariantPlayback.resolveProfile(
                 context = context,
                 variant = variantSong,
                 parent = sourceSong
             ),
-            mediaItems = mediaItems,
-            livePlan = livePlan,
-            navigationItems = occurrences.toVirtualNavigationItems(variantSong.id)
+            arrangement = arrangement
         )
     }
 }
+
+internal fun prepareVirtualArrangementPlayback(
+    variantSongId: String,
+    title: String,
+    sourceSongId: String,
+    sourceAudioUri: Uri,
+    playbackProfile: SmpConfig.PlaybackConfig?,
+    arrangement: ArrangementData
+): PreparedVirtualArrangementPlayback? = ArrangementPlaybackPreparer.prepare(
+    ownerSongId = variantSongId,
+    audioSourceSongId = sourceSongId,
+    title = title,
+    sourceAudioUri = sourceAudioUri,
+    playbackProfile = playbackProfile,
+    assetTimeDomain = ArrangementAssetTimeDomain.ARRANGEMENT,
+    arrangement = arrangement
+)?.let(::PreparedVirtualArrangementPlayback)
