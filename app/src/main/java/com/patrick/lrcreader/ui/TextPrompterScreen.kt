@@ -44,6 +44,7 @@ import androidx.compose.ui.zIndex
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.TextPrompterPrefs
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.parseChordPro
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import com.patrick.lrcreader.ui.theme.SplColors
@@ -327,8 +328,13 @@ fun TextPrompterScreen(
         ) {
 
             // 1) TEXTE plein écran
+            val prompterContent = songInfo.content.orEmpty()
+            val chordProDocument = remember(prompterContent) {
+                parseChordPro(prompterContent)
+            }
             PrompterTextViewport(
-                content = songInfo.content.orEmpty(),
+                content = prompterContent,
+                chordProDocument = chordProDocument,
                 scrollState = scrollState,
                 startOffsetFraction = 0.55f,
                 bottomOffsetFraction = 0.30f,
