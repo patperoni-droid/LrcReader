@@ -121,7 +121,9 @@ import com.patrick.lrcreader.smp.ArrangementNavigationItem
 import com.patrick.lrcreader.smp.ArrangementStore
 import com.patrick.lrcreader.smp.ArrangementVariantStore
 import com.patrick.lrcreader.smp.PreparedVirtualArrangementPlayback
+import com.patrick.lrcreader.smp.PlaybackTimeDomains
 import com.patrick.lrcreader.smp.VirtualArrangementPlaybackResolver
+import com.patrick.lrcreader.smp.routeArrangementPlaybackTimeDomains
 import com.patrick.lrcreader.smp.toLinearNavigationItems
 import com.patrick.lrcreader.ui.*
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
@@ -1476,11 +1478,6 @@ class MainActivity : AppCompatActivity() {
                         ?: player.currentPosition.coerceIn(0L, arrangement.durationMs)
                 }
 
-                fun effectiveMainPlaybackPositionMs(): Long {
-                    val arrangement = activeVirtualArrangementPlayback ?: return exoPlayer.currentPosition
-                    return effectiveArrangementPlaybackPositionMs(exoPlayer, arrangement)
-                }
-
                 fun seekArrangementPlaybackToMs(
                     player: ExoPlayer,
                     arrangement: PreparedVirtualArrangementPlayback,
@@ -2562,6 +2559,46 @@ class MainActivity : AppCompatActivity() {
                     return trimConfig.exitMs?.takeIf { trimConfig.mode == "seek-stop" && it > 0L }
                         ?: exoPlayer.duration
                 }
+
+                fun effectiveMainPlaybackTimeDomains(): PlaybackTimeDomains {
+                    val historicalPositionMs = exoPlayer.currentPosition
+                    val activeUri = exoPlayer.currentMediaItem
+                        ?.localConfiguration
+                        ?.uri
+                        ?.toString()
+                    val effectiveDurationMs = resolveEffectiveDurationMs(
+                        requestedUri = currentPlayingUri,
+                        activeUri = activeUri
+                    )
+                    val arrangement = activeVirtualArrangementPlayback
+                    if (arrangement == null) {
+                        return routeArrangementPlaybackTimeDomains(
+                            clockSnapshot = null,
+                            historicalPositionMs = historicalPositionMs,
+                            historicalDurationMs = effectiveDurationMs
+                        )
+                    }
+
+                    val clockSnapshot = arrangement.clockSnapshot(
+                        currentMediaId = exoPlayer.currentMediaItem?.mediaId,
+                        fallbackOccurrenceIndex = exoPlayer.currentMediaItemIndex.coerceAtLeast(0),
+                        localPositionMs = historicalPositionMs
+                    )
+                    return routeArrangementPlaybackTimeDomains(
+                        clockSnapshot = clockSnapshot,
+                        historicalPositionMs = historicalPositionMs.coerceIn(
+                            0L,
+                            arrangement.durationMs
+                        ),
+                        historicalDurationMs = effectiveDurationMs,
+                        preparedStructureDurationMs = effectiveDurationMs
+                    )
+                }
+
+                // Single-clock surfaces (including LocalLink/external display) keep the
+                // historical variant value, which is the prepared Structure clock.
+                fun effectiveMainPlaybackPositionMs(): Long =
+                    effectiveMainPlaybackTimeDomains().structurePositionMs
 
                 val onEnded = rememberUpdatedState {
                     if (manualCrossfadeTransitionTitle != null) {
@@ -5181,16 +5218,8 @@ class MainActivity : AppCompatActivity() {
                                                 setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
                                             }
                                         },
-                                        getPositionMs = ::effectiveMainPlaybackPositionMs,
-                                        getEffectiveDurationMs = {
-                                            resolveEffectiveDurationMs(
-                                                requestedUri = currentPlayingUri,
-                                                activeUri = exoPlayer.currentMediaItem
-                                                    ?.localConfiguration
-                                                    ?.uri
-                                                    ?.toString()
-                                            )
-                                        },
+                                        getPlaybackTimeDomains =
+                                            ::effectiveMainPlaybackTimeDomains,
                                         seekToMs = ::seekMainPlaybackToMs,
                                         onPlaySelectedPlaylistItem = ::requestQuickPlaylistSelectedPlayback,
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
@@ -6417,16 +6446,8 @@ class MainActivity : AppCompatActivity() {
                                                 setTabAndPersist(BottomTab.More, reason = "playerOpenWaveform")
                                             }
                                         },
-                                        getPositionMs = ::effectiveMainPlaybackPositionMs,
-                                        getEffectiveDurationMs = {
-                                            resolveEffectiveDurationMs(
-                                                requestedUri = currentPlayingUri,
-                                                activeUri = exoPlayer.currentMediaItem
-                                                    ?.localConfiguration
-                                                    ?.uri
-                                                    ?.toString()
-                                            )
-                                        },
+                                        getPlaybackTimeDomains =
+                                            ::effectiveMainPlaybackTimeDomains,
                                         seekToMs = ::seekMainPlaybackToMs,
                                         onPlaySelectedPlaylistItem = ::requestQuickPlaylistSelectedPlayback,
                                         liveGainControlsEnabled = canAdjustLiveGain(),

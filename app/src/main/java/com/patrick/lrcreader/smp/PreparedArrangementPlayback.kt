@@ -8,6 +8,13 @@ internal enum class ArrangementAssetTimeDomain {
     ARRANGEMENT
 }
 
+data class PlaybackTimeDomains(
+    val assetPositionMs: Long,
+    val structurePositionMs: Long,
+    val assetDurationMs: Long,
+    val structureDurationMs: Long
+)
+
 internal data class ArrangementPlaybackOccurrenceId(
     val ownerSongId: String,
     val entryId: String,
@@ -38,6 +45,36 @@ internal data class ArrangementPlaybackClockSnapshot(
 
     val assetPositionMs: Long
         get() = positionMs(assetTimeDomain)
+}
+
+internal fun routeArrangementPlaybackTimeDomains(
+    clockSnapshot: ArrangementPlaybackClockSnapshot?,
+    historicalPositionMs: Long,
+    historicalDurationMs: Long,
+    preparedStructureDurationMs: Long? = null
+): PlaybackTimeDomains {
+    if (clockSnapshot == null) {
+        return PlaybackTimeDomains(
+            assetPositionMs = historicalPositionMs,
+            structurePositionMs = historicalPositionMs,
+            assetDurationMs = historicalDurationMs,
+            structureDurationMs = historicalDurationMs
+        )
+    }
+
+    val structureDurationMs = preparedStructureDurationMs
+        ?: clockSnapshot.arrangementDurationMs
+    val assetDurationMs = when (clockSnapshot.assetTimeDomain) {
+        ArrangementAssetTimeDomain.SOURCE ->
+            clockSnapshot.sourceDurationMs ?: historicalDurationMs
+        ArrangementAssetTimeDomain.ARRANGEMENT -> structureDurationMs
+    }
+    return PlaybackTimeDomains(
+        assetPositionMs = clockSnapshot.assetPositionMs,
+        structurePositionMs = clockSnapshot.arrangementPositionMs,
+        assetDurationMs = assetDurationMs,
+        structureDurationMs = structureDurationMs
+    )
 }
 
 internal data class PreparedArrangementPlaybackOccurrence(

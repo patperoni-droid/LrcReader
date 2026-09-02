@@ -107,6 +107,7 @@ import com.patrick.lrcreader.core.lyrics.LyricsCacheEntry
 import com.patrick.lrcreader.smp.DEFAULT_TIMELINE_NOTE_DURATION_MS
 import com.patrick.lrcreader.smp.ArrangementData
 import com.patrick.lrcreader.smp.ArrangementNavigationItem
+import com.patrick.lrcreader.smp.PlaybackTimeDomains
 import com.patrick.lrcreader.smp.SmpConfig
 import com.patrick.lrcreader.smp.SmpAnnotationsStore
 import com.patrick.lrcreader.smp.SmpAutoMigrationResult
@@ -237,8 +238,7 @@ fun PlayerScreen(
     requestedNavigationTarget: String? = null,
     requestedNavigationToken: Int = 0,
     onOpenWaveform: (String) -> Unit = {},
-    getPositionMs: () -> Long,
-    getEffectiveDurationMs: () -> Long,
+    getPlaybackTimeDomains: () -> PlaybackTimeDomains,
     seekToMs: (Long) -> Unit,
     onPlaySelectedPlaylistItem: () -> Boolean = { false },
     compactTabletLayout: Boolean = false,
@@ -665,7 +665,7 @@ fun PlayerScreen(
         }
         while (true) {
             if (isPlaying) {
-                val currentPositionMs = getPositionMs()
+                val currentPositionMs = getPlaybackTimeDomains().assetPositionMs
                 val activeAnnotationNotes = LiveNoteManager.snapshot().filter { note ->
                     isLiveNoteActiveAt(note, currentPositionMs)
                 }
@@ -765,6 +765,8 @@ fun PlayerScreen(
 
     var durationMs by remember(currentTrackUri) { mutableStateOf(0) }
     var positionMs by remember(currentTrackUri) { mutableStateOf(0) }
+    var assetDurationMs by remember(currentTrackUri) { mutableStateOf(0) }
+    var assetPositionMs by remember(currentTrackUri) { mutableStateOf(0) }
     var isDragging by remember(currentTrackUri) { mutableStateOf(false) }
     var dragPosMs by remember(currentTrackUri) { mutableStateOf(0) }
 
@@ -1060,7 +1062,7 @@ fun PlayerScreen(
     ) {
         addTimelineMarkerAtPosition(
             label = label,
-            targetPositionMs = getPositionMs().coerceAtLeast(0L),
+            targetPositionMs = getPlaybackTimeDomains().assetPositionMs.coerceAtLeast(0L),
             kind = kind,
             durationMs = durationMs
         )
@@ -1070,7 +1072,7 @@ fun PlayerScreen(
         if (kind == TimelineMarkerKind.TEXT) return
         addTimelineMarkerAtPosition(
             label = kind.defaultLabel,
-            targetPositionMs = getPositionMs().coerceAtLeast(0L),
+            targetPositionMs = getPlaybackTimeDomains().assetPositionMs.coerceAtLeast(0L),
             kind = kind,
             durationMs = if (kind == TimelineMarkerKind.NOTE) DEFAULT_TIMELINE_NOTE_DURATION_MS else null
         )
@@ -1118,7 +1120,7 @@ fun PlayerScreen(
                     ?: 0L
                 syncPositionMs.coerceAtLeast(0L) + previewOffsetMs
             } else {
-                getPositionMs().coerceAtLeast(0L)
+                getPlaybackTimeDomains().assetPositionMs.coerceAtLeast(0L)
             }
             timelineLightPreviewPositionMs = targetSyncPositionMs.takeIf {
                 isEditingTimeline && !isPlaying && syncPositionMs != null
@@ -1274,7 +1276,9 @@ fun PlayerScreen(
             return
         }
         val totalOffsetMs = lyricsDelayMs + userOffsetMs
-        val effectivePos = (getPositionMs() - totalOffsetMs).coerceAtLeast(0L)
+        val effectivePos = (
+            getPlaybackTimeDomains().assetPositionMs - totalOffsetMs
+        ).coerceAtLeast(0L)
         val idx = findActiveLrcIndex(lines, effectivePos)
         currentLrcIndex = if (idx >= 0) idx else 0
     }
@@ -2492,7 +2496,9 @@ fun PlayerScreen(
             return
         }
         val totalOffsetMs = lyricsDelayMs + userOffsetMs
-        val effectivePos = (getPositionMs() - totalOffsetMs).coerceAtLeast(0L)
+        val effectivePos = (
+            getPlaybackTimeDomains().assetPositionMs - totalOffsetMs
+        ).coerceAtLeast(0L)
         val idx = findActiveLrcIndex(activeDisplayLines, effectivePos)
         currentLrcIndex = if (idx >= 0) idx else 0
     }
@@ -2625,6 +2631,7 @@ fun PlayerScreen(
         runCatching { seekToMs(seekPos.toLong()) }
         currentLrcIndex = targetIndex.coerceIn(0, max(activeDisplayLines.size - 1, 0))
         positionMs = seekPos
+        assetPositionMs = seekPos
         timelineLightPreviewPositionMs = null
         if (currentTrackUri != null && hasLightCues) {
             LightCueDispatcher.syncToPosition(
@@ -2645,24 +2652,31 @@ fun PlayerScreen(
     LaunchedEffect(isPlaying, activeDisplayLines, selectedViewMode, userOffsetMs, currentTrackUri, isManualTransitionActive) {
         if (isManualTransitionActive) return@LaunchedEffect
         while (true) {
-            val d = getEffectiveDurationMs().toInt()
-            if (d > 0) durationMs = d
+            val timeDomains = getPlaybackTimeDomains()
+            val structureDuration = timeDomains.structureDurationMs.toInt()
+            if (structureDuration > 0) durationMs = structureDuration
+            val currentAssetDuration = timeDomains.assetDurationMs.toInt()
+            if (currentAssetDuration > 0) assetDurationMs = currentAssetDuration
 
-            val p = getPositionMs().toInt()
-            if (!isDragging) positionMs = p
+            val structurePosition = timeDomains.structurePositionMs.toInt()
+            val currentAssetPosition = timeDomains.assetPositionMs.toInt()
+            if (!isDragging) {
+                positionMs = structurePosition
+                assetPositionMs = currentAssetPosition
+            }
 
             if (currentTrackUri != null && isCurrentTrackSmp) {
                 MidiCueDispatcher.onSmpPlaybackPosition(
                     context = context,
                     trackUri = currentTrackUri,
-                    positionMs = p.toLong(),
+                    positionMs = currentAssetPosition.toLong(),
                     isPlaying = isPlaying
                 )
             }
 
             if (activeDisplayLines.isNotEmpty()) {
                 val totalOffsetMs = lyricsDelayMs + userOffsetMs
-                val posMs = (p.toLong() - totalOffsetMs).coerceAtLeast(0L)
+                val posMs = (currentAssetPosition.toLong() - totalOffsetMs).coerceAtLeast(0L)
                 val newIndex = findActiveLrcIndex(activeDisplayLines, posMs)
                 if (newIndex >= 0 && newIndex != currentLrcIndex) {
                     Log.d(
@@ -2723,13 +2737,13 @@ fun PlayerScreen(
                     )
                     Log.d(
                         midiCueTraceTag,
-                        "PLAYER_RESOLVE track=$currentTrackUri newIndex=$newIndex lastMidiIndex=$lastMidiIndex positionMs=${getPositionMs()} cue=${cue?.let { "{lineIndex=${it.lineIndex},channel=${it.channel},program=${it.program}}" } ?: "null"}"
+                        "PLAYER_RESOLVE track=$currentTrackUri newIndex=$newIndex lastMidiIndex=$lastMidiIndex positionMs=$currentAssetPosition cue=${cue?.let { "{lineIndex=${it.lineIndex},channel=${it.channel},program=${it.program}}" } ?: "null"}"
                     )
                     MidiCueDispatcher.onResolvedCueChanged(
                         trackUri = currentTrackUri,
                         lineIndex = newIndex,
                         cue = cue,
-                        positionMs = getPositionMs()
+                        positionMs = currentAssetPosition.toLong()
                     )
                 }
             }
@@ -2751,7 +2765,8 @@ fun PlayerScreen(
         if (!hasLightCues) return@LaunchedEffect
 
         if (!isPlaying) {
-            val pausedPositionMs = timelineLightPreviewPositionMs ?: getPositionMs().coerceAtLeast(0L)
+            val pausedPositionMs = timelineLightPreviewPositionMs
+                ?: getPlaybackTimeDomains().assetPositionMs.coerceAtLeast(0L)
             LightCueDispatcher.advance(
                 trackUri = trackUri,
                 positionMs = pausedPositionMs,
@@ -2761,7 +2776,8 @@ fun PlayerScreen(
         }
 
         while (true) {
-            val runtimePositionMs = timelineLightPreviewPositionMs ?: getPositionMs().coerceAtLeast(0L)
+            val runtimePositionMs = timelineLightPreviewPositionMs
+                ?: getPlaybackTimeDomains().assetPositionMs.coerceAtLeast(0L)
             LightCueDispatcher.advance(
                 trackUri = trackUri,
                 positionMs = runtimePositionMs,
@@ -2855,6 +2871,7 @@ fun PlayerScreen(
                 val safe = min(max(newPos, 0), durationMs)
                 runCatching { seekToMs(safe.toLong()) }
                 positionMs = safe
+                assetPositionMs = safe
                 timelineLightPreviewPositionMs = null
                 if (currentTrackUri != null && hasLightCues) {
                     LightCueDispatcher.syncToPosition(
@@ -2932,6 +2949,7 @@ fun PlayerScreen(
                 if (durationMs <= 0) return@onPrev
                 seekToMs(0L)
                 positionMs = 0
+                assetPositionMs = 0
                 currentLrcIndex = 0
                 lastLyricsAutoCenterIndex = -1
                 lyricsAutoCenterJob?.cancel()
@@ -3005,8 +3023,8 @@ fun PlayerScreen(
                 onCurrentEditTabChange = { currentEditTab = it },
 
                 isPlaying = isPlaying,
-                positionMs = positionMs,
-                durationMs = durationMs,
+                positionMs = assetPositionMs,
+                durationMs = assetDurationMs,
                 onIsPlayingChange = onIsPlayingChange,
                 seekToMs = seekToMs,
 
@@ -3127,6 +3145,7 @@ fun PlayerScreen(
                             val safe = min(max(newPos, 0), durationMs)
                             runCatching { seekToMs(safe.toLong()) }
                             positionMs = safe
+                            assetPositionMs = safe
                             timelineLightPreviewPositionMs = null
                             if (currentTrackUri != null && hasLightCues) {
                                 LightCueDispatcher.syncToPosition(
@@ -3191,6 +3210,7 @@ fun PlayerScreen(
                             if (durationMs <= 0) return@onPrev
                             seekToMs(0L)
                             positionMs = 0
+                            assetPositionMs = 0
                             currentLrcIndex = 0
                             lastLyricsAutoCenterIndex = -1
                             lyricsAutoCenterJob?.cancel()
@@ -3283,8 +3303,8 @@ fun PlayerScreen(
                 markers = timelineEditorMarkers,
                 palette = timelinePalette,
                 isPlaying = isPlaying,
-                positionMs = positionMs,
-                durationMs = durationMs,
+                positionMs = assetPositionMs,
+                durationMs = assetDurationMs,
                 playbackControlContent = { timelineOverride ->
                     OfficialPlaybackControl(timelineOverride)
                 },
@@ -3305,7 +3325,9 @@ fun PlayerScreen(
                 },
                 onAddTypedMarker = onAddTypedMarker@ { kind ->
                     if (kind == TimelineMarkerKind.DMX) {
-                        addTimelineDmxCueAtPosition(getPositionMs().coerceAtLeast(0L))
+                        addTimelineDmxCueAtPosition(
+                            getPlaybackTimeDomains().assetPositionMs.coerceAtLeast(0L)
+                        )
                     } else {
                         addTypedTimelineMarker(kind)
                     }
@@ -3341,7 +3363,7 @@ fun PlayerScreen(
                         ?.takeIf { it.trackUri == trackUri }
                         ?: return@onPasteDmxCueHere
                     val cueToPaste = clipboard.cue.copy(
-                        timeMs = getPositionMs().coerceAtLeast(0L)
+                        timeMs = getPlaybackTimeDomains().assetPositionMs.coerceAtLeast(0L)
                     )
                     scope.launch {
                         val saved = withContext(Dispatchers.IO) {
@@ -3722,7 +3744,7 @@ fun PlayerScreen(
                                                 trackUri = currentTrackUri,
                                                 lineIndex = index,
                                                 cue = cue,
-                                                positionMs = getPositionMs()
+                                                positionMs = getPlaybackTimeDomains().assetPositionMs
                                             )
                                         }
                                     }
@@ -4013,10 +4035,10 @@ fun PlayerScreen(
         timelineLightTrackUri != null
     ) {
         TimelineLightCueGenerationPopup(
-            durationMs = durationMs.toLong(),
+            durationMs = assetDurationMs.toLong(),
             onGenerate = { style, replaceExisting ->
                 val generated = LightCueAutoGenerator.generate(
-                    durationMs = durationMs.toLong(),
+                    durationMs = assetDurationMs.toLong(),
                     style = style
                 )
                 scope.launch {
