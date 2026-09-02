@@ -219,6 +219,8 @@ class ScrollingTextEditorDialogTest {
         composeRule.onNodeWithText("Playlist editor").assertIsDisplayed()
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
             .assertIsNotEnabled()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertDoesNotExist()
         composeRule.runOnIdle { assertFalse(confirmed) }
     }
 
@@ -238,6 +240,8 @@ class ScrollingTextEditorDialogTest {
 
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
             .assertIsNotEnabled()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertDoesNotExist()
     }
 
     @Test
@@ -325,6 +329,62 @@ class ScrollingTextEditorDialogTest {
         }
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
             .assertIsFocused()
+    }
+
+    @Test
+    fun paletteAndActionsRemainVisibleAfterMovingToEndOfLongContent() {
+        val longContent = List(100) { index -> "Long line $index" }.joinToString("\n")
+        var contentValue by mutableStateOf(
+            TextFieldValue(longContent, selection = TextRange(0))
+        )
+
+        composeRule.setContent {
+            TestEditor(
+                contentValue = contentValue,
+                onContentValueChange = { contentValue = it },
+                paletteInput = "Am F",
+                paletteChords = listOf("Am", "F")
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
+            .performTextInputSelection(TextRange(longContent.length))
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "Am")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertTrue(contentValue.text.endsWith("Long line 99[Am]"))
+            assertEquals(TextRange(contentValue.text.length), contentValue.selection)
+        }
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
+            .assertIsFocused()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun keyboardFocusKeepsPaletteAndActionsVisible() {
+        composeRule.setContent {
+            TestEditor(
+                paletteInput = "Am F C G",
+                paletteChords = listOf("Am", "F", "C", "G")
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG).performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "Am")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
+            .assertIsDisplayed()
     }
 
     @Test

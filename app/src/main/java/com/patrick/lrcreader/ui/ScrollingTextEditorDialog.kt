@@ -13,14 +13,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -100,63 +97,57 @@ internal fun ScrollingTextEditorDialog(
 
             Spacer(Modifier.height(12.dp))
 
-            Column(
-                modifier = Modifier
-                    .weight(1f, fill = true)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                if (paletteInput != null) {
-                    OutlinedTextField(
-                        value = paletteInput,
-                        onValueChange = onPaletteInputChange,
-                        label = { Text(stringResource(R.string.chords_palette_input_label)) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG),
-                        singleLine = true
-                    )
+            if (paletteInput != null) {
+                OutlinedTextField(
+                    value = paletteInput,
+                    onValueChange = onPaletteInputChange,
+                    label = { Text(stringResource(R.string.chords_palette_input_label)) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG),
+                    singleLine = true
+                )
 
-                    if (paletteChords.isNotEmpty()) {
-                        Spacer(Modifier.height(6.dp))
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            paletteChords.forEach { chord ->
-                                TextButton(
-                                    onClick = {
-                                        onContentValueChange(
-                                            insertChordProAtSelection(contentValue, chord)
-                                        )
-                                        contentFocusRequester.requestFocus()
-                                    },
-                                    modifier = Modifier.testTag(
-                                        SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord
-                                    ).defaultMinSize(minWidth = 0.dp, minHeight = 34.dp),
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
-                                }
+                if (paletteChords.isNotEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        paletteChords.forEach { chord ->
+                            TextButton(
+                                onClick = {
+                                    onContentValueChange(
+                                        insertChordProAtSelection(contentValue, chord)
+                                    )
+                                    contentFocusRequester.requestFocus()
+                                },
+                                modifier = Modifier.testTag(
+                                    SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord
+                                ).defaultMinSize(minWidth = 0.dp, minHeight = 34.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
                             }
                         }
                     }
-
-                    Spacer(Modifier.height(8.dp))
                 }
 
-                OutlinedTextField(
-                    value = contentValue,
-                    onValueChange = onContentValueChange,
-                    label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 260.dp)
-                        .focusRequester(contentFocusRequester)
-                        .testTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG),
-                    minLines = 10
-                )
+                Spacer(Modifier.height(8.dp))
             }
+
+            OutlinedTextField(
+                value = contentValue,
+                onValueChange = onContentValueChange,
+                label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true)
+                    .focusRequester(contentFocusRequester)
+                    .testTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG),
+                minLines = 10
+            )
 
             Spacer(Modifier.height(12.dp))
 
