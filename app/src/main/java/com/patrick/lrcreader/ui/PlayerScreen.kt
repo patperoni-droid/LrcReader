@@ -160,6 +160,12 @@ internal fun shouldShowArrangementNavigationRow(
     is PlaybackProgressMode.Structure -> false
 }
 
+internal fun shouldShowPlaybackProgressTrack(
+    playbackProgressMode: PlaybackProgressMode,
+    isArrangementEditorVisible: Boolean
+): Boolean = playbackProgressMode !is PlaybackProgressMode.Structure ||
+    !isArrangementEditorVisible
+
 internal fun editorRawTextAfterPersistence(
     persistedMode: LyricsViewMode,
     activeMode: LyricsViewMode,
@@ -2859,9 +2865,15 @@ fun PlayerScreen(
 
     @Composable
     fun OfficialPlaybackControl(
-        timelineOverride: TimelinePlaybackControlOverride? = null
+        timelineOverride: TimelinePlaybackControlOverride? = null,
+        isArrangementEditorVisible: Boolean = false
     ) {
         val effectiveIsPlaying = timelineOverride?.isPlaying ?: isPlaying
+        val effectiveProgressMode = if (timelineOverride == null) {
+            playbackProgressMode
+        } else {
+            PlaybackProgressMode.Linear
+        }
         PlaybackControl(
             positionMs = if (isDragging) dragPosMs else positionMs,
             durationMs = durationMs,
@@ -2978,11 +2990,11 @@ fun PlayerScreen(
             compact = compactTabletLayout,
             liveConsoleMode = compactTabletLayout,
             liveSelectionInSync = playbackControlSelectionInSync,
-            progressMode = if (timelineOverride == null) {
-                playbackProgressMode
-            } else {
-                PlaybackProgressMode.Linear
-            },
+            progressMode = effectiveProgressMode,
+            showProgress = shouldShowPlaybackProgressTrack(
+                playbackProgressMode = effectiveProgressMode,
+                isArrangementEditorVisible = isArrangementEditorVisible
+            ),
             onStructureSegmentSelected = onPlaybackStructureSegmentSelected,
             onStructureSegmentLongPressed = onPlaybackStructureSegmentLongPressed
         )
@@ -3308,8 +3320,8 @@ fun PlayerScreen(
                 isPlaying = isPlaying,
                 positionMs = assetPositionMs,
                 durationMs = assetDurationMs,
-                playbackControlContent = { timelineOverride ->
-                    OfficialPlaybackControl(timelineOverride)
+                playbackControlContent = { timelineOverride, isArrangementEditorVisible ->
+                    OfficialPlaybackControl(timelineOverride, isArrangementEditorVisible)
                 },
                 onCloseEditor = {
                     editingTimelineMidiMarkerIndex = null

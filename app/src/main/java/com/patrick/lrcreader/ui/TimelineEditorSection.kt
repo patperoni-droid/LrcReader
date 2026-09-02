@@ -280,7 +280,10 @@ fun TimelineEditorSection(
     isPlaying: Boolean,
     positionMs: Int,
     durationMs: Int,
-    playbackControlContent: @Composable (TimelinePlaybackControlOverride?) -> Unit,
+    playbackControlContent: @Composable (
+        TimelinePlaybackControlOverride?,
+        Boolean
+    ) -> Unit,
     onCloseEditor: () -> Unit,
     onIsPlayingChange: (Boolean) -> Unit,
     seekToMs: (Long) -> Unit,
@@ -1036,7 +1039,10 @@ fun TimelineEditorSection(
         } else {
             null
         }
-        playbackControlContent(playbackOverride)
+        playbackControlContent(
+            playbackOverride,
+            editorMode == TimelineEditorMode.GRID_SETUP
+        )
     }
 
     val safePositionEditIndex = positionEditIndex

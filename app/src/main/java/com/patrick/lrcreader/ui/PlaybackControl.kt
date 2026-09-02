@@ -24,23 +24,26 @@ fun PlaybackControl(
     liveSelectionInSync: Boolean = true,
     onLivePlay: (() -> Unit)? = null,
     progressMode: PlaybackProgressMode = PlaybackProgressMode.Linear,
+    showProgress: Boolean = true,
     onStructureSegmentSelected: (String) -> Unit = {},
     onStructureSegmentLongPressed: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        PlaybackProgressBar(
-            mode = progressMode,
-            positionMs = positionMs,
-            durationMs = durationMs,
-            onSeekLivePreview = onSeekLivePreview,
-            onSeekCommit = onSeekCommit,
-            highlightColor = highlightColor,
-            onStructureSegmentSelected = onStructureSegmentSelected,
-            onStructureSegmentLongPressed = onStructureSegmentLongPressed,
-            isPlaying = isPlaying,
-            compact = compact
-        )
+        if (showProgress) {
+            PlaybackProgressBar(
+                mode = progressMode,
+                positionMs = positionMs,
+                durationMs = durationMs,
+                onSeekLivePreview = onSeekLivePreview,
+                onSeekCommit = onSeekCommit,
+                highlightColor = highlightColor,
+                onStructureSegmentSelected = onStructureSegmentSelected,
+                onStructureSegmentLongPressed = onStructureSegmentLongPressed,
+                isPlaying = isPlaying,
+                compact = compact
+            )
+        }
 
         PlayerControls(
             isPlaying = isPlaying,

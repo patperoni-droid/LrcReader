@@ -213,6 +213,9 @@ contrat d'aller-retour avant d'être considérés comme persistants.
   variante ;
 - seule une variante prépare et exécute les occurrences Arrangement et affiche la piste Structure
   avec sa progression, sa tête de lecture, `Define Next` groupé et la boucle de segment ;
+- cette piste Structure reste visible dans les vues de lecture comme Paroles ; dans l'éditeur
+  Arrangement, elle est masquée dans le `Playback Control` lorsque la piste d'édition est déjà
+  présente, sans masquer les commandes de lecture ;
 - aucune seconde piste `ArrangementNavigationRow` n'est affichée avec cette piste Structure ;
 - le runtime ne doit pas réactiver automatiquement le moteur Arrangement pour une chanson normale
   ou parent, même si des segments y sont déjà enregistrés.
