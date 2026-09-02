@@ -65,4 +65,83 @@ class TextSongRepositoryTest {
         assertTrue(TextSongRepository.listAll(context).none { it.id == id })
         assertNull(TextSongRepository.getTitle(context, "prompter://$id"))
     }
+
+    @Test
+    fun reads_doNotIncrementVersion() {
+        val initialVersion = TextSongRepository.version.intValue
+
+        TextSongRepository.listAll(context)
+        TextSongRepository.get(context, "missing")
+        TextSongRepository.getTitle(context, "missing")
+        TextSongRepository.exportAll(context)
+
+        assertEquals(initialVersion, TextSongRepository.version.intValue)
+    }
+
+    @Test
+    fun create_incrementsVersionOnce() {
+        val initialVersion = TextSongRepository.version.intValue
+
+        TextSongRepository.create(context, "Title", "Content")
+
+        assertEquals(initialVersion + 1, TextSongRepository.version.intValue)
+    }
+
+    @Test
+    fun update_incrementsVersionOnlyWhenContentChanges() {
+        val id = TextSongRepository.create(context, "Title", "Content")
+        val versionAfterCreate = TextSongRepository.version.intValue
+
+        TextSongRepository.update(context, id, "Title", "Content")
+        assertEquals(versionAfterCreate, TextSongRepository.version.intValue)
+
+        TextSongRepository.update(context, id, "New title", "New content")
+        assertEquals(versionAfterCreate + 1, TextSongRepository.version.intValue)
+
+        TextSongRepository.update(context, "missing", "Title", "Content")
+        assertEquals(versionAfterCreate + 1, TextSongRepository.version.intValue)
+    }
+
+    @Test
+    fun delete_incrementsVersionOnlyWhenItemExists() {
+        val id = TextSongRepository.create(context, "Title", "Content")
+        val versionAfterCreate = TextSongRepository.version.intValue
+
+        TextSongRepository.delete(context, "missing")
+        assertEquals(versionAfterCreate, TextSongRepository.version.intValue)
+
+        TextSongRepository.delete(context, id)
+        assertEquals(versionAfterCreate + 1, TextSongRepository.version.intValue)
+    }
+
+    @Test
+    fun importOne_incrementsVersionOnlyWhenImportedDataChanges() {
+        val initialVersion = TextSongRepository.version.intValue
+
+        TextSongRepository.importOne(context, "id", "Title", "Content")
+        assertEquals(initialVersion + 1, TextSongRepository.version.intValue)
+
+        TextSongRepository.importOne(context, "id", "Title", "Content")
+        assertEquals(initialVersion + 1, TextSongRepository.version.intValue)
+
+        TextSongRepository.importOne(context, "id", "New title", "Content")
+        assertEquals(initialVersion + 2, TextSongRepository.version.intValue)
+    }
+
+    @Test
+    fun clearAll_incrementsVersionOnlyWhenRepositoryIsNotEmpty() {
+        val initialVersion = TextSongRepository.version.intValue
+
+        TextSongRepository.clearAll(context)
+        assertEquals(initialVersion, TextSongRepository.version.intValue)
+
+        TextSongRepository.create(context, "Title", "Content")
+        val versionAfterCreate = TextSongRepository.version.intValue
+
+        TextSongRepository.clearAll(context)
+        assertEquals(versionAfterCreate + 1, TextSongRepository.version.intValue)
+
+        TextSongRepository.clearAll(context)
+        assertEquals(versionAfterCreate + 1, TextSongRepository.version.intValue)
+    }
 }

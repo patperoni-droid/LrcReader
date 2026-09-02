@@ -1850,6 +1850,7 @@ fun LibraryScreen(
     val isFilesViewMode = libraryViewMode == LIBRARY_VIEW_MODE_FILES
     val isPlaylistsViewMode = libraryViewMode == LIBRARY_VIEW_MODE_PLAYLISTS
     val isPrompterViewMode = libraryViewMode == LIBRARY_VIEW_MODE_PROMPTERS
+    val textSongRepositoryVersion = TextSongRepository.version.intValue
     val isSongBasedViewMode = isSongViewMode || isLufsViewMode
     val isEntryBasedViewMode = isFilesViewMode || isPrompterViewMode
     var showLibraryHelpDialog by remember { mutableStateOf(false) }
@@ -2038,6 +2039,14 @@ fun LibraryScreen(
         }
         if (libraryViewMode != LIBRARY_VIEW_MODE_PROMPTERS && prompterSelection.isActive) {
             prompterSelection = prompterSelection.clear()
+        }
+    }
+    LaunchedEffect(textSongRepositoryVersion) {
+        LibraryFolderCache.remove(PROMPTER_FOLDER_URI)
+        val refreshedEntries = buildPrompterEntries()
+        LibraryFolderCache.put(PROMPTER_FOLDER_URI, refreshedEntries)
+        if (isPrompterFolderUri(currentFolderUri) && entries != refreshedEntries) {
+            entries = refreshedEntries
         }
     }
     LaunchedEffect(filteredPlaylists) {

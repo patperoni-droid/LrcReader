@@ -2,6 +2,7 @@ package com.patrick.lrcreader.core
 
 import android.content.Context
 import android.util.Log
+import androidx.compose.runtime.mutableIntStateOf
 import com.patrick.lrcreader.core.config.ConfigJsonAtomicFileIo
 import org.json.JSONObject
 import kotlin.random.Random
@@ -15,6 +16,8 @@ import kotlin.random.Random
  * Tout est stocké en JSON dans SharedPreferences.
  */
 object TextSongRepository {
+
+    val version = mutableIntStateOf(0)
 
     private const val TAG = "TextSongRepository"
     private const val PREFS_NAME = "text_song_repo"
@@ -43,6 +46,10 @@ object TextSongRepository {
     private var cache: MutableMap<String, TextSongData>? = null
     @Volatile
     private var inMemoryOnlyForTests: Boolean = false
+
+    private fun bumpVersion() {
+        version.intValue += 1
+    }
 
     /**
      * Test hook JVM: désactive totalement les accès disque / prefs.
@@ -210,6 +217,7 @@ object TextSongRepository {
         )
         cache!![id] = data
         persist(context)
+        bumpVersion()
         return id
     }
 
@@ -248,16 +256,20 @@ object TextSongRepository {
     /** Met à jour un titre texte existant. */
     fun update(context: Context, id: String, title: String, content: String) {
         ensureLoaded(context)
-        if (!cache!!.containsKey(id)) return
-        cache!![id] = TextSongData(title.trim(), content.trim())
+        val current = cache!![id] ?: return
+        val updated = TextSongData(title.trim(), content.trim())
+        if (updated == current) return
+        cache!![id] = updated
         persist(context)
+        bumpVersion()
     }
 
     /** Supprime un titre texte. */
     fun delete(context: Context, id: String) {
         ensureLoaded(context)
-        cache!!.remove(id)
+        if (cache!!.remove(id) == null) return
         persist(context)
+        bumpVersion()
     }
 
     /** Export complet pour BackupManager. */
@@ -268,14 +280,20 @@ object TextSongRepository {
 
     /** Clear + import un titre (utilisé par BackupManager). */
     fun clearAll(context: Context) {
+        ensureLoaded(context)
+        if (cache!!.isEmpty()) return
         cache = mutableMapOf()
         persist(context)
+        bumpVersion()
     }
 
     fun importOne(context: Context, id: String, title: String, content: String) {
         ensureLoaded(context)
-        cache!![id] = TextSongData(title.trim(), content.trim())
+        val imported = TextSongData(title.trim(), content.trim())
+        if (cache!![id] == imported) return
+        cache!![id] = imported
         persist(context)
+        bumpVersion()
     }
 
     private fun extractId(uriOrId: String): String? {
