@@ -93,6 +93,7 @@ import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.CreateScrollingTextDialog
+import com.patrick.lrcreader.ui.ScrollingTextEditorDialog
 import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.createScrollingText
 import com.patrick.lrcreader.ui.clearPersistedUris
@@ -5786,68 +5787,38 @@ fun LibraryScreen(
                 )
             }
 
-            if (showEditPrompterDialog && editPrompterId != null) {
-                androidx.compose.material3.AlertDialog(
-                    onDismissRequest = {
-                        showEditPrompterDialog = false
-                        editPrompterId = null
-                    },
-                    title = {
-                        androidx.compose.material3.Text(stringResource(R.string.quickplaylists_edit_prompter_title))
-                    },
-                    text = {
-                        Column {
-                            OutlinedTextField(
-                                value = editPrompterTitle,
-                                onValueChange = { editPrompterTitle = it },
-                                label = { Text(stringResource(R.string.common_title_label)) },
-                                singleLine = true
-                            )
-                            Spacer(Modifier.height(8.dp))
-                            OutlinedTextField(
-                                value = editPrompterContent,
-                                onValueChange = { editPrompterContent = it },
-                                label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
-                                minLines = 4
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        androidx.compose.material3.TextButton(
-                            onClick = {
-                                val id = editPrompterId ?: return@TextButton
-                                val title = editPrompterTitle.trim()
-                                val content = editPrompterContent.trim()
-                                if (title.isBlank()) return@TextButton
-                                TextSongRepository.update(
-                                    context = context,
-                                    id = id,
-                                    title = title,
-                                    content = content
-                                )
-                                val folder = currentFolderUri
-                                if (folder != null) {
-                                    entries = buildEntriesForFolder(folder, useCache = false)
-                                }
-                                showEditPrompterDialog = false
-                                editPrompterId = null
-                            }
-                        ) {
-                            androidx.compose.material3.Text(stringResource(R.string.common_save))
-                        }
-                    },
-                    dismissButton = {
-                        androidx.compose.material3.TextButton(
-                            onClick = {
-                                showEditPrompterDialog = false
-                                editPrompterId = null
-                            }
-                        ) {
-                            androidx.compose.material3.Text(stringResource(R.string.common_cancel))
-                        }
+            ScrollingTextEditorDialog(
+                show = showEditPrompterDialog && editPrompterId != null,
+                dialogTitle = stringResource(R.string.quickplaylists_edit_prompter_title),
+                title = editPrompterTitle,
+                content = editPrompterContent,
+                confirmLabel = stringResource(R.string.common_save),
+                confirmEnabled = editPrompterTitle.isNotBlank(),
+                onTitleChange = { editPrompterTitle = it },
+                onContentChange = { editPrompterContent = it },
+                onDismiss = {
+                    showEditPrompterDialog = false
+                    editPrompterId = null
+                },
+                onConfirm = {
+                    val id = editPrompterId ?: return@ScrollingTextEditorDialog
+                    val title = editPrompterTitle.trim()
+                    val content = editPrompterContent.trim()
+                    if (title.isBlank()) return@ScrollingTextEditorDialog
+                    TextSongRepository.update(
+                        context = context,
+                        id = id,
+                        title = title,
+                        content = content
+                    )
+                    val folder = currentFolderUri
+                    if (folder != null) {
+                        entries = buildEntriesForFolder(folder, useCache = false)
                     }
-                )
-            }
+                    showEditPrompterDialog = false
+                    editPrompterId = null
+                }
+            )
 
             CreateScrollingTextDialog(
                 show = showCreateScrollingTextDialog,

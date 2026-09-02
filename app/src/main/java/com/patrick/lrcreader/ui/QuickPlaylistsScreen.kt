@@ -26,8 +26,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import android.content.Context
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
@@ -3952,130 +3950,59 @@ fun QuickPlaylistsScreen(
         )
     }
 
-// ✅ dialog ÉDITION titre texte (prompteur) — version LARGE + boutons visibles
-    // ✅ Dialog ÉDITION prompteur — grand + boutons toujours visibles
-    if (showEditTextDialog && editTargetUri != null) {
+    ScrollingTextEditorDialog(
+        show = showEditTextDialog && editTargetUri != null,
+        dialogTitle = stringResource(R.string.quickplaylists_edit_prompter_title),
+        title = editTextTitle,
+        content = editTextContent,
+        confirmLabel = stringResource(R.string.common_save),
+        confirmEnabled = editTextTitle.isNotBlank() && editTextContent.isNotBlank(),
+        onTitleChange = { editTextTitle = it },
+        onContentChange = { editTextContent = it },
+        onDismiss = {
+            showEditTextDialog = false
+            editTargetUri = null
+        },
+        onConfirm = {
+            val uri = editTargetUri ?: return@ScrollingTextEditorDialog
+            val title = editTextTitle.trim()
+            val content = editTextContent.trim()
 
-        androidx.compose.ui.window.Dialog(
-            onDismissRequest = {
-                showEditTextDialog = false
-                editTargetUri = null
-            },
-            properties = androidx.compose.ui.window.DialogProperties(
-                usePlatformDefaultWidth = false
-            )
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth(0.96f)
-                    .fillMaxHeight(0.90f)          // ✅ plus haut (90% écran)
-                    .navigationBarsPadding()        // ✅ évite barre du bas
-                    .imePadding()                   // ✅ évite le clavier
-                    .background(Color(0xFF222222), RoundedCornerShape(18.dp))
-                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
-                    .padding(16.dp)
-            ) {
-                Text(
-                    stringResource(R.string.quickplaylists_edit_prompter_title),
-                    color = Color.White,
-                    fontSize = 18.sp
-                )
+            if (title.isBlank() || content.isBlank()) return@ScrollingTextEditorDialog
 
-                Spacer(Modifier.height(12.dp))
+            if (uri.startsWith("prompter://")) {
+                val idPart = uri.removePrefix("prompter://")
+                val numericId = idPart.toLongOrNull()
 
-                OutlinedTextField(
-                    value = editTextTitle,
-                    onValueChange = { editTextTitle = it },
-                    label = { Text(stringResource(R.string.common_title_label)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(Modifier.height(12.dp))
-
-                // ✅ Zone centrale scrollable, prend tout l'espace restant
-                val scroll = rememberScrollState()
-                Column(
-                    modifier = Modifier
-                        .weight(1f, fill = true)
-                        .verticalScroll(scroll)
-                ) {
-                    OutlinedTextField(
-                        value = editTextContent,
-                        onValueChange = { editTextContent = it },
-                        label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 260.dp),
-                        minLines = 10
-                    )
-                }
-
-                Spacer(Modifier.height(12.dp))
-
-                // ✅ Boutons FIXES en bas : toujours visibles
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = {
-                            showEditTextDialog = false
-                            editTargetUri = null
-                        }
-                    ) {
-                        Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
+                if (numericId != null) {
+                    val note = NotesRepository.get(context, numericId)
+                    if (note != null) {
+                        NotesRepository.upsert(
+                            context = context,
+                            id = note.id,
+                            title = title,
+                            content = content
+                        )
                     }
-
-                    Spacer(Modifier.width(8.dp))
-
-                    TextButton(
-                        onClick = {
-                            val uri = editTargetUri ?: return@TextButton
-                            val title = editTextTitle.trim()
-                            val content = editTextContent.trim()
-
-                            if (title.isBlank() || content.isBlank()) return@TextButton
-
-                            if (uri.startsWith("prompter://")) {
-                                val idPart = uri.removePrefix("prompter://")
-                                val numericId = idPart.toLongOrNull()
-
-                                if (numericId != null) {
-                                    val note = NotesRepository.get(context, numericId)
-                                    if (note != null) {
-                                        NotesRepository.upsert(
-                                            context = context,
-                                            id = note.id,
-                                            title = title,
-                                            content = content
-                                        )
-                                    }
-                                } else {
-                                    val textSong = TextSongRepository.get(context, idPart)
-                                    if (textSong != null) {
-                                        TextSongRepository.update(
-                                            context = context,
-                                            id = idPart,
-                                            title = title,
-                                            content = content
-                                        )
-                                    }
-                                }
-
-                                NotesEventBus.notifyNotesChanged()
-                            }
-
-                            showEditTextDialog = false
-                            editTargetUri = null
-                        }
-                    ) {
-                        Text(stringResource(R.string.common_save), color = Color.White)
+                } else {
+                    val textSong = TextSongRepository.get(context, idPart)
+                    if (textSong != null) {
+                        TextSongRepository.update(
+                            context = context,
+                            id = idPart,
+                            title = title,
+                            content = content
+                        )
                     }
                 }
+
+                NotesEventBus.notifyNotesChanged()
             }
+
+            showEditTextDialog = false
+            editTargetUri = null
         }
-    }
+    )
 
 // ✅ IMPORTANT : cette accolade DOIT fermer QuickPlaylistsScreen()
 // Mets-la ici si tu es à la fin de la fonction.
