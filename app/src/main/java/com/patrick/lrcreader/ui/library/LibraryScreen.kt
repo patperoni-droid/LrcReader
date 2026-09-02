@@ -70,6 +70,7 @@ import com.patrick.lrcreader.core.PlaylistTrackLimitPolicy
 import com.patrick.lrcreader.core.SmpPreparationNoticePrefs
 import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.TextPrompterChordPaletteStore
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.core.buildVariantFamilyItem
 import com.patrick.lrcreader.core.buildSmpItem
@@ -99,6 +100,7 @@ import com.patrick.lrcreader.ui.ScrollingTextEditorDialog
 import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.createScrollingText
 import com.patrick.lrcreader.ui.clearPersistedUris
+import com.patrick.lrcreader.ui.parseTextPrompterChordPaletteInput
 import com.patrick.lrcreader.ui.PlaybackControl
 import com.patrick.lrcreader.ui.TrackGainDrawer
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
@@ -1757,6 +1759,7 @@ fun LibraryScreen(
     var editPrompterId by remember { mutableStateOf<String?>(null) }
     var editPrompterTitle by remember { mutableStateOf("") }
     var editPrompterContentValue by remember { mutableStateOf(TextFieldValue()) }
+    var editPrompterPaletteInput by remember { mutableStateOf("") }
     var showEditPrompterDialog by remember { mutableStateOf(false) }
 
     fun openMoveBrowserForSelection(selection: Collection<Uri>) {
@@ -4845,6 +4848,12 @@ fun LibraryScreen(
                                                 text = textSong.content,
                                                 selection = TextRange(textSong.content.length)
                                             )
+                                            val paletteKey = TextPrompterChordPaletteStore
+                                                .textSongKey(prompterId)
+                                            editPrompterPaletteInput = paletteKey
+                                                ?.let { TextPrompterChordPaletteStore.get(context, it) }
+                                                .orEmpty()
+                                                .joinToString(" ")
                                             showEditPrompterDialog = true
                                         }
                                     } else {
@@ -5804,6 +5813,7 @@ fun LibraryScreen(
                 onDismiss = {
                     showEditPrompterDialog = false
                     editPrompterId = null
+                    editPrompterPaletteInput = ""
                 },
                 onConfirm = {
                     val id = editPrompterId ?: return@ScrollingTextEditorDialog
@@ -5816,13 +5826,24 @@ fun LibraryScreen(
                         title = title,
                         content = content
                     )
+                    TextPrompterChordPaletteStore.textSongKey(id)?.let { paletteKey ->
+                        TextPrompterChordPaletteStore.save(
+                            context = context,
+                            key = paletteKey,
+                            chords = parseTextPrompterChordPaletteInput(editPrompterPaletteInput)
+                        )
+                    }
                     val folder = currentFolderUri
                     if (folder != null) {
                         entries = buildEntriesForFolder(folder, useCache = false)
                     }
                     showEditPrompterDialog = false
                     editPrompterId = null
-                }
+                    editPrompterPaletteInput = ""
+                },
+                paletteInput = editPrompterPaletteInput,
+                paletteChords = parseTextPrompterChordPaletteInput(editPrompterPaletteInput),
+                onPaletteInputChange = { editPrompterPaletteInput = it }
             )
 
             CreateScrollingTextDialog(

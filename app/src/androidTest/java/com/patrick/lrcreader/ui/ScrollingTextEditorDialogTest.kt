@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextInputSelection
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import org.junit.Assert.assertEquals
@@ -277,6 +279,131 @@ class ScrollingTextEditorDialogTest {
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG).assertIsDisplayed()
     }
 
+    @Test
+    fun paletteInputUpdatesDisplayedChordButtons() {
+        var paletteInput by mutableStateOf("Am F")
+
+        composeRule.setContent {
+            TestEditor(
+                paletteInput = paletteInput,
+                paletteChords = parseTextPrompterChordPaletteInput(paletteInput),
+                onPaletteInputChange = { paletteInput = it }
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertIsDisplayed()
+            .performTextReplacement("C/E G7sus4")
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "C/E")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "G7sus4")
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun chordClickInsertsChordProAtCursorAndRestoresContentFocus() {
+        var contentValue by mutableStateOf(
+            TextFieldValue("Je voulais", selection = TextRange(3))
+        )
+
+        composeRule.setContent {
+            TestEditor(
+                contentValue = contentValue,
+                onContentValueChange = { contentValue = it },
+                paletteInput = "Am",
+                paletteChords = listOf("Am")
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "Am")
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("Je [Am]voulais", contentValue.text)
+            assertEquals(TextRange(7), contentValue.selection)
+        }
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
+            .assertIsFocused()
+    }
+
+    @Test
+    fun successiveChordClicksInsertAtUpdatedCursor() {
+        var contentValue by mutableStateOf(
+            TextFieldValue("Bonjour", selection = TextRange(0))
+        )
+
+        composeRule.setContent {
+            TestEditor(
+                contentValue = contentValue,
+                onContentValueChange = { contentValue = it },
+                paletteInput = "Am F G",
+                paletteChords = listOf("Am", "F", "G")
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "Am").performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "F").performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "G").performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("[Am][F][G]Bonjour", contentValue.text)
+            assertEquals(TextRange(10), contentValue.selection)
+        }
+    }
+
+    @Test
+    fun confirmReadsCurrentTextAndPalette() {
+        var contentValue by mutableStateOf(TextFieldValue("Content"))
+        var paletteInput by mutableStateOf("Am F")
+        var confirmedDraft: Pair<String, String>? = null
+
+        composeRule.setContent {
+            TestEditor(
+                contentValue = contentValue,
+                onContentValueChange = { contentValue = it },
+                paletteInput = paletteInput,
+                paletteChords = parseTextPrompterChordPaletteInput(paletteInput),
+                onPaletteInputChange = { paletteInput = it },
+                onConfirm = { confirmedDraft = contentValue.text to paletteInput }
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .performTextReplacement("Dm C/E")
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG).performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("Content" to "Dm C/E", confirmedDraft)
+        }
+    }
+
+    @Test
+    fun dismissAfterPaletteChangeDoesNotConfirmDraft() {
+        var paletteInput by mutableStateOf("Am F")
+        var confirmed = false
+        var dismissed = false
+
+        composeRule.setContent {
+            TestEditor(
+                paletteInput = paletteInput,
+                paletteChords = parseTextPrompterChordPaletteInput(paletteInput),
+                onPaletteInputChange = { paletteInput = it },
+                onDismiss = { dismissed = true },
+                onConfirm = { confirmed = true }
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .performTextReplacement("Dm G")
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG).performClick()
+
+        composeRule.runOnIdle {
+            assertTrue(dismissed)
+            assertFalse(confirmed)
+        }
+    }
+
     @Composable
     private fun TestEditor(
         show: Boolean = true,
@@ -285,7 +412,10 @@ class ScrollingTextEditorDialogTest {
         confirmEnabled: Boolean = true,
         onContentValueChange: (TextFieldValue) -> Unit = {},
         onDismiss: () -> Unit = {},
-        onConfirm: () -> Unit = {}
+        onConfirm: () -> Unit = {},
+        paletteInput: String? = null,
+        paletteChords: List<String> = emptyList(),
+        onPaletteInputChange: (String) -> Unit = {}
     ) {
         ScrollingTextEditorDialog(
             show = show,
@@ -297,7 +427,10 @@ class ScrollingTextEditorDialogTest {
             onTitleChange = {},
             onContentValueChange = onContentValueChange,
             onDismiss = onDismiss,
-            onConfirm = onConfirm
+            onConfirm = onConfirm,
+            paletteInput = paletteInput,
+            paletteChords = paletteChords,
+            onPaletteInputChange = onPaletteInputChange
         )
     }
 }

@@ -136,6 +136,24 @@ class TextPrompterChordPaletteStoreTest {
         )
     }
 
+    @Test
+    fun sameTextSongIdentitySharesPaletteAcrossLibraryAndPlaylistEntryPoints() {
+        val context = contextWithPreferences(mutableMapOf())
+        val libraryKey = requireNotNull(
+            TextPrompterChordPaletteStore.textSongKey("shared-text-id")
+        )
+        val playlistKey = requireNotNull(
+            TextPrompterChordPaletteStore.textSongKey("shared-text-id")
+        )
+
+        TextPrompterChordPaletteStore.save(context, libraryKey, listOf("Am", "F", "C", "G"))
+
+        assertEquals(
+            listOf("Am", "F", "C", "G"),
+            TextPrompterChordPaletteStore.get(context, playlistKey)
+        )
+    }
+
     private fun contextWithPreferences(
         storedValues: MutableMap<String, String>
     ): Context {

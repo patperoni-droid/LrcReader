@@ -119,6 +119,7 @@ import com.patrick.lrcreader.core.renameGroupHeader
 import com.patrick.lrcreader.core.setGroupColorArgb
 import com.patrick.lrcreader.core.shouldIncludeCurrentTrackInNewLiveList
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.TextPrompterChordPaletteStore
 import com.patrick.lrcreader.core.config.PlaylistStateStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.core.config.TitleAliasesStore
@@ -470,6 +471,7 @@ fun QuickPlaylistsScreen(
     var editTargetUri by remember { mutableStateOf<String?>(null) }
     var editTextTitle by remember { mutableStateOf("") }
     var editTextContentValue by remember { mutableStateOf(TextFieldValue()) }
+    var editTextPaletteInput by remember { mutableStateOf("") }
     // 🔹 version des notes : incrémentée quand une note change
     var notesVersion by remember { mutableStateOf(0) }
 
@@ -3292,6 +3294,12 @@ fun QuickPlaylistsScreen(
                                                             text = content,
                                                             selection = TextRange(content.length)
                                                         )
+                                                        editTextPaletteInput =
+                                                            TextPrompterChordPaletteStore.get(
+                                                                context,
+                                                                TextPrompterChordPaletteStore
+                                                                    .legacyNoteKey(numericId)
+                                                            ).joinToString(" ")
                                                     } else {
                                                         val textSong = TextSongRepository.get(context, idPart)
                                                         editTextTitle = textSong?.title.orEmpty()
@@ -3300,6 +3308,14 @@ fun QuickPlaylistsScreen(
                                                             text = content,
                                                             selection = TextRange(content.length)
                                                         )
+                                                        val paletteKey = TextPrompterChordPaletteStore
+                                                            .textSongKey(idPart)
+                                                        editTextPaletteInput = paletteKey
+                                                            ?.let {
+                                                                TextPrompterChordPaletteStore.get(context, it)
+                                                            }
+                                                            .orEmpty()
+                                                            .joinToString(" ")
                                                     }
 
                                                     editTargetUri = uriString
@@ -3972,6 +3988,7 @@ fun QuickPlaylistsScreen(
         onDismiss = {
             showEditTextDialog = false
             editTargetUri = null
+            editTextPaletteInput = ""
         },
         onConfirm = {
             val uri = editTargetUri ?: return@ScrollingTextEditorDialog
@@ -3993,6 +4010,11 @@ fun QuickPlaylistsScreen(
                             title = title,
                             content = content
                         )
+                        TextPrompterChordPaletteStore.save(
+                            context = context,
+                            key = TextPrompterChordPaletteStore.legacyNoteKey(numericId),
+                            chords = parseTextPrompterChordPaletteInput(editTextPaletteInput)
+                        )
                     }
                 } else {
                     val textSong = TextSongRepository.get(context, idPart)
@@ -4003,6 +4025,13 @@ fun QuickPlaylistsScreen(
                             title = title,
                             content = content
                         )
+                        TextPrompterChordPaletteStore.textSongKey(idPart)?.let { paletteKey ->
+                            TextPrompterChordPaletteStore.save(
+                                context = context,
+                                key = paletteKey,
+                                chords = parseTextPrompterChordPaletteInput(editTextPaletteInput)
+                            )
+                        }
                     }
                 }
 
@@ -4011,7 +4040,11 @@ fun QuickPlaylistsScreen(
 
             showEditTextDialog = false
             editTargetUri = null
-        }
+            editTextPaletteInput = ""
+        },
+        paletteInput = editTextPaletteInput,
+        paletteChords = parseTextPrompterChordPaletteInput(editTextPaletteInput),
+        onPaletteInputChange = { editTextPaletteInput = it }
     )
 
 // ✅ IMPORTANT : cette accolade DOIT fermer QuickPlaylistsScreen()
