@@ -46,7 +46,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -1751,10 +1753,10 @@ fun LibraryScreen(
     var pendingPrompterDeleteSelection by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var showCreateScrollingTextDialog by remember { mutableStateOf(false) }
     var newScrollingTextTitle by remember { mutableStateOf("") }
-    var newScrollingTextContent by remember { mutableStateOf("") }
+    var newScrollingTextContentValue by remember { mutableStateOf(TextFieldValue()) }
     var editPrompterId by remember { mutableStateOf<String?>(null) }
     var editPrompterTitle by remember { mutableStateOf("") }
-    var editPrompterContent by remember { mutableStateOf("") }
+    var editPrompterContentValue by remember { mutableStateOf(TextFieldValue()) }
     var showEditPrompterDialog by remember { mutableStateOf(false) }
 
     fun openMoveBrowserForSelection(selection: Collection<Uri>) {
@@ -3648,7 +3650,7 @@ fun LibraryScreen(
     val isFilesSelectionContext = isFilesViewMode && selectedSongs.isNotEmpty()
     val openCreateScrollingTextDialog: () -> Unit = {
         newScrollingTextTitle = ""
-        newScrollingTextContent = ""
+        newScrollingTextContentValue = TextFieldValue()
         showCreateScrollingTextDialog = true
     }
     val openStorageView: () -> Unit = openStorageView@ {
@@ -4839,7 +4841,10 @@ fun LibraryScreen(
                                         if (textSong != null) {
                                             editPrompterId = prompterId
                                             editPrompterTitle = textSong.title
-                                            editPrompterContent = textSong.content
+                                            editPrompterContentValue = TextFieldValue(
+                                                text = textSong.content,
+                                                selection = TextRange(textSong.content.length)
+                                            )
                                             showEditPrompterDialog = true
                                         }
                                     } else {
@@ -5791,11 +5796,11 @@ fun LibraryScreen(
                 show = showEditPrompterDialog && editPrompterId != null,
                 dialogTitle = stringResource(R.string.quickplaylists_edit_prompter_title),
                 title = editPrompterTitle,
-                content = editPrompterContent,
+                contentValue = editPrompterContentValue,
                 confirmLabel = stringResource(R.string.common_save),
                 confirmEnabled = editPrompterTitle.isNotBlank(),
                 onTitleChange = { editPrompterTitle = it },
-                onContentChange = { editPrompterContent = it },
+                onContentValueChange = { editPrompterContentValue = it },
                 onDismiss = {
                     showEditPrompterDialog = false
                     editPrompterId = null
@@ -5803,7 +5808,7 @@ fun LibraryScreen(
                 onConfirm = {
                     val id = editPrompterId ?: return@ScrollingTextEditorDialog
                     val title = editPrompterTitle.trim()
-                    val content = editPrompterContent.trim()
+                    val content = editPrompterContentValue.text.trim()
                     if (title.isBlank()) return@ScrollingTextEditorDialog
                     TextSongRepository.update(
                         context = context,
@@ -5823,15 +5828,15 @@ fun LibraryScreen(
             CreateScrollingTextDialog(
                 show = showCreateScrollingTextDialog,
                 title = newScrollingTextTitle,
-                content = newScrollingTextContent,
+                contentValue = newScrollingTextContentValue,
                 onTitleChange = { newScrollingTextTitle = it },
-                onContentChange = { newScrollingTextContent = it },
+                onContentValueChange = { newScrollingTextContentValue = it },
                 onDismiss = { showCreateScrollingTextDialog = false },
                 onConfirm = {
                     val created = createScrollingText(
                         context = context,
                         title = newScrollingTextTitle,
-                        content = newScrollingTextContent,
+                        content = newScrollingTextContentValue.text,
                         playlistName = null
                     ) ?: return@CreateScrollingTextDialog
                     entries = buildPrompterEntries()

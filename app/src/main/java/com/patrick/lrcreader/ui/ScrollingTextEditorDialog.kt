@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -41,11 +42,11 @@ internal fun ScrollingTextEditorDialog(
     show: Boolean,
     dialogTitle: String,
     title: String,
-    content: String,
+    contentValue: TextFieldValue,
     confirmLabel: String,
     confirmEnabled: Boolean,
     onTitleChange: (String) -> Unit,
-    onContentChange: (String) -> Unit,
+    onContentValueChange: (TextFieldValue) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -91,8 +92,8 @@ internal fun ScrollingTextEditorDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 OutlinedTextField(
-                    value = content,
-                    onValueChange = onContentChange,
+                    value = contentValue,
+                    onValueChange = onContentValueChange,
                     label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
                     modifier = Modifier
                         .fillMaxWidth()

@@ -82,6 +82,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -462,12 +464,12 @@ fun QuickPlaylistsScreen(
     // dialog création titre texte (ancienne méthode, on la garde pour l’instant)
     var showCreateTextDialog by remember { mutableStateOf(false) }
     var newTextTitle by remember { mutableStateOf("") }
-    var newTextContent by remember { mutableStateOf("") }
+    var newTextContentValue by remember { mutableStateOf(TextFieldValue()) }
 // ✅ dialog édition titre texte (prompteur)
     var showEditTextDialog by remember { mutableStateOf(false) }
     var editTargetUri by remember { mutableStateOf<String?>(null) }
     var editTextTitle by remember { mutableStateOf("") }
-    var editTextContent by remember { mutableStateOf("") }
+    var editTextContentValue by remember { mutableStateOf(TextFieldValue()) }
     // 🔹 version des notes : incrémentée quand une note change
     var notesVersion by remember { mutableStateOf(0) }
 
@@ -532,7 +534,7 @@ fun QuickPlaylistsScreen(
     LaunchedEffect(openPrompterSignal) {
         if (openPrompterSignal > 0 && internalSelected != null) {
             newTextTitle = ""
-            newTextContent = ""
+            newTextContentValue = TextFieldValue()
             showCreateTextDialog = true
             onConsumeOpenPrompterSignal()
         }
@@ -1524,7 +1526,7 @@ fun QuickPlaylistsScreen(
                             onClick = {
                                 showMenu = false
                                 newTextTitle = ""
-                                newTextContent = ""
+                                newTextContentValue = TextFieldValue()
                                 showCreateTextDialog = true
                             }
                         )
@@ -3285,11 +3287,19 @@ fun QuickPlaylistsScreen(
                                                     if (numericId != null) {
                                                         val note = NotesRepository.get(context, numericId)
                                                         editTextTitle = note?.title.orEmpty()
-                                                        editTextContent = note?.content.orEmpty()
+                                                        val content = note?.content.orEmpty()
+                                                        editTextContentValue = TextFieldValue(
+                                                            text = content,
+                                                            selection = TextRange(content.length)
+                                                        )
                                                     } else {
                                                         val textSong = TextSongRepository.get(context, idPart)
                                                         editTextTitle = textSong?.title.orEmpty()
-                                                        editTextContent = textSong?.content.orEmpty()
+                                                        val content = textSong?.content.orEmpty()
+                                                        editTextContentValue = TextFieldValue(
+                                                            text = content,
+                                                            selection = TextRange(content.length)
+                                                        )
                                                     }
 
                                                     editTargetUri = uriString
@@ -3788,16 +3798,16 @@ fun QuickPlaylistsScreen(
     CreateScrollingTextDialog(
         show = showCreateTextDialog && internalSelected != null,
         title = newTextTitle,
-        content = newTextContent,
+        contentValue = newTextContentValue,
         onTitleChange = { newTextTitle = it },
-        onContentChange = { newTextContent = it },
+        onContentValueChange = { newTextContentValue = it },
         onDismiss = { showCreateTextDialog = false },
         onConfirm = {
             val playlist = internalSelected ?: return@CreateScrollingTextDialog
             val created = createScrollingText(
                 context = context,
                 title = newTextTitle,
-                content = newTextContent,
+                content = newTextContentValue.text,
                 playlistName = playlist
             ) ?: return@CreateScrollingTextDialog
             songs.add(created.uri)
@@ -3954,11 +3964,11 @@ fun QuickPlaylistsScreen(
         show = showEditTextDialog && editTargetUri != null,
         dialogTitle = stringResource(R.string.quickplaylists_edit_prompter_title),
         title = editTextTitle,
-        content = editTextContent,
+        contentValue = editTextContentValue,
         confirmLabel = stringResource(R.string.common_save),
-        confirmEnabled = editTextTitle.isNotBlank() && editTextContent.isNotBlank(),
+        confirmEnabled = editTextTitle.isNotBlank() && editTextContentValue.text.isNotBlank(),
         onTitleChange = { editTextTitle = it },
-        onContentChange = { editTextContent = it },
+        onContentValueChange = { editTextContentValue = it },
         onDismiss = {
             showEditTextDialog = false
             editTargetUri = null
@@ -3966,7 +3976,7 @@ fun QuickPlaylistsScreen(
         onConfirm = {
             val uri = editTargetUri ?: return@ScrollingTextEditorDialog
             val title = editTextTitle.trim()
-            val content = editTextContent.trim()
+            val content = editTextContentValue.text.trim()
 
             if (title.isBlank() || content.isBlank()) return@ScrollingTextEditorDialog
 
