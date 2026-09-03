@@ -1,6 +1,9 @@
 package com.patrick.lrcreader.ui
 
 import com.patrick.lrcreader.core.parseChordPro
+import com.patrick.lrcreader.core.preparePrompterText
+import com.patrick.lrcreader.core.PrompterRichTextBlockKind
+import com.patrick.lrcreader.core.PrompterRichTextStyle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -92,8 +95,130 @@ class ChordProPrompterLayoutTest {
         )
     }
 
+    @Test
+    fun renderMode_preservesBothHistoricalFastPaths() {
+        assertEquals(
+            PrompterRenderMode.PLAIN_TEXT,
+            resolvePrompterRenderMode(preparePrompterText("Texte historique"))
+        )
+        assertEquals(
+            PrompterRenderMode.CHORD_PRO,
+            resolvePrompterRenderMode(preparePrompterText("Je [Am]vais"))
+        )
+        assertEquals(
+            PrompterRenderMode.RICH_TEXT,
+            resolvePrompterRenderMode(preparePrompterText("**Texte**"))
+        )
+    }
+
+    @Test
+    fun boldAroundChord_isSplitIntoLocalRunStylesWithoutLosingSpaces() {
+        val line = renderRich("**Je [Am]voulais**").single()
+
+        assertEquals("Je voulais", line.renderedLyrics())
+        assertEquals(listOf("Je ", "voulais"), line.words.map { it.lyricText })
+        assertEquals(listOf("Am"), line.allChords())
+        assertEquals(
+            listOf(PrompterRichTextStyle.BOLD),
+            line.words[0].runs.single().spans.map { it.style }
+        )
+        assertEquals(0, line.words[0].runs.single().spans.single().start)
+        assertEquals(3, line.words[0].runs.single().spans.single().endExclusive)
+        assertEquals(0, line.words[1].runs.single().spans.single().start)
+        assertEquals(7, line.words[1].runs.single().spans.single().endExclusive)
+    }
+
+    @Test
+    fun chordBeforeBoldWord_keepsOnlyThatWordBold() {
+        val line = renderRich("Je [Am]**vais** bien").single()
+        val chordRun = line.words[1].runs.single()
+
+        assertEquals("Je vais bien", line.renderedLyrics())
+        assertEquals(listOf("Am"), chordRun.chords)
+        assertEquals("vais ", chordRun.lyricText)
+        assertEquals(0, chordRun.spans.single().start)
+        assertEquals(4, chordRun.spans.single().endExclusive)
+        assertEquals(PrompterRichTextStyle.BOLD, chordRun.spans.single().style)
+        assertTrue(line.words[2].runs.single().spans.isEmpty())
+    }
+
+    @Test
+    fun italicAroundChord_keepsChordAndAllStyledWords() {
+        val line = renderRich("*Je [F]vais bien*").single()
+
+        assertEquals("Je vais bien", line.renderedLyrics())
+        assertEquals(listOf("F"), line.allChords())
+        assertTrue(
+            line.words.flatMap { it.runs }.all { run ->
+                run.spans.singleOrNull()?.style == PrompterRichTextStyle.ITALIC
+            }
+        )
+    }
+
+    @Test
+    fun separateBoldAndItalicSpans_remainAttachedToTheirRuns() {
+        val line = renderRich("**Bonjour** et *bonsoir*").single()
+
+        assertEquals("Bonjour et bonsoir", line.lyricText)
+        assertEquals(PrompterRichTextStyle.BOLD, line.spans[0].style)
+        assertEquals(PrompterRichTextStyle.ITALIC, line.spans[1].style)
+    }
+
+    @Test
+    fun titleAndSection_keepBlockKindsAndRemappedChords() {
+        val lines = renderRich("# [C]Ma chanson\n## [G]Refrain")
+
+        assertEquals(PrompterRichTextBlockKind.TITLE, lines[0].blockKind)
+        assertEquals("Ma chanson", lines[0].renderedLyrics())
+        assertEquals(listOf("C"), lines[0].allChords())
+        assertEquals(PrompterRichTextBlockKind.SECTION, lines[1].blockKind)
+        assertEquals("Refrain", lines[1].renderedLyrics())
+        assertEquals(listOf("G"), lines[1].allChords())
+    }
+
+    @Test
+    fun divider_isRepresentedWithoutLiteralDashes() {
+        val line = renderRich("---").single()
+
+        assertEquals(PrompterRichTextBlockKind.DIVIDER, line.blockKind)
+        assertEquals("", line.lyricText)
+        assertFalse(line.hasChords)
+    }
+
+    @Test
+    fun chordBeforeDivider_isSafeAndRemainsInPreparedRenderModel() {
+        val line = renderRich("[Am]---").single()
+
+        assertEquals(PrompterRichTextBlockKind.DIVIDER, line.blockKind)
+        assertEquals(listOf("Am"), line.allChords())
+        assertEquals("", line.renderedLyrics())
+    }
+
+    @Test
+    fun invalidMarkdownAndNonChordBrackets_remainLiteral() {
+        val lines = renderRich("# Titre\n**Je [Am]voulais\n[Refrain]")
+
+        assertEquals("**Je voulais", lines[1].renderedLyrics())
+        assertEquals(listOf("Am"), lines[1].allChords())
+        assertEquals("[Refrain]", lines[2].lyricText)
+        assertFalse(lines[2].hasChords)
+    }
+
+    @Test
+    fun longStyledChordLine_staysSplitIntoAtomicWords() {
+        val source = "**[C]Voici une ligne volontairement longue avec plusieurs mots qui doit revenir [G]proprement**"
+        val line = renderRich(source).single()
+
+        assertTrue(line.words.size > 10)
+        assertEquals("Voici une ligne volontairement longue avec plusieurs mots qui doit revenir proprement", line.renderedLyrics())
+        assertEquals(listOf("C", "G"), line.allChords())
+    }
+
     private fun render(source: String): List<PrompterChordRenderLine> =
         buildChordProPrompterLines(parseChordPro(source))!!
+
+    private fun renderRich(source: String): List<PrompterChordRenderLine> =
+        buildRichTextPrompterLines(preparePrompterText(source))
 
     private fun PrompterChordRenderLine.renderedLyrics(): String =
         words.joinToString(separator = "") { it.lyricText }
