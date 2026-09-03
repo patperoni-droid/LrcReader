@@ -5399,7 +5399,7 @@ private fun TimelineMeasuresPlaceholder(
                                 modifier = Modifier
                                     .size(22.dp)
                                     .background(
-                                        arrangementOccurrenceColorPreview(colorKey),
+                                        arrangementTrackOccurrenceColor(colorKey),
                                         RoundedCornerShape(5.dp)
                                     )
                             )
@@ -5538,17 +5538,6 @@ private data class SamplerWavInfo(
 ) {
     val dataEndOffset: Long
         get() = dataOffset + dataSizeBytes
-}
-
-private fun arrangementOccurrenceColorPreview(color: String?): Color = when (color) {
-    "red" -> Color(0xFFB94A48)
-    "blue" -> Color(0xFF3D78B4)
-    "green" -> Color(0xFF3F8A58)
-    "violet" -> Color(0xFF8651A8)
-    "orange", "amber" -> Color(0xFFC67732)
-    "yellow" -> Color(0xFFB6A333)
-    "gray" -> Color(0xFF607D8B)
-    else -> Color(0xFF1C2933)
 }
 
 private data class TimelineArrangementLoadResult(

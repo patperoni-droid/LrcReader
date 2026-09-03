@@ -25,14 +25,14 @@ internal data class ArrangementTrackSegmentBorder(
 )
 
 internal fun arrangementTrackOccurrenceColor(color: String?): Color = when (color) {
-    "red" -> Color(0xFF6D2A2A)
-    "blue" -> Color(0xFF244A73)
-    "green" -> Color(0xFF285E3A)
-    "violet" -> Color(0xFF56336F)
-    "orange", "amber" -> Color(0xFF74471F)
-    "yellow" -> Color(0xFF665B1F)
-    "gray" -> Color(0xFF455A64)
-    else -> Color(0xFF1C2933)
+    "red" -> Color(0xFFA75F65)
+    "blue" -> Color(0xFF4E7FA8)
+    "green" -> Color(0xFF52866D)
+    "violet" -> Color(0xFF856BA3)
+    "orange", "amber" -> Color(0xFFA87349)
+    "yellow" -> Color(0xFF968847)
+    "gray" -> Color(0xFF6C7B86)
+    else -> Color(0xFF364957)
 }
 
 internal fun arrangementTrackOccurrenceContainerColor(
@@ -42,9 +42,9 @@ internal fun arrangementTrackOccurrenceContainerColor(
     isQueued: Boolean
 ): Color = when {
     isMuted -> color.copy(alpha = 0.24f)
-    isActive -> color.copy(alpha = 0.82f)
-    isQueued -> color.copy(alpha = 0.68f)
-    else -> color.copy(alpha = 0.58f)
+    isActive -> color.copy(alpha = 1f)
+    isQueued -> color.copy(alpha = 0.90f)
+    else -> color.copy(alpha = 0.80f)
 }
 
 internal fun arrangementTrackSegmentBorder(

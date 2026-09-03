@@ -102,9 +102,9 @@ class PlaybackStructureProgressTest {
     }
 
     @Test
-    fun `active and queued backgrounds keep their existing emphasis`() {
+    fun `active and queued backgrounds keep their emphasis above normal`() {
         assertEquals(
-            Color.Red.copy(alpha = 0.82f),
+            Color.Red.copy(alpha = 1f),
             arrangementTrackOccurrenceContainerColor(
                 color = Color.Red,
                 isMuted = false,
@@ -113,7 +113,7 @@ class PlaybackStructureProgressTest {
             )
         )
         assertEquals(
-            Color.Red.copy(alpha = 0.68f),
+            Color.Red.copy(alpha = 0.90f),
             arrangementTrackOccurrenceContainerColor(
                 color = Color.Red,
                 isMuted = false,
