@@ -356,7 +356,9 @@ fun LibraryList(
 
                         if (isPrompter) {
                             Box(
-                                modifier = Modifier.size(44.dp),
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clickable { onRenameOne(entry) },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
