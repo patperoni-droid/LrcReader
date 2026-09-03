@@ -277,6 +277,82 @@ class ScrollingTextEditorDialogTest {
         }
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
             .assertIsFocused()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertDoesNotExist()
+    }
+
+    @Test
+    fun contentFocusHidesHeaderFieldsAndKeepsChordButtonsAndActionsVisible() {
+        composeRule.setContent {
+            TestEditor(
+                dialogTitle = "Edit scrolling text",
+                paletteInput = "Am F C G",
+                paletteChords = listOf("Am", "F", "C", "G")
+            )
+        }
+
+        composeRule.onNodeWithText("Edit scrolling text").assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_TITLE_FIELD_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "Am")
+            .assertIsDisplayed()
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG).performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Edit scrolling text").assertDoesNotExist()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_TITLE_FIELD_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "Am")
+            .assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
+            .assertIsDisplayed()
+            .assertIsFocused()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun losingContentFocusRestoresHeaderFieldsWithoutLosingValues() {
+        var title by mutableStateOf("Ma chanson")
+        var paletteInput by mutableStateOf("Am F C G")
+        var contentValue by mutableStateOf(TextFieldValue("Je voulais te dire"))
+        var confirmed = false
+
+        composeRule.setContent {
+            TestEditor(
+                dialogTitle = "Edit scrolling text",
+                title = title,
+                contentValue = contentValue,
+                onTitleChange = { title = it },
+                onContentValueChange = { contentValue = it },
+                paletteInput = paletteInput,
+                paletteChords = parseTextPrompterChordPaletteInput(paletteInput),
+                onPaletteInputChange = { paletteInput = it },
+                onConfirm = { confirmed = true }
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG).performClick()
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG).performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithText("Edit scrolling text").assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_TITLE_FIELD_TAG)
+            .assertIsDisplayed()
+            .assertTextContains("Ma chanson")
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertIsDisplayed()
+            .assertTextContains("Am F C G")
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
+            .assertTextContains("Je voulais te dire")
+        composeRule.runOnIdle {
+            assertEquals("Ma chanson", title)
+            assertEquals("Am F C G", paletteInput)
+            assertEquals("Je voulais te dire", contentValue.text)
+            assertTrue(confirmed)
+        }
     }
 
     @Test
@@ -309,13 +385,17 @@ class ScrollingTextEditorDialogTest {
     @Test
     fun keyboardFocusKeepsConfirmationVisible() {
         composeRule.setContent {
-            TestEditor()
+            TestEditor(dialogTitle = "Historical editor")
         }
 
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG).performClick()
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG).assertIsDisplayed()
+        composeRule.onNodeWithText("Historical editor").assertDoesNotExist()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_TITLE_FIELD_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertDoesNotExist()
     }
 
     @Test
@@ -355,6 +435,12 @@ class ScrollingTextEditorDialogTest {
             )
         }
 
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG).performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
+            .performTextInputSelection(TextRange(3))
+        composeRule.waitForIdle()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertDoesNotExist()
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "Am")
             .performClick()
 
@@ -364,6 +450,9 @@ class ScrollingTextEditorDialogTest {
         }
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
             .assertIsFocused()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_TITLE_FIELD_TAG).assertDoesNotExist()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
+            .assertDoesNotExist()
     }
 
     @Test
@@ -387,7 +476,7 @@ class ScrollingTextEditorDialogTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
-            .assertIsDisplayed()
+            .assertDoesNotExist()
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "Am")
             .assertIsDisplayed()
             .performClick()
@@ -415,7 +504,7 @@ class ScrollingTextEditorDialogTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
-            .assertIsDisplayed()
+            .assertDoesNotExist()
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "Am")
             .assertIsDisplayed()
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
@@ -503,8 +592,10 @@ class ScrollingTextEditorDialogTest {
     private fun TestEditor(
         show: Boolean = true,
         dialogTitle: String = "Editor",
+        title: String = "Title",
         contentValue: TextFieldValue = TextFieldValue("Content"),
         confirmEnabled: Boolean = true,
+        onTitleChange: (String) -> Unit = {},
         onContentValueChange: (TextFieldValue) -> Unit = {},
         onDismiss: () -> Unit = {},
         onConfirm: () -> Unit = {},
@@ -515,11 +606,11 @@ class ScrollingTextEditorDialogTest {
         ScrollingTextEditorDialog(
             show = show,
             dialogTitle = dialogTitle,
-            title = "Title",
+            title = title,
             contentValue = contentValue,
             confirmLabel = "Save",
             confirmEnabled = confirmEnabled,
-            onTitleChange = {},
+            onTitleChange = onTitleChange,
             onContentValueChange = onContentValueChange,
             onDismiss = onDismiss,
             onConfirm = onConfirm,

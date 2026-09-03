@@ -22,11 +22,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
@@ -62,11 +67,13 @@ internal fun ScrollingTextEditorDialog(
 ) {
     if (!show) return
     val contentFocusRequester = remember { FocusRequester() }
+    var isContentFocused by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
+        val focusManager = LocalFocusManager.current
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
@@ -77,39 +84,45 @@ internal fun ScrollingTextEditorDialog(
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
                 .padding(16.dp)
         ) {
-            Text(
-                text = dialogTitle,
-                color = Color.White,
-                fontSize = 18.sp
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            OutlinedTextField(
-                value = title,
-                onValueChange = onTitleChange,
-                label = { Text(stringResource(R.string.common_title_label)) },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(SCROLLING_TEXT_EDITOR_TITLE_FIELD_TAG)
-            )
-
-            Spacer(Modifier.height(12.dp))
-
-            if (paletteInput != null) {
-                OutlinedTextField(
-                    value = paletteInput,
-                    onValueChange = onPaletteInputChange,
-                    label = { Text(stringResource(R.string.chords_palette_input_label)) },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG),
-                    singleLine = true
+            if (!isContentFocused) {
+                Text(
+                    text = dialogTitle,
+                    color = Color.White,
+                    fontSize = 18.sp
                 )
 
+                Spacer(Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = onTitleChange,
+                    label = { Text(stringResource(R.string.common_title_label)) },
+                    singleLine = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(SCROLLING_TEXT_EDITOR_TITLE_FIELD_TAG)
+                )
+
+                Spacer(Modifier.height(12.dp))
+            }
+
+            if (paletteInput != null) {
+                if (!isContentFocused) {
+                    OutlinedTextField(
+                        value = paletteInput,
+                        onValueChange = onPaletteInputChange,
+                        label = { Text(stringResource(R.string.chords_palette_input_label)) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG),
+                        singleLine = true
+                    )
+                }
+
                 if (paletteChords.isNotEmpty()) {
-                    Spacer(Modifier.height(6.dp))
+                    if (!isContentFocused) {
+                        Spacer(Modifier.height(6.dp))
+                    }
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -144,6 +157,7 @@ internal fun ScrollingTextEditorDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f, fill = true)
+                    .onFocusChanged { isContentFocused = it.isFocused }
                     .focusRequester(contentFocusRequester)
                     .testTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG),
                 minLines = 10
@@ -156,7 +170,10 @@ internal fun ScrollingTextEditorDialog(
                 horizontalArrangement = Arrangement.End
             ) {
                 TextButton(
-                    onClick = onDismiss,
+                    onClick = {
+                        focusManager.clearFocus(force = true)
+                        onDismiss()
+                    },
                     modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG)
                 ) {
                     Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
@@ -165,7 +182,10 @@ internal fun ScrollingTextEditorDialog(
                 Spacer(Modifier.width(8.dp))
 
                 TextButton(
-                    onClick = onConfirm,
+                    onClick = {
+                        focusManager.clearFocus(force = true)
+                        onConfirm()
+                    },
                     enabled = confirmEnabled,
                     modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
                 ) {
