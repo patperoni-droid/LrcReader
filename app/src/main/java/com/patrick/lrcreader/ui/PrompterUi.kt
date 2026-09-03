@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -38,6 +39,7 @@ import com.patrick.lrcreader.core.PrompterRichTextBlockKind
 import com.patrick.lrcreader.core.PrompterRichTextSpan
 import com.patrick.lrcreader.core.PrompterRichTextStyle
 import com.patrick.lrcreader.core.PrompterTextColor
+import com.patrick.lrcreader.core.TextPrompterAlignment
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.theme.SplColors
 import kotlinx.coroutines.delay
@@ -67,6 +69,19 @@ internal enum class PrompterRenderMode {
     PLAIN_TEXT,
     CHORD_PRO,
     RICH_TEXT
+}
+
+internal fun textAlignForPrompter(alignment: TextPrompterAlignment): TextAlign =
+    when (alignment) {
+        TextPrompterAlignment.START -> TextAlign.Start
+        TextPrompterAlignment.CENTER -> TextAlign.Center
+    }
+
+internal fun horizontalArrangementForPrompter(
+    alignment: TextPrompterAlignment
+): Arrangement.Horizontal = when (alignment) {
+    TextPrompterAlignment.START -> Arrangement.Start
+    TextPrompterAlignment.CENTER -> Arrangement.Center
 }
 
 internal fun resolvePrompterRenderMode(document: PrompterPreparedDocument): PrompterRenderMode =
@@ -228,6 +243,7 @@ fun PrompterTextViewport(
     preparedDocument: PrompterPreparedDocument,
     scrollState: ScrollState,
     modifier: Modifier = Modifier,
+    alignment: TextPrompterAlignment = TextPrompterAlignment.START,
     bgColor: Color = Color(0xFF050912),
     textColor: Color = Color.White,
     fontSize: Int = 26,
@@ -283,6 +299,7 @@ fun PrompterTextViewport(
                             color = textColor,
                             fontSize = fontSize.sp,
                             lineHeight = lineHeight.sp,
+                            textAlign = textAlignForPrompter(alignment),
                             modifier = Modifier.fillMaxWidth()
                         )
                     } else {
@@ -292,6 +309,7 @@ fun PrompterTextViewport(
                             fontSize = fontSize,
                             lineHeight = lineHeight,
                             richTextEnabled = renderMode == PrompterRenderMode.RICH_TEXT,
+                            alignment = alignment,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -311,6 +329,7 @@ private fun ChordProPrompterContent(
     fontSize: Int,
     lineHeight: Int,
     richTextEnabled: Boolean,
+    alignment: TextPrompterAlignment,
     modifier: Modifier = Modifier
 ) {
     val emptyLineHeight = with(LocalDensity.current) { lineHeight.sp.toDp() }
@@ -332,6 +351,7 @@ private fun ChordProPrompterContent(
                         color = textColor,
                         fontSize = fontSize.sp,
                         lineHeight = lineHeight.sp,
+                        textAlign = textAlignForPrompter(alignment),
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
@@ -347,6 +367,7 @@ private fun ChordProPrompterContent(
                         fontSize = typography.fontSize.sp,
                         lineHeight = typography.lineHeight.sp,
                         fontWeight = typography.fontWeight,
+                        textAlign = textAlignForPrompter(alignment),
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = typography.verticalPadding.dp)
@@ -371,7 +392,7 @@ private fun ChordProPrompterContent(
                 }
                 FlowRow(
                     modifier = lineModifier,
-                    horizontalArrangement = Arrangement.Start,
+                    horizontalArrangement = horizontalArrangementForPrompter(alignment),
                     verticalArrangement = Arrangement.Top
                 ) {
                     line.words.forEach { word ->

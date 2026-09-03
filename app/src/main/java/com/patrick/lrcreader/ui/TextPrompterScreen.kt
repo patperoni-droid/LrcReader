@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import com.patrick.lrcreader.core.NotesRepository
+import com.patrick.lrcreader.core.TextPrompterDisplaySettings
+import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
 import com.patrick.lrcreader.core.TextPrompterPrefs
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.preparePrompterText
@@ -57,7 +59,8 @@ import java.util.Locale
 
 private data class SongInfo(
     val title: String?,
-    val content: String?
+    val content: String?,
+    val displaySettingsKey: TextPrompterDisplaySettingsStore.Key? = null
 )
 
 enum class PrompterAction {
@@ -132,7 +135,9 @@ fun TextPrompterScreen(
                         if (note != null) {
                             result = SongInfo(
                                 title = note.title.ifBlank { "Texte" },
-                                content = note.content
+                                content = note.content,
+                                displaySettingsKey = TextPrompterDisplaySettingsStore
+                                    .legacyNoteKey(idLong)
                             )
                         }
                     }
@@ -141,7 +146,13 @@ fun TextPrompterScreen(
                 songId.startsWith("text:") -> {
                     val raw = songId.removePrefix("text:")
                     val s = TextSongRepository.get(context, raw)
-                    if (s != null) result = SongInfo(title = s.title, content = s.content)
+                    if (s != null) {
+                        result = SongInfo(
+                            title = s.title,
+                            content = s.content,
+                            displaySettingsKey = TextPrompterDisplaySettingsStore.textSongKey(raw)
+                        )
+                    }
                 }
 
                 else -> {
@@ -151,20 +162,41 @@ fun TextPrompterScreen(
                         if (note != null) {
                             result = SongInfo(
                                 title = note.title.ifBlank { "Texte" },
-                                content = note.content
+                                content = note.content,
+                                displaySettingsKey = TextPrompterDisplaySettingsStore
+                                    .legacyNoteKey(numeric)
                             )
                         } else {
                             val s = TextSongRepository.get(context, songId)
-                            if (s != null) result = SongInfo(title = s.title, content = s.content)
+                            if (s != null) {
+                                result = SongInfo(
+                                    title = s.title,
+                                    content = s.content,
+                                    displaySettingsKey = TextPrompterDisplaySettingsStore
+                                        .textSongKey(songId)
+                                )
+                            }
                         }
                     } else {
                         val s = TextSongRepository.get(context, songId)
-                        if (s != null) result = SongInfo(title = s.title, content = s.content)
+                        if (s != null) {
+                            result = SongInfo(
+                                title = s.title,
+                                content = s.content,
+                                displaySettingsKey = TextPrompterDisplaySettingsStore
+                                    .textSongKey(songId)
+                            )
+                        }
                     }
                 }
             }
         } catch (_: Exception) {}
         result
+    }
+    val displaySettings = remember(songId, songInfo.displaySettingsKey) {
+        songInfo.displaySettingsKey?.let { key ->
+            TextPrompterDisplaySettingsStore.get(context, key)
+        } ?: TextPrompterDisplaySettings()
     }
 
     val scrollState = rememberScrollState()
@@ -336,6 +368,7 @@ fun TextPrompterScreen(
                 content = prompterContent,
                 preparedDocument = preparedDocument,
                 scrollState = scrollState,
+                alignment = displaySettings.alignment,
                 startOffsetFraction = 0.55f,
                 bottomOffsetFraction = 0.30f,
                 modifier = Modifier

@@ -2,11 +2,15 @@ package com.patrick.lrcreader.ui.library
 
 import android.content.Context
 import com.patrick.lrcreader.core.PlaylistRepository
+import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
 import com.patrick.lrcreader.core.TextSongRepository
 
 internal fun deletePrompterAndRemoveFromAllPlaylists(context: Context, uriString: String): Boolean {
     val prompterId = extractPrompterIdFromUriString(uriString) ?: return false
     TextSongRepository.delete(context, prompterId)
+    TextPrompterDisplaySettingsStore.textSongKey(prompterId)?.let { key ->
+        TextPrompterDisplaySettingsStore.delete(context, key)
+    }
     PlaylistRepository.getPlaylists().forEach { playlist ->
         PlaylistRepository.removeSongFromPlaylist(playlist, uriString)
     }

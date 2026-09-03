@@ -5,7 +5,10 @@ import com.patrick.lrcreader.core.preparePrompterText
 import com.patrick.lrcreader.core.PrompterRichTextBlockKind
 import com.patrick.lrcreader.core.PrompterRichTextStyle
 import com.patrick.lrcreader.core.PrompterTextColor
+import com.patrick.lrcreader.core.TextPrompterAlignment
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -13,6 +16,40 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ChordProPrompterLayoutTest {
+
+    @Test
+    fun startAlignmentUsesHistoricalTextAndFlowArrangements() {
+        assertEquals(TextAlign.Start, textAlignForPrompter(TextPrompterAlignment.START))
+        assertEquals(Arrangement.Start, horizontalArrangementForPrompter(TextPrompterAlignment.START))
+    }
+
+    @Test
+    fun centerAlignmentCentersPlainAndWholeChordLines() {
+        assertEquals(TextAlign.Center, textAlignForPrompter(TextPrompterAlignment.CENTER))
+        assertEquals(Arrangement.Center, horizontalArrangementForPrompter(TextPrompterAlignment.CENTER))
+    }
+
+    @Test
+    fun centeredRichTitleAndSectionKeepChordWordUnitsAtomic() {
+        val lines = renderRich("# [C]Ma chanson\n## [G]Refrain")
+
+        assertEquals(Arrangement.Center, horizontalArrangementForPrompter(TextPrompterAlignment.CENTER))
+        assertEquals(PrompterRichTextBlockKind.TITLE, lines[0].blockKind)
+        assertEquals(PrompterRichTextBlockKind.SECTION, lines[1].blockKind)
+        assertEquals(listOf("Ma ", "chanson"), lines[0].words.map { it.lyricText })
+        assertEquals(listOf("Refrain"), lines[1].words.map { it.lyricText })
+        assertEquals(listOf("C"), lines[0].allChords())
+        assertEquals(listOf("G"), lines[1].allChords())
+    }
+
+    @Test
+    fun dividerRenderModelRemainsIndependentFromAlignment() {
+        val divider = renderRich("---").single()
+
+        assertEquals(PrompterRichTextBlockKind.DIVIDER, divider.blockKind)
+        assertEquals("", divider.lyricText)
+        assertFalse(divider.hasChords)
+    }
 
     @Test
     fun textWithoutChords_usesHistoricalFastPath() {
