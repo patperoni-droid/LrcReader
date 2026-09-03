@@ -466,6 +466,7 @@ fun QuickPlaylistsScreen(
     var showCreateTextDialog by remember { mutableStateOf(false) }
     var newTextTitle by remember { mutableStateOf("") }
     var newTextContentValue by remember { mutableStateOf(TextFieldValue()) }
+    var newTextPaletteInput by remember { mutableStateOf("") }
 // ✅ dialog édition titre texte (prompteur)
     var showEditTextDialog by remember { mutableStateOf(false) }
     var editTargetUri by remember { mutableStateOf<String?>(null) }
@@ -537,6 +538,7 @@ fun QuickPlaylistsScreen(
         if (openPrompterSignal > 0 && internalSelected != null) {
             newTextTitle = ""
             newTextContentValue = TextFieldValue()
+            newTextPaletteInput = ""
             showCreateTextDialog = true
             onConsumeOpenPrompterSignal()
         }
@@ -1529,6 +1531,7 @@ fun QuickPlaylistsScreen(
                                 showMenu = false
                                 newTextTitle = ""
                                 newTextContentValue = TextFieldValue()
+                                newTextPaletteInput = ""
                                 showCreateTextDialog = true
                             }
                         )
@@ -3815,19 +3818,30 @@ fun QuickPlaylistsScreen(
         show = showCreateTextDialog && internalSelected != null,
         title = newTextTitle,
         contentValue = newTextContentValue,
+        paletteInput = newTextPaletteInput,
         onTitleChange = { newTextTitle = it },
         onContentValueChange = { newTextContentValue = it },
-        onDismiss = { showCreateTextDialog = false },
+        onPaletteInputChange = { newTextPaletteInput = it },
+        onDismiss = {
+            showCreateTextDialog = false
+            newTextTitle = ""
+            newTextContentValue = TextFieldValue()
+            newTextPaletteInput = ""
+        },
         onConfirm = {
             val playlist = internalSelected ?: return@CreateScrollingTextDialog
             val created = createScrollingText(
                 context = context,
                 title = newTextTitle,
                 content = newTextContentValue.text,
+                paletteChords = parseTextPrompterChordPaletteInput(newTextPaletteInput),
                 playlistName = playlist
             ) ?: return@CreateScrollingTextDialog
             songs.add(created.uri)
             showCreateTextDialog = false
+            newTextTitle = ""
+            newTextContentValue = TextFieldValue()
+            newTextPaletteInput = ""
         }
     )
 

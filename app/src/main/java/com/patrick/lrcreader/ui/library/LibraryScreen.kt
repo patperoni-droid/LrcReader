@@ -1756,6 +1756,7 @@ fun LibraryScreen(
     var showCreateScrollingTextDialog by remember { mutableStateOf(false) }
     var newScrollingTextTitle by remember { mutableStateOf("") }
     var newScrollingTextContentValue by remember { mutableStateOf(TextFieldValue()) }
+    var newScrollingTextPaletteInput by remember { mutableStateOf("") }
     var editPrompterId by remember { mutableStateOf<String?>(null) }
     var editPrompterTitle by remember { mutableStateOf("") }
     var editPrompterContentValue by remember { mutableStateOf(TextFieldValue()) }
@@ -3654,6 +3655,7 @@ fun LibraryScreen(
     val openCreateScrollingTextDialog: () -> Unit = {
         newScrollingTextTitle = ""
         newScrollingTextContentValue = TextFieldValue()
+        newScrollingTextPaletteInput = ""
         showCreateScrollingTextDialog = true
     }
     val openStorageView: () -> Unit = openStorageView@ {
@@ -5850,18 +5852,31 @@ fun LibraryScreen(
                 show = showCreateScrollingTextDialog,
                 title = newScrollingTextTitle,
                 contentValue = newScrollingTextContentValue,
+                paletteInput = newScrollingTextPaletteInput,
                 onTitleChange = { newScrollingTextTitle = it },
                 onContentValueChange = { newScrollingTextContentValue = it },
-                onDismiss = { showCreateScrollingTextDialog = false },
+                onPaletteInputChange = { newScrollingTextPaletteInput = it },
+                onDismiss = {
+                    showCreateScrollingTextDialog = false
+                    newScrollingTextTitle = ""
+                    newScrollingTextContentValue = TextFieldValue()
+                    newScrollingTextPaletteInput = ""
+                },
                 onConfirm = {
                     val created = createScrollingText(
                         context = context,
                         title = newScrollingTextTitle,
                         content = newScrollingTextContentValue.text,
+                        paletteChords = parseTextPrompterChordPaletteInput(
+                            newScrollingTextPaletteInput
+                        ),
                         playlistName = null
                     ) ?: return@CreateScrollingTextDialog
                     entries = buildPrompterEntries()
                     showCreateScrollingTextDialog = false
+                    newScrollingTextTitle = ""
+                    newScrollingTextContentValue = TextFieldValue()
+                    newScrollingTextPaletteInput = ""
                 }
             )
 

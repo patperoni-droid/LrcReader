@@ -10,8 +10,10 @@ internal fun CreateScrollingTextDialog(
     show: Boolean,
     title: String,
     contentValue: TextFieldValue,
+    paletteInput: String,
     onTitleChange: (String) -> Unit,
     onContentValueChange: (TextFieldValue) -> Unit,
+    onPaletteInputChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -25,6 +27,9 @@ internal fun CreateScrollingTextDialog(
         onTitleChange = onTitleChange,
         onContentValueChange = onContentValueChange,
         onDismiss = onDismiss,
-        onConfirm = onConfirm
+        onConfirm = onConfirm,
+        paletteInput = paletteInput,
+        paletteChords = parseTextPrompterChordPaletteInput(paletteInput),
+        onPaletteInputChange = onPaletteInputChange
     )
 }

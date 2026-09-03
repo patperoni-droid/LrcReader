@@ -225,14 +225,16 @@ class ScrollingTextEditorDialogTest {
     }
 
     @Test
-    fun creationDialogRequiresNonEmptyContent() {
+    fun creationDialogShowsOptionalPaletteAndRequiresNonEmptyContent() {
         composeRule.setContent {
             CreateScrollingTextDialog(
                 show = true,
                 title = "Title",
                 contentValue = TextFieldValue(),
+                paletteInput = "",
                 onTitleChange = {},
                 onContentValueChange = {},
+                onPaletteInputChange = {},
                 onDismiss = {},
                 onConfirm = {}
             )
@@ -241,7 +243,40 @@ class ScrollingTextEditorDialogTest {
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
             .assertIsNotEnabled()
         composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG)
-            .assertDoesNotExist()
+            .assertIsDisplayed()
+    }
+
+    @Test
+    fun creationDialogInsertsComplexPaletteChordAtCursor() {
+        var contentValue by mutableStateOf(
+            TextFieldValue("Je voulais te dire", selection = TextRange(3))
+        )
+        var paletteInput by mutableStateOf("Dmaj7 F#m7 C/E")
+
+        composeRule.setContent {
+            CreateScrollingTextDialog(
+                show = true,
+                title = "Title",
+                contentValue = contentValue,
+                paletteInput = paletteInput,
+                onTitleChange = {},
+                onContentValueChange = { contentValue = it },
+                onPaletteInputChange = { paletteInput = it },
+                onDismiss = {},
+                onConfirm = {}
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + "C/E")
+            .assertIsDisplayed()
+            .performClick()
+
+        composeRule.runOnIdle {
+            assertEquals("Je [C/E]voulais te dire", contentValue.text)
+            assertEquals(TextRange(8), contentValue.selection)
+        }
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG)
+            .assertIsFocused()
     }
 
     @Test
