@@ -36,7 +36,7 @@ class PrompterTextPreparationTest {
 
         assertEquals("Bonjour", line.plainText)
         assertEquals(
-            listOf(PrompterRichTextSpan(0, 7, PrompterRichTextStyle.BOLD)),
+            listOf(PrompterRichTextSpan(0, 7, PrompterRichTextStyle.Bold)),
             line.spans
         )
         assertFalse(document.hasChords)
@@ -48,7 +48,7 @@ class PrompterTextPreparationTest {
         val line = preparePrompterText("*Bonsoir*").lines.single()
 
         assertEquals("Bonsoir", line.plainText)
-        assertEquals(PrompterRichTextStyle.ITALIC, line.spans.single().style)
+        assertEquals(PrompterRichTextStyle.Italic, line.spans.single().style)
         assertFalse(line.hasChords)
         assertTrue(line.hasFormatting)
     }
@@ -236,6 +236,60 @@ class PrompterTextPreparationTest {
     }
 
     @Test
+    fun chordInsideColor_isRemappedToColoredWord() {
+        val line = preparePrompterText(
+            "Je <c=yellow>[Am]voulais</c> te dire"
+        ).lines.single()
+
+        assertEquals("Je voulais te dire", line.plainText)
+        assertChord(line, index = 0, symbol = "Am", offset = 3)
+        assertColor(line, PrompterTextColor.YELLOW, 3, 10)
+        assertTrue(line.hasFormatting)
+    }
+
+    @Test
+    fun multipleChordsInsideColor_keepTheirFinalOffsets() {
+        val line = preparePrompterText(
+            "<c=yellow>Je [Am]vais [F]bien</c>"
+        ).lines.single()
+
+        assertEquals("Je vais bien", line.plainText)
+        assertChord(line, index = 0, symbol = "Am", offset = 3)
+        assertChord(line, index = 1, symbol = "F", offset = 8)
+        assertColor(line, PrompterTextColor.YELLOW, 0, 12)
+    }
+
+    @Test
+    fun chordsBeforeOpeningAndAfterClosingColor_keepVisibleOffsets() {
+        val line = preparePrompterText(
+            "[C]Avant <c=red>milieu</c> [G]après"
+        ).lines.single()
+
+        assertEquals("Avant milieu après", line.plainText)
+        assertChord(line, index = 0, symbol = "C", offset = 0)
+        assertChord(line, index = 1, symbol = "G", offset = 13)
+        assertColor(line, PrompterTextColor.RED, 6, 12)
+    }
+
+    @Test
+    fun chordImmediatelyAfterColorOpening_mapsToColorStart() {
+        val line = preparePrompterText("<c=blue>[C/E]mot</c>").lines.single()
+
+        assertEquals("mot", line.plainText)
+        assertChord(line, index = 0, symbol = "C/E", offset = 0)
+        assertColor(line, PrompterTextColor.BLUE, 0, 3)
+    }
+
+    @Test
+    fun invalidColorTag_doesNotActivateRichTextFastPath() {
+        val source = "<c=purple>bonjour</c>"
+        val document = preparePrompterText(source)
+
+        assertEquals(source, document.lines.single().plainText)
+        assertFalse(document.hasFormatting)
+    }
+
+    @Test
     fun lfKeepsFormattedPlainAndEmptyLinesAssociated() {
         val document = preparePrompterText("# Titre\n\n[Am]**Bonjour**\n")
 
@@ -286,5 +340,17 @@ class PrompterTextPreparationTest {
         val chord = line.chords[index]
         assertEquals(symbol, chord.symbol.raw)
         assertEquals(offset, chord.plainTextOffset)
+    }
+
+    private fun assertColor(
+        line: PrompterPreparedLine,
+        color: PrompterTextColor,
+        start: Int,
+        endExclusive: Int
+    ) {
+        val span = line.spans.single { it.style is PrompterRichTextStyle.ForegroundColor }
+        assertEquals(start, span.start)
+        assertEquals(endExclusive, span.endExclusive)
+        assertEquals(PrompterRichTextStyle.ForegroundColor(color), span.style)
     }
 }

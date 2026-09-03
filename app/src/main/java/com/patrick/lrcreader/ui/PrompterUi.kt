@@ -37,6 +37,7 @@ import com.patrick.lrcreader.core.PrompterPreparedLine
 import com.patrick.lrcreader.core.PrompterRichTextBlockKind
 import com.patrick.lrcreader.core.PrompterRichTextSpan
 import com.patrick.lrcreader.core.PrompterRichTextStyle
+import com.patrick.lrcreader.core.PrompterTextColor
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.theme.SplColors
 import kotlinx.coroutines.delay
@@ -341,7 +342,7 @@ private fun ChordProPrompterContent(
                         richTextEnabled = richTextEnabled
                     )
                     Text(
-                        text = line.lyricText.withPrompterStyles(line.spans),
+                        text = line.lyricText.withPrompterStyles(line.spans, textColor),
                         color = textColor,
                         fontSize = typography.fontSize.sp,
                         lineHeight = typography.lineHeight.sp,
@@ -396,7 +397,7 @@ private fun ChordProPrompterContent(
                                     }
                                     if (richTextEnabled) {
                                         Text(
-                                            text = run.lyricText.withPrompterStyles(run.spans),
+                                            text = run.lyricText.withPrompterStyles(run.spans, textColor),
                                             color = textColor,
                                             fontSize = typography.fontSize.sp,
                                             lineHeight = typography.lineHeight.sp,
@@ -468,13 +469,19 @@ private fun prompterLineTypography(
     }
 }
 
-private fun String.withPrompterStyles(spans: List<PrompterRichTextSpan>): AnnotatedString =
+private fun String.withPrompterStyles(
+    spans: List<PrompterRichTextSpan>,
+    defaultTextColor: Color
+): AnnotatedString =
     buildAnnotatedString {
         append(this@withPrompterStyles)
         spans.forEach { span ->
             val style = when (span.style) {
-                PrompterRichTextStyle.BOLD -> SpanStyle(fontWeight = FontWeight.Bold)
-                PrompterRichTextStyle.ITALIC -> SpanStyle(fontStyle = FontStyle.Italic)
+                PrompterRichTextStyle.Bold -> SpanStyle(fontWeight = FontWeight.Bold)
+                PrompterRichTextStyle.Italic -> SpanStyle(fontStyle = FontStyle.Italic)
+                is PrompterRichTextStyle.ForegroundColor -> SpanStyle(
+                    color = resolvePrompterTextColor(span.style.color, defaultTextColor)
+                )
             }
             addStyle(
                 style = style,
@@ -483,6 +490,18 @@ private fun String.withPrompterStyles(spans: List<PrompterRichTextSpan>): Annota
             )
         }
     }
+
+internal fun resolvePrompterTextColor(
+    color: PrompterTextColor,
+    defaultTextColor: Color
+): Color = when (color) {
+    PrompterTextColor.YELLOW -> Color(0xFFFFD54F)
+    PrompterTextColor.ORANGE -> Color(0xFFFFB74D)
+    PrompterTextColor.RED -> Color(0xFFFF6B6B)
+    PrompterTextColor.BLUE -> Color(0xFF64B5F6)
+    PrompterTextColor.GREEN -> Color(0xFF81C784)
+    PrompterTextColor.WHITE -> defaultTextColor
+}
 
 // ─────────────────────────────────────────────────────────────
 //  2) CONTROLES : Play/Pause + slider vitesse

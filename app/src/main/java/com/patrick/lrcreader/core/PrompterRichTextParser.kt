@@ -37,9 +37,26 @@ enum class PrompterRichTextBlockKind {
     DIVIDER
 }
 
-enum class PrompterRichTextStyle {
-    BOLD,
-    ITALIC
+sealed interface PrompterRichTextStyle {
+    data object Bold : PrompterRichTextStyle
+    data object Italic : PrompterRichTextStyle
+    data class ForegroundColor(
+        val color: PrompterTextColor
+    ) : PrompterRichTextStyle
+}
+
+enum class PrompterTextColor(val syntaxName: String) {
+    YELLOW("yellow"),
+    ORANGE("orange"),
+    RED("red"),
+    BLUE("blue"),
+    GREEN("green"),
+    WHITE("white");
+
+    companion object {
+        fun fromSyntaxName(value: String): PrompterTextColor? =
+            entries.firstOrNull { it.syntaxName == value }
+    }
 }
 
 fun parsePrompterRichText(source: String): PrompterRichTextDocument {
@@ -69,9 +86,102 @@ private fun parsePrompterRichTextLine(source: String): PrompterRichTextLine {
         source.startsWith("# ") -> PrompterRichTextBlockKind.TITLE to 2
         else -> PrompterRichTextBlockKind.BODY to 0
     }
+    val colorPass = parseColorMarkup(source, contentStart)
+    val markdownPass = parseMarkdownMarkup(colorPass.text)
+    val colorSpans = colorPass.spans.map { span ->
+        PrompterRichTextSpan(
+            start = markdownPass.inputOffsetToPlainOffset[span.start],
+            endExclusive = markdownPass.inputOffsetToPlainOffset[span.endExclusive],
+            style = span.style
+        )
+    }
+
+    return PrompterRichTextLine(
+        source = source,
+        plainText = markdownPass.text,
+        blockKind = blockKind,
+        spans = markdownPass.spans + colorSpans,
+        inputOffsetToPlainOffset = colorPass.inputOffsetToPlainOffset.map { intermediateOffset ->
+            markdownPass.inputOffsetToPlainOffset[intermediateOffset]
+        }
+    )
+}
+
+private data class InlineMarkupPass(
+    val text: String,
+    val spans: List<PrompterRichTextSpan>,
+    val inputOffsetToPlainOffset: List<Int>
+)
+
+private fun parseColorMarkup(source: String, contentStart: Int): InlineMarkupPass {
     val builder = RichTextLineBuilder(source)
     val spans = mutableListOf<PrompterRichTextSpan>()
     builder.skipUntil(contentStart)
+
+    while (builder.inputOffset < source.length) {
+        val markerStart = builder.inputOffset
+        if (!source.startsWith(COLOR_OPENING_PREFIX, markerStart)) {
+            builder.copyUntil(markerStart + 1)
+            continue
+        }
+
+        val openingEnd = source.indexOf('>', startIndex = markerStart + COLOR_OPENING_PREFIX.length)
+        if (openingEnd < 0) {
+            builder.copyUntil(source.length)
+            continue
+        }
+
+        val contentStartOffset = openingEnd + 1
+        val closingStart = source.indexOf(COLOR_CLOSING_TAG, startIndex = contentStartOffset)
+        val literalEnd = if (closingStart < 0) {
+            source.length
+        } else {
+            closingStart + COLOR_CLOSING_TAG.length
+        }
+        val colorName = source.substring(
+            markerStart + COLOR_OPENING_PREFIX.length,
+            openingEnd
+        )
+        val color = PrompterTextColor.fromSyntaxName(colorName)
+        val nestedOpening = if (closingStart < 0) {
+            -1
+        } else {
+            source.indexOf(COLOR_OPENING_PREFIX, startIndex = contentStartOffset)
+        }
+        val hasNestedColor = closingStart >= 0 &&
+            nestedOpening >= contentStartOffset &&
+            nestedOpening < closingStart
+        val isValid = color != null &&
+            closingStart > contentStartOffset &&
+            !hasNestedColor
+
+        if (!isValid) {
+            builder.copyUntil(literalEnd)
+            continue
+        }
+
+        builder.skipUntil(contentStartOffset)
+        val spanStart = builder.plainLength
+        builder.copyUntil(closingStart)
+        val spanEnd = builder.plainLength
+        builder.skipUntil(closingStart + COLOR_CLOSING_TAG.length)
+        spans += PrompterRichTextSpan(
+            start = spanStart,
+            endExclusive = spanEnd,
+            style = PrompterRichTextStyle.ForegroundColor(requireNotNull(color))
+        )
+    }
+
+    return InlineMarkupPass(
+        text = builder.plainText,
+        spans = spans,
+        inputOffsetToPlainOffset = builder.offsetMapping
+    )
+}
+
+private fun parseMarkdownMarkup(source: String): InlineMarkupPass {
+    val builder = RichTextLineBuilder(source)
+    val spans = mutableListOf<PrompterRichTextSpan>()
 
     while (builder.inputOffset < source.length) {
         val markerStart = builder.inputOffset
@@ -94,7 +204,7 @@ private fun parsePrompterRichTextLine(source: String): PrompterRichTextLine {
                         spans += PrompterRichTextSpan(
                             start = spanStart,
                             endExclusive = spanEnd,
-                            style = PrompterRichTextStyle.BOLD
+                            style = PrompterRichTextStyle.Bold
                         )
                     }
                 }
@@ -115,7 +225,7 @@ private fun parsePrompterRichTextLine(source: String): PrompterRichTextLine {
                     spans += PrompterRichTextSpan(
                         start = spanStart,
                         endExclusive = spanEnd,
-                        style = PrompterRichTextStyle.ITALIC
+                        style = PrompterRichTextStyle.Italic
                     )
                 }
             }
@@ -124,14 +234,15 @@ private fun parsePrompterRichTextLine(source: String): PrompterRichTextLine {
         }
     }
 
-    return PrompterRichTextLine(
-        source = source,
-        plainText = builder.plainText,
-        blockKind = blockKind,
+    return InlineMarkupPass(
+        text = builder.plainText,
         spans = spans,
         inputOffsetToPlainOffset = builder.offsetMapping
     )
 }
+
+private const val COLOR_OPENING_PREFIX = "<c="
+private const val COLOR_CLOSING_TAG = "</c>"
 
 private data class ItalicClosingMarker(
     val offset: Int,

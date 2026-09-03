@@ -4,6 +4,8 @@ import com.patrick.lrcreader.core.parseChordPro
 import com.patrick.lrcreader.core.preparePrompterText
 import com.patrick.lrcreader.core.PrompterRichTextBlockKind
 import com.patrick.lrcreader.core.PrompterRichTextStyle
+import com.patrick.lrcreader.core.PrompterTextColor
+import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -119,7 +121,7 @@ class ChordProPrompterLayoutTest {
         assertEquals(listOf("Je ", "voulais"), line.words.map { it.lyricText })
         assertEquals(listOf("Am"), line.allChords())
         assertEquals(
-            listOf(PrompterRichTextStyle.BOLD),
+            listOf(PrompterRichTextStyle.Bold),
             line.words[0].runs.single().spans.map { it.style }
         )
         assertEquals(0, line.words[0].runs.single().spans.single().start)
@@ -138,7 +140,7 @@ class ChordProPrompterLayoutTest {
         assertEquals("vais ", chordRun.lyricText)
         assertEquals(0, chordRun.spans.single().start)
         assertEquals(4, chordRun.spans.single().endExclusive)
-        assertEquals(PrompterRichTextStyle.BOLD, chordRun.spans.single().style)
+        assertEquals(PrompterRichTextStyle.Bold, chordRun.spans.single().style)
         assertTrue(line.words[2].runs.single().spans.isEmpty())
     }
 
@@ -150,7 +152,7 @@ class ChordProPrompterLayoutTest {
         assertEquals(listOf("F"), line.allChords())
         assertTrue(
             line.words.flatMap { it.runs }.all { run ->
-                run.spans.singleOrNull()?.style == PrompterRichTextStyle.ITALIC
+                run.spans.singleOrNull()?.style == PrompterRichTextStyle.Italic
             }
         )
     }
@@ -160,8 +162,8 @@ class ChordProPrompterLayoutTest {
         val line = renderRich("**Bonjour** et *bonsoir*").single()
 
         assertEquals("Bonjour et bonsoir", line.lyricText)
-        assertEquals(PrompterRichTextStyle.BOLD, line.spans[0].style)
-        assertEquals(PrompterRichTextStyle.ITALIC, line.spans[1].style)
+        assertEquals(PrompterRichTextStyle.Bold, line.spans[0].style)
+        assertEquals(PrompterRichTextStyle.Italic, line.spans[1].style)
     }
 
     @Test
@@ -212,6 +214,38 @@ class ChordProPrompterLayoutTest {
         assertTrue(line.words.size > 10)
         assertEquals("Voici une ligne volontairement longue avec plusieurs mots qui doit revenir proprement", line.renderedLyrics())
         assertEquals(listOf("C", "G"), line.allChords())
+    }
+
+    @Test
+    fun recognizedColor_activatesRichTextModeAndReachesLocalChordRun() {
+        val document = preparePrompterText("Je <c=yellow>[Am]voulais</c> bien")
+        val line = buildRichTextPrompterLines(document).single()
+        val chordRun = line.words[1].runs.single()
+
+        assertEquals(PrompterRenderMode.RICH_TEXT, resolvePrompterRenderMode(document))
+        assertEquals("voulais ", chordRun.lyricText)
+        assertEquals(listOf("Am"), chordRun.chords)
+        assertEquals(
+            PrompterRichTextStyle.ForegroundColor(PrompterTextColor.YELLOW),
+            chordRun.spans.single().style
+        )
+        assertEquals(0, chordRun.spans.single().start)
+        assertEquals(7, chordRun.spans.single().endExclusive)
+    }
+
+    @Test
+    fun stageColorsResolveToExpectedValuesAndWhiteUsesActiveTextColor() {
+        assertEquals(Color(0xFFFFD54F), resolvePrompterTextColor(PrompterTextColor.YELLOW, Color.Black))
+        assertEquals(Color(0xFFFFB74D), resolvePrompterTextColor(PrompterTextColor.ORANGE, Color.Black))
+        assertEquals(Color(0xFFFF6B6B), resolvePrompterTextColor(PrompterTextColor.RED, Color.Black))
+        assertEquals(Color(0xFF64B5F6), resolvePrompterTextColor(PrompterTextColor.BLUE, Color.Black))
+        assertEquals(Color(0xFF81C784), resolvePrompterTextColor(PrompterTextColor.GREEN, Color.Black))
+
+        val activeTextColor = Color(0xFFE0E0E0)
+        assertEquals(
+            activeTextColor,
+            resolvePrompterTextColor(PrompterTextColor.WHITE, activeTextColor)
+        )
     }
 
     private fun render(source: String): List<PrompterChordRenderLine> =
