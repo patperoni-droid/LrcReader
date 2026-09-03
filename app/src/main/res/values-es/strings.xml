@@ -490,6 +490,10 @@
     <string name="lyrics_editor_input_label">Letras (una línea por frase)</string>
     <string name="chords_editor_input_label">Acordes (una línea por acorde)</string>
     <string name="chords_palette_input_label">Paleta de acordes (ej.: Am, D, G, F)</string>
+    <string name="prompter_format_action">Formato</string>
+    <string name="prompter_format_alignment_label">Alineación</string>
+    <string name="prompter_alignment_start">Izquierda</string>
+    <string name="prompter_alignment_center">Centrado</string>
     <string name="lyrics_editor_cd_sync_play_pause">Sync reproducir/pausar</string>
     <string name="lyrics_editor_cd_back_to_start">Volver al inicio</string>
     <string name="lyrics_editor_reset_tags">Restablecer marcas</string>

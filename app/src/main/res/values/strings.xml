@@ -670,6 +670,10 @@
     <string name="lyrics_editor_input_label">Paroles (une ligne par phrase)</string>
     <string name="chords_editor_input_label">Accords (une ligne par accord)</string>
     <string name="chords_palette_input_label">Palette d’accords (ex: Am, D, G, F)</string>
+    <string name="prompter_format_action">Format</string>
+    <string name="prompter_format_alignment_label">Alignement</string>
+    <string name="prompter_alignment_start">Gauche</string>
+    <string name="prompter_alignment_center">Centré</string>
     <string name="lyrics_editor_cd_sync_play_pause">Play/Pause synchro</string>
     <string name="lyrics_editor_cd_back_to_start">Revenir début</string>
     <string name="lyrics_editor_reset_tags">Reset TAGs</string>

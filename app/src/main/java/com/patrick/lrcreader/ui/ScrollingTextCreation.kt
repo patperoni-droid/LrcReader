@@ -3,6 +3,8 @@ package com.patrick.lrcreader.ui
 import android.content.Context
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextPrompterChordPaletteStore
+import com.patrick.lrcreader.core.TextPrompterDisplaySettings
+import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
 import com.patrick.lrcreader.core.TextSongRepository
 
 internal data class ScrollingTextCreationResult(
@@ -15,6 +17,7 @@ internal fun createScrollingText(
     title: String,
     content: String,
     paletteChords: List<String> = emptyList(),
+    displaySettings: TextPrompterDisplaySettings = TextPrompterDisplaySettings(),
     playlistName: String? = null
 ): ScrollingTextCreationResult? {
     val cleanTitle = title.trim()
@@ -26,6 +29,11 @@ internal fun createScrollingText(
     if (paletteChords.isNotEmpty()) {
         TextPrompterChordPaletteStore.textSongKey(id)?.let { key ->
             TextPrompterChordPaletteStore.save(context, key, paletteChords)
+        }
+    }
+    if (displaySettings != TextPrompterDisplaySettings()) {
+        TextPrompterDisplaySettingsStore.textSongKey(id)?.let { key ->
+            TextPrompterDisplaySettingsStore.save(context, key, displaySettings)
         }
     }
     playlistName

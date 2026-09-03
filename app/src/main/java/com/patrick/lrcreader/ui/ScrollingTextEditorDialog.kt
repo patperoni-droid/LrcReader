@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.patrick.lrcreader.core.TextPrompterAlignment
 import com.patrick.lrcreader.exo.R
 
 internal const val SCROLLING_TEXT_EDITOR_TITLE_FIELD_TAG = "scrolling_text_editor_title"
@@ -47,6 +50,10 @@ internal const val SCROLLING_TEXT_EDITOR_DISMISS_TAG = "scrolling_text_editor_di
 internal const val SCROLLING_TEXT_EDITOR_CONFIRM_TAG = "scrolling_text_editor_confirm"
 internal const val SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG = "scrolling_text_editor_palette"
 internal const val SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX = "scrolling_text_editor_chord_"
+internal const val SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG = "scrolling_text_editor_format_button"
+internal const val SCROLLING_TEXT_EDITOR_FORMAT_PANEL_TAG = "scrolling_text_editor_format_panel"
+internal const val SCROLLING_TEXT_EDITOR_ALIGNMENT_START_TAG = "scrolling_text_editor_alignment_start"
+internal const val SCROLLING_TEXT_EDITOR_ALIGNMENT_CENTER_TAG = "scrolling_text_editor_alignment_center"
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -61,6 +68,8 @@ internal fun ScrollingTextEditorDialog(
     onContentValueChange: (TextFieldValue) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
+    alignment: TextPrompterAlignment = TextPrompterAlignment.START,
+    onAlignmentChange: (TextPrompterAlignment) -> Unit = {},
     paletteInput: String? = null,
     paletteChords: List<String> = emptyList(),
     onPaletteInputChange: (String) -> Unit = {}
@@ -68,6 +77,7 @@ internal fun ScrollingTextEditorDialog(
     if (!show) return
     val contentFocusRequester = remember { FocusRequester() }
     var isContentFocused by remember { mutableStateOf(false) }
+    var isFormatPanelOpen by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -150,6 +160,37 @@ internal fun ScrollingTextEditorDialog(
                 Spacer(Modifier.height(8.dp))
             }
 
+            Row(modifier = Modifier.fillMaxWidth()) {
+                TextButton(
+                    onClick = {
+                        isFormatPanelOpen = !isFormatPanelOpen
+                        contentFocusRequester.requestFocus()
+                    },
+                    modifier = Modifier
+                        .testTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG)
+                        .defaultMinSize(minWidth = 0.dp, minHeight = 34.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.prompter_format_action),
+                        color = Color(0xFF80CBC4),
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            if (isFormatPanelOpen) {
+                ScrollingTextFormatPanel(
+                    alignment = alignment,
+                    onAlignmentChange = { selectedAlignment ->
+                        onAlignmentChange(selectedAlignment)
+                        isFormatPanelOpen = false
+                        contentFocusRequester.requestFocus()
+                    }
+                )
+                Spacer(Modifier.height(4.dp))
+            }
+
             OutlinedTextField(
                 value = contentValue,
                 onValueChange = onContentValueChange,
@@ -192,6 +233,45 @@ internal fun ScrollingTextEditorDialog(
                     Text(confirmLabel, color = Color.White)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ScrollingTextFormatPanel(
+    alignment: TextPrompterAlignment,
+    onAlignmentChange: (TextPrompterAlignment) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(SCROLLING_TEXT_EDITOR_FORMAT_PANEL_TAG),
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFF2B3238)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.prompter_format_alignment_label),
+                color = Color.White,
+                fontSize = 13.sp,
+                modifier = Modifier.weight(1f)
+            )
+            FilterChip(
+                selected = alignment == TextPrompterAlignment.START,
+                onClick = { onAlignmentChange(TextPrompterAlignment.START) },
+                label = { Text(stringResource(R.string.prompter_alignment_start)) },
+                modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_START_TAG)
+            )
+            FilterChip(
+                selected = alignment == TextPrompterAlignment.CENTER,
+                onClick = { onAlignmentChange(TextPrompterAlignment.CENTER) },
+                label = { Text(stringResource(R.string.prompter_alignment_center)) },
+                modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_CENTER_TAG)
+            )
         }
     }
 }

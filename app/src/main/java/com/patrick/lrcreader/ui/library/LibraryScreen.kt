@@ -70,7 +70,10 @@ import com.patrick.lrcreader.core.PlaylistTrackLimitPolicy
 import com.patrick.lrcreader.core.SmpPreparationNoticePrefs
 import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.TextSongRepository
+import com.patrick.lrcreader.core.TextPrompterAlignment
 import com.patrick.lrcreader.core.TextPrompterChordPaletteStore
+import com.patrick.lrcreader.core.TextPrompterDisplaySettings
+import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.core.buildVariantFamilyItem
 import com.patrick.lrcreader.core.buildSmpItem
@@ -1757,10 +1760,12 @@ fun LibraryScreen(
     var newScrollingTextTitle by remember { mutableStateOf("") }
     var newScrollingTextContentValue by remember { mutableStateOf(TextFieldValue()) }
     var newScrollingTextPaletteInput by remember { mutableStateOf("") }
+    var newScrollingTextAlignment by remember { mutableStateOf(TextPrompterAlignment.START) }
     var editPrompterId by remember { mutableStateOf<String?>(null) }
     var editPrompterTitle by remember { mutableStateOf("") }
     var editPrompterContentValue by remember { mutableStateOf(TextFieldValue()) }
     var editPrompterPaletteInput by remember { mutableStateOf("") }
+    var editPrompterAlignment by remember { mutableStateOf(TextPrompterAlignment.START) }
     var showEditPrompterDialog by remember { mutableStateOf(false) }
 
     fun openMoveBrowserForSelection(selection: Collection<Uri>) {
@@ -3656,6 +3661,7 @@ fun LibraryScreen(
         newScrollingTextTitle = ""
         newScrollingTextContentValue = TextFieldValue()
         newScrollingTextPaletteInput = ""
+        newScrollingTextAlignment = TextPrompterAlignment.START
         showCreateScrollingTextDialog = true
     }
     val openStorageView: () -> Unit = openStorageView@ {
@@ -4856,6 +4862,13 @@ fun LibraryScreen(
                                                 ?.let { TextPrompterChordPaletteStore.get(context, it) }
                                                 .orEmpty()
                                                 .joinToString(" ")
+                                            editPrompterAlignment = TextPrompterDisplaySettingsStore
+                                                .textSongKey(prompterId)
+                                                ?.let {
+                                                    TextPrompterDisplaySettingsStore.get(context, it)
+                                                }
+                                                ?.alignment
+                                                ?: TextPrompterAlignment.START
                                             showEditPrompterDialog = true
                                         }
                                     } else {
@@ -5812,10 +5825,13 @@ fun LibraryScreen(
                 confirmEnabled = editPrompterTitle.isNotBlank(),
                 onTitleChange = { editPrompterTitle = it },
                 onContentValueChange = { editPrompterContentValue = it },
+                alignment = editPrompterAlignment,
+                onAlignmentChange = { editPrompterAlignment = it },
                 onDismiss = {
                     showEditPrompterDialog = false
                     editPrompterId = null
                     editPrompterPaletteInput = ""
+                    editPrompterAlignment = TextPrompterAlignment.START
                 },
                 onConfirm = {
                     val id = editPrompterId ?: return@ScrollingTextEditorDialog
@@ -5835,6 +5851,13 @@ fun LibraryScreen(
                             chords = parseTextPrompterChordPaletteInput(editPrompterPaletteInput)
                         )
                     }
+                    TextPrompterDisplaySettingsStore.textSongKey(id)?.let { settingsKey ->
+                        TextPrompterDisplaySettingsStore.save(
+                            context = context,
+                            key = settingsKey,
+                            settings = TextPrompterDisplaySettings(editPrompterAlignment)
+                        )
+                    }
                     val folder = currentFolderUri
                     if (folder != null) {
                         entries = buildEntriesForFolder(folder, useCache = false)
@@ -5842,6 +5865,7 @@ fun LibraryScreen(
                     showEditPrompterDialog = false
                     editPrompterId = null
                     editPrompterPaletteInput = ""
+                    editPrompterAlignment = TextPrompterAlignment.START
                 },
                 paletteInput = editPrompterPaletteInput,
                 paletteChords = parseTextPrompterChordPaletteInput(editPrompterPaletteInput),
@@ -5856,11 +5880,14 @@ fun LibraryScreen(
                 onTitleChange = { newScrollingTextTitle = it },
                 onContentValueChange = { newScrollingTextContentValue = it },
                 onPaletteInputChange = { newScrollingTextPaletteInput = it },
+                alignment = newScrollingTextAlignment,
+                onAlignmentChange = { newScrollingTextAlignment = it },
                 onDismiss = {
                     showCreateScrollingTextDialog = false
                     newScrollingTextTitle = ""
                     newScrollingTextContentValue = TextFieldValue()
                     newScrollingTextPaletteInput = ""
+                    newScrollingTextAlignment = TextPrompterAlignment.START
                 },
                 onConfirm = {
                     val created = createScrollingText(
@@ -5870,6 +5897,9 @@ fun LibraryScreen(
                         paletteChords = parseTextPrompterChordPaletteInput(
                             newScrollingTextPaletteInput
                         ),
+                        displaySettings = TextPrompterDisplaySettings(
+                            newScrollingTextAlignment
+                        ),
                         playlistName = null
                     ) ?: return@CreateScrollingTextDialog
                     entries = buildPrompterEntries()
@@ -5877,6 +5907,7 @@ fun LibraryScreen(
                     newScrollingTextTitle = ""
                     newScrollingTextContentValue = TextFieldValue()
                     newScrollingTextPaletteInput = ""
+                    newScrollingTextAlignment = TextPrompterAlignment.START
                 }
             )
 

@@ -5,6 +5,9 @@ import android.content.SharedPreferences
 import com.patrick.lrcreader.core.PlaybackRouter
 import com.patrick.lrcreader.core.PlaylistRepository
 import com.patrick.lrcreader.core.TextPrompterChordPaletteStore
+import com.patrick.lrcreader.core.TextPrompterAlignment
+import com.patrick.lrcreader.core.TextPrompterDisplaySettings
+import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
 import com.patrick.lrcreader.core.TextSongRepository
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -112,6 +115,41 @@ class ScrollingTextCreationTest {
         assertEquals(
             "Je [Am]voulais te dire",
             TextSongRepository.get(context, created.id)?.content
+        )
+        assertTrue(storedPaletteValues.isEmpty())
+    }
+
+    @Test
+    fun `center alignment is persisted only under created text id`() {
+        assertTrue(storedPaletteValues.isEmpty())
+
+        val created = requireNotNull(
+            createScrollingText(
+                context = context,
+                title = "Texte centré",
+                content = "Contenu",
+                displaySettings = TextPrompterDisplaySettings(TextPrompterAlignment.CENTER)
+            )
+        )
+
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey(created.id))
+        assertEquals(
+            TextPrompterAlignment.CENTER,
+            TextPrompterDisplaySettingsStore.get(context, key).alignment
+        )
+        assertEquals(setOf("text:${created.id}"), storedPaletteValues.keys)
+    }
+
+    @Test
+    fun `new text keeps start as implicit default`() {
+        val created = requireNotNull(
+            createScrollingText(context = context, title = "Texte", content = "Contenu")
+        )
+
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey(created.id))
+        assertEquals(
+            TextPrompterAlignment.START,
+            TextPrompterDisplaySettingsStore.get(context, key).alignment
         )
         assertTrue(storedPaletteValues.isEmpty())
     }

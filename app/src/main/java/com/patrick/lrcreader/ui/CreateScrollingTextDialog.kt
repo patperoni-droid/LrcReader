@@ -3,6 +3,7 @@ package com.patrick.lrcreader.ui
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.TextFieldValue
+import com.patrick.lrcreader.core.TextPrompterAlignment
 import com.patrick.lrcreader.exo.R
 
 @Composable
@@ -14,6 +15,8 @@ internal fun CreateScrollingTextDialog(
     onTitleChange: (String) -> Unit,
     onContentValueChange: (TextFieldValue) -> Unit,
     onPaletteInputChange: (String) -> Unit,
+    alignment: TextPrompterAlignment = TextPrompterAlignment.START,
+    onAlignmentChange: (TextPrompterAlignment) -> Unit = {},
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
@@ -28,6 +31,8 @@ internal fun CreateScrollingTextDialog(
         onContentValueChange = onContentValueChange,
         onDismiss = onDismiss,
         onConfirm = onConfirm,
+        alignment = alignment,
+        onAlignmentChange = onAlignmentChange,
         paletteInput = paletteInput,
         paletteChords = parseTextPrompterChordPaletteInput(paletteInput),
         onPaletteInputChange = onPaletteInputChange

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.performTextInputSelection
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
+import com.patrick.lrcreader.core.TextPrompterAlignment
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -29,6 +31,120 @@ import org.junit.Test
 
 @OptIn(ExperimentalTestApi::class)
 class ScrollingTextEditorDialogTest {
+
+    @Test
+    fun formatEntryRemainsVisibleInNormalAndFocusedModes() {
+        composeRule.setContent {
+            TestEditor(paletteInput = null)
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG).performClick()
+        composeRule.waitForIdle()
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG).assertIsDisplayed()
+    }
+
+    @Test
+    fun formatPanelChangesAlignmentWithoutChangingContentSelectionOrFocus() {
+        var alignment by mutableStateOf(TextPrompterAlignment.START)
+        var contentValue by mutableStateOf(
+            TextFieldValue("Je voulais te dire", selection = TextRange(3, 10))
+        )
+
+        composeRule.setContent {
+            TestEditor(
+                contentValue = contentValue,
+                onContentValueChange = { contentValue = it },
+                alignment = alignment,
+                onAlignmentChange = { alignment = it }
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG).performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_FORMAT_PANEL_TAG).assertIsDisplayed()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_START_TAG).assertIsSelected()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_CENTER_TAG).performClick()
+        composeRule.waitForIdle()
+
+        composeRule.runOnIdle {
+            assertEquals(TextPrompterAlignment.CENTER, alignment)
+            assertEquals("Je voulais te dire", contentValue.text)
+            assertEquals(TextRange(3, 10), contentValue.selection)
+        }
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG).assertIsFocused()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG).performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_CENTER_TAG).assertIsSelected()
+    }
+
+    @Test
+    fun startCanBeSelectedFromExistingCenterDraft() {
+        var alignment by mutableStateOf(TextPrompterAlignment.CENTER)
+
+        composeRule.setContent {
+            TestEditor(
+                alignment = alignment,
+                onAlignmentChange = { alignment = it }
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG).performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_CENTER_TAG).assertIsSelected()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_START_TAG).performClick()
+
+        composeRule.runOnIdle { assertEquals(TextPrompterAlignment.START, alignment) }
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG).assertIsFocused()
+    }
+
+    @Test
+    fun dismissAfterAlignmentChangeDoesNotConfirmDraft() {
+        var alignment by mutableStateOf(TextPrompterAlignment.START)
+        var confirmed = false
+        var dismissed = false
+
+        composeRule.setContent {
+            TestEditor(
+                alignment = alignment,
+                onAlignmentChange = { alignment = it },
+                onDismiss = { dismissed = true },
+                onConfirm = { confirmed = true }
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG).performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_CENTER_TAG).performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG).performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(TextPrompterAlignment.CENTER, alignment)
+            assertTrue(dismissed)
+            assertFalse(confirmed)
+        }
+    }
+
+    @Test
+    fun confirmReadsCurrentAlignmentDraft() {
+        var alignment by mutableStateOf(TextPrompterAlignment.START)
+        var confirmedAlignment: TextPrompterAlignment? = null
+
+        composeRule.setContent {
+            TestEditor(
+                alignment = alignment,
+                onAlignmentChange = { alignment = it },
+                onConfirm = { confirmedAlignment = alignment }
+            )
+        }
+
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG).performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_CENTER_TAG).performClick()
+        composeRule.onNodeWithTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG).performClick()
+
+        composeRule.runOnIdle {
+            assertEquals(TextPrompterAlignment.CENTER, confirmedAlignment)
+        }
+    }
 
     @get:Rule
     val composeRule = createAndroidComposeRule<ComponentActivity>()
@@ -599,6 +715,8 @@ class ScrollingTextEditorDialogTest {
         onContentValueChange: (TextFieldValue) -> Unit = {},
         onDismiss: () -> Unit = {},
         onConfirm: () -> Unit = {},
+        alignment: TextPrompterAlignment = TextPrompterAlignment.START,
+        onAlignmentChange: (TextPrompterAlignment) -> Unit = {},
         paletteInput: String? = null,
         paletteChords: List<String> = emptyList(),
         onPaletteInputChange: (String) -> Unit = {}
@@ -614,6 +732,8 @@ class ScrollingTextEditorDialogTest {
             onContentValueChange = onContentValueChange,
             onDismiss = onDismiss,
             onConfirm = onConfirm,
+            alignment = alignment,
+            onAlignmentChange = onAlignmentChange,
             paletteInput = paletteInput,
             paletteChords = paletteChords,
             onPaletteInputChange = onPaletteInputChange
