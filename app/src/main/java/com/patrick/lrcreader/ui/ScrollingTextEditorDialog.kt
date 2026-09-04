@@ -189,34 +189,36 @@ internal fun ScrollingTextEditorDialog(
                     )
                 }
 
-                if (paletteChords.isNotEmpty()) {
-                    if (visibility.showHeader) {
-                        Spacer(Modifier.height(6.dp))
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        paletteChords.forEach { chord ->
-                            TextButton(
-                                onClick = {
-                                    onContentValueChange(
-                                        editOrInsertPrompterChord(contentValue, chord)
-                                    )
-                                    contentFocusRequester.requestFocus()
-                                },
-                                modifier = Modifier.testTag(
-                                    SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord
-                                ).defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).focusProperties { canFocus = false },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
+                if (isPhone) {
+                    if (paletteChords.isNotEmpty()) {
+                        if (visibility.showHeader) {
+                            Spacer(Modifier.height(6.dp))
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            paletteChords.forEach { chord ->
+                                TextButton(
+                                    onClick = {
+                                        onContentValueChange(
+                                            editOrInsertPrompterChord(contentValue, chord)
+                                        )
+                                        contentFocusRequester.requestFocus()
+                                    },
+                                    modifier = Modifier.testTag(
+                                        SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord
+                                    ).defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).focusProperties { canFocus = false },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
+                                }
                             }
                         }
                     }
-                }
 
-                Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(8.dp))
+                }
             }
 
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -226,7 +228,7 @@ internal fun ScrollingTextEditorDialog(
                 ) {
                     Icon(Icons.Default.TextFormat,
                         contentDescription = stringResource(R.string.prompter_editor_text_colors),
-                        tint = Color(0xFF80CBC4))
+                        tint = if (isPhone) Color(0xFF80CBC4) else Color.White)
                 }
                 IconButton(
                     onClick = toggleAlignment,
@@ -235,9 +237,35 @@ internal fun ScrollingTextEditorDialog(
                 ) {
                     Icon(Icons.AutoMirrored.Filled.FormatAlignLeft,
                         contentDescription = stringResource(R.string.prompter_format_alignment_label),
-                        tint = Color(0xFF80CBC4))
+                        tint = if (isPhone) Color(0xFF80CBC4) else Color.White)
                 }
-                Spacer(Modifier.weight(1f))
+                if (isPhone) {
+                    Spacer(Modifier.weight(1f))
+                } else {
+                    Row(
+                        modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (paletteInput != null && visibility.showChords) {
+                            paletteChords.forEach { chord ->
+                                TextButton(
+                                    onClick = {
+                                        onContentValueChange(
+                                            editOrInsertPrompterChord(contentValue, chord)
+                                        )
+                                        contentFocusRequester.requestFocus()
+                                    },
+                                    modifier = Modifier.testTag(
+                                        SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord
+                                    ).defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).focusProperties { canFocus = false },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+                }
                 IconButton(
                     onClick = confirmEditor,
                     enabled = confirmEnabled,
