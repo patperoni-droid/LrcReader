@@ -19,7 +19,7 @@ internal fun scrollingTextEditorVisibility(
     val phoneEditing = isPhone && contentFocused
     return ScrollingTextEditorVisibility(
         showHeader = if (isPhone) !phoneEditing else !contentFocused,
-        showChords = !phoneEditing,
+        showChords = true,
         showMarkupPanel = markupPanelOpen,
         showAlignmentPanel = alignmentPanelOpen
     )

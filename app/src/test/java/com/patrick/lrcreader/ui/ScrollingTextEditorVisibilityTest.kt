@@ -7,19 +7,19 @@ class ScrollingTextEditorVisibilityTest {
     @Test fun phoneBeforeFocusShowsHeaderAndChords() {
         assertEquals(ScrollingTextEditorVisibility(true, true), scrollingTextEditorVisibility(true, false, false))
     }
-    @Test fun phoneDuringEditingReleasesHeaderAndChordSpace() {
-        assertEquals(ScrollingTextEditorVisibility(false, false), scrollingTextEditorVisibility(true, true, false))
+    @Test fun phoneDuringEditingHidesHeaderButKeepsChords() {
+        assertEquals(ScrollingTextEditorVisibility(false, true), scrollingTextEditorVisibility(true, true, false))
     }
     @Test fun phoneOpensOnlyTextAndColorWhileEditing() {
-        assertEquals(ScrollingTextEditorVisibility(false, false, true, false),
+        assertEquals(ScrollingTextEditorVisibility(false, true, true, false),
             scrollingTextEditorVisibility(true, true, markupPanelOpen = true))
     }
     @Test fun phoneOpensOnlyAlignmentWhileEditing() {
-        assertEquals(ScrollingTextEditorVisibility(false, false, false, true),
+        assertEquals(ScrollingTextEditorVisibility(false, true, false, true),
             scrollingTextEditorVisibility(true, true, alignmentPanelOpen = true))
     }
-    @Test fun returningToTextWithPanelsClosedKeepsHeaderAndChordsHidden() {
-        assertEquals(ScrollingTextEditorVisibility(false, false, false, false),
+    @Test fun returningToTextClosesPanelsButKeepsChordsVisible() {
+        assertEquals(ScrollingTextEditorVisibility(false, true, false, false),
             scrollingTextEditorVisibility(true, true, markupPanelOpen = false, alignmentPanelOpen = false))
     }
     @Test fun leavingFocusRestoresPhoneTools() {
