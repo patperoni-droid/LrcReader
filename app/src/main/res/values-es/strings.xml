@@ -1264,4 +1264,12 @@ No olvides guardar.</string>
     <string name="tablet_split_menu_search">Buscar</string>
     <string name="tablet_split_menu_settings">Ajustes</string>
     <string name="tablet_split_return_cockpit">← Volver al cockpit</string>
+    <string name="prompter_markup_palette">Paleta</string>
+    <string name="prompter_markup_section">Sección</string>
+    <string name="prompter_markup_verse">Estrofa</string>
+    <string name="prompter_markup_chorus">Estribillo</string>
+    <string name="prompter_markup_comment">Comentario</string>
+    <string name="prompter_markup_bold">Negrita</string>
+    <string name="prompter_markup_italic">Cursiva</string>
+    <string name="prompter_markup_divider">Separador</string>
 </resources>

@@ -1355,4 +1355,12 @@ N’oubliez pas de sauvegarder.</string>
     <string name="tablet_split_menu_search">Recherche</string>
     <string name="tablet_split_menu_settings">Paramètres</string>
     <string name="tablet_split_return_cockpit">← Retour cockpit</string>
+    <string name="prompter_markup_palette">Palette</string>
+    <string name="prompter_markup_section">Section</string>
+    <string name="prompter_markup_verse">Couplet</string>
+    <string name="prompter_markup_chorus">Refrain</string>
+    <string name="prompter_markup_comment">Commentaire</string>
+    <string name="prompter_markup_bold">Gras</string>
+    <string name="prompter_markup_italic">Italique</string>
+    <string name="prompter_markup_divider">Séparateur</string>
 </resources>

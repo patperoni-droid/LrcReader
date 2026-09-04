@@ -47,6 +47,7 @@ import kotlinx.coroutines.delay
 internal data class PrompterChordRun(
     val lyricText: String,
     val chords: List<String>,
+    val chordColors: List<PrompterTextColor?> = emptyList(),
     val spans: List<PrompterRichTextSpan> = emptyList()
 )
 
@@ -141,7 +142,8 @@ private fun buildRichTextPrompterLine(line: PrompterPreparedLine): PrompterChord
             valueTransform = { it.symbol.raw }
         ),
         blockKind = line.blockKind,
-        spans = line.spans
+        spans = line.spans,
+        chordColorsByOffset = line.chords.groupBy({ it.plainTextOffset }, { it.color })
     )
 }
 
@@ -149,7 +151,8 @@ private fun buildPrompterRenderLine(
     lyricText: String,
     chordsByOffset: Map<Int, List<String>>,
     blockKind: PrompterRichTextBlockKind = PrompterRichTextBlockKind.BODY,
-    spans: List<PrompterRichTextSpan> = emptyList()
+    spans: List<PrompterRichTextSpan> = emptyList(),
+    chordColorsByOffset: Map<Int, List<PrompterTextColor?>> = emptyMap()
 ): PrompterChordRenderLine {
     val ranges = lyricWordRanges(lyricText).toMutableList()
     if (lyricText.isEmpty() || chordsByOffset.containsKey(lyricText.length)) {
@@ -180,6 +183,7 @@ private fun buildPrompterRenderLine(
                 runs += PrompterChordRun(
                     lyricText = lyricText.substring(offset, nextOffset),
                     chords = chordsByOffset.getValue(offset),
+                    chordColors = chordColorsByOffset[offset].orEmpty(),
                     spans = spans.localTo(offset, nextOffset)
                 )
                 cursor = nextOffset
@@ -404,10 +408,12 @@ private fun ChordProPrompterContent(
                                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                                         verticalAlignment = Alignment.Bottom
                                     ) {
-                                        run.chords.forEach { chord ->
+                                        run.chords.forEachIndexed { chordIndex, chord ->
                                             Text(
                                                 text = chord,
-                                                color = SplColors.Accent,
+                                                color = run.chordColors.getOrNull(chordIndex)
+                                                    ?.let { resolvePrompterTextColor(it, textColor) }
+                                                    ?: SplColors.Accent,
                                                 fontSize = chordFontSize,
                                                 lineHeight = chordLineHeight,
                                                 fontWeight = FontWeight.SemiBold,
@@ -490,7 +496,7 @@ private fun prompterLineTypography(
     }
 }
 
-private fun String.withPrompterStyles(
+internal fun String.withPrompterStyles(
     spans: List<PrompterRichTextSpan>,
     defaultTextColor: Color
 ): AnnotatedString =

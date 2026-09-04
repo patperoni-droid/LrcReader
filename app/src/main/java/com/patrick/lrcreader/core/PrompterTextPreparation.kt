@@ -28,12 +28,13 @@ data class PrompterPreparedLine(
         get() = chords.isNotEmpty()
 
     val hasFormatting: Boolean
-        get() = blockKind != PrompterRichTextBlockKind.BODY || spans.isNotEmpty()
+        get() = blockKind != PrompterRichTextBlockKind.BODY || spans.isNotEmpty() || chords.any { it.color != null }
 }
 
 data class PrompterPreparedChord(
     val anchor: ChordAnchor,
-    val plainTextOffset: Int
+    val plainTextOffset: Int,
+    val color: PrompterTextColor? = null
 ) {
     val symbol: ChordSymbol
         get() = anchor.symbol
@@ -41,13 +42,42 @@ data class PrompterPreparedChord(
 
 fun preparePrompterText(source: String): PrompterPreparedDocument {
     val chordProDocument = parseChordPro(source)
-    val lines = chordProDocument.lines.map { chordProLine ->
-        val richTextLine = parsePrompterRichText(chordProLine.lyricText).lines.single()
-        val chords = chordProLine.anchors.map { anchor ->
+    // Keep source coordinates for chords, which are removed before lyric formatting.
+    val sourceColorLines = if ("<c=" in source) parsePrompterRichText(source).lines else null
+    var sourceOffset = 0
+    val lines = chordProDocument.lines.mapIndexed { index, chordProLine ->
+        val sourceColorLine = sourceColorLines?.get(index)
+        val chordColors = chordProLine.anchors.map { anchor ->
+            sourceColorLine?.let { line ->
+                val offset = line.plainOffsetForInputOffset(anchor.sourceRange.first - sourceOffset)
+                line.spans.firstOrNull {
+                    it.style is PrompterRichTextStyle.ForegroundColor &&
+                        offset >= it.start && offset < it.endExclusive
+                }?.let { (it.style as PrompterRichTextStyle.ForegroundColor).color }
+            }
+        }
+        // Only hide empty tags produced by removing a coloured chord, never literal empty tags.
+        val emptyColorOffsets = chordProLine.anchors.mapIndexedNotNull { chordIndex, anchor ->
+            chordColors[chordIndex]?.let { color ->
+                val opening = "<c=${color.syntaxName}>"
+                val start = anchor.lyricOffset - opening.length
+                start.takeIf {
+                    it >= 0 && chordProLine.lyricText.startsWith(opening + "</c>", it)
+                }
+            }
+        }.toSet()
+        val richTextLine = parsePrompterRichText(chordProLine.lyricText, emptyColorOffsets).lines.single()
+        val chords = chordProLine.anchors.mapIndexed { chordIndex, anchor ->
             PrompterPreparedChord(
                 anchor = anchor,
-                plainTextOffset = richTextLine.plainOffsetForInputOffset(anchor.lyricOffset)
+                plainTextOffset = richTextLine.plainOffsetForInputOffset(anchor.lyricOffset),
+                color = chordColors[chordIndex]
             )
+        }
+        if (sourceColorLine != null) {
+            sourceOffset += sourceColorLine.source.length
+            if (source.getOrNull(sourceOffset) == '\r') sourceOffset++
+            if (source.getOrNull(sourceOffset) == '\n') sourceOffset++
         }
         PrompterPreparedLine(
             chordProLine = chordProLine,

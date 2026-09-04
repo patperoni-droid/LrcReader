@@ -1,5 +1,7 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.patrick.lrcreader.core.PrompterTextColor
 import com.patrick.lrcreader.core.TextPrompterAlignment
 import com.patrick.lrcreader.exo.R
 
@@ -78,6 +81,7 @@ internal fun ScrollingTextEditorDialog(
     val contentFocusRequester = remember { FocusRequester() }
     var isContentFocused by remember { mutableStateOf(false) }
     var isFormatPanelOpen by remember { mutableStateOf(false) }
+    var isMarkupPaletteOpen by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -161,9 +165,16 @@ internal fun ScrollingTextEditorDialog(
             }
 
             Row(modifier = Modifier.fillMaxWidth()) {
+                TextButton(onClick = {
+                    isMarkupPaletteOpen = !isMarkupPaletteOpen
+                    isFormatPanelOpen = false
+                }) {
+                    Text(stringResource(R.string.prompter_markup_palette), color = Color(0xFF80CBC4))
+                }
                 TextButton(
                     onClick = {
                         isFormatPanelOpen = !isFormatPanelOpen
+                        isMarkupPaletteOpen = false
                         contentFocusRequester.requestFocus()
                     },
                     modifier = Modifier
@@ -176,6 +187,14 @@ internal fun ScrollingTextEditorDialog(
                         color = Color(0xFF80CBC4),
                         fontSize = 13.sp
                     )
+                }
+            }
+
+            if (isMarkupPaletteOpen) {
+                PrompterMarkupPalette { transform ->
+                    onContentValueChange(transform(contentValue))
+                    isMarkupPaletteOpen = false
+                    contentFocusRequester.requestFocus()
                 }
             }
 
@@ -272,6 +291,45 @@ private fun ScrollingTextFormatPanel(
                 label = { Text(stringResource(R.string.prompter_alignment_center)) },
                 modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_ALIGNMENT_CENTER_TAG)
             )
+        }
+    }
+}
+
+
+@Composable
+private fun PrompterMarkupPalette(onApply: ((TextFieldValue) -> TextFieldValue) -> Unit) {
+    val commands = listOf(
+        PrompterMarkupCommand.TITLE to R.string.common_title_label,
+        PrompterMarkupCommand.SECTION to R.string.prompter_markup_section,
+        PrompterMarkupCommand.VERSE to R.string.prompter_markup_verse,
+        PrompterMarkupCommand.CHORUS to R.string.prompter_markup_chorus,
+        PrompterMarkupCommand.COMMENT to R.string.prompter_markup_comment,
+        PrompterMarkupCommand.BOLD to R.string.prompter_markup_bold,
+        PrompterMarkupCommand.ITALIC to R.string.prompter_markup_italic,
+        PrompterMarkupCommand.DIVIDER to R.string.prompter_markup_divider
+    )
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        commands.forEach { (command, labelId) ->
+            val label = stringResource(labelId)
+            TextButton(onClick = { onApply { insertPrompterMarkup(it, command, label) } }) {
+                Text(label)
+            }
+        }
+    }
+    val colors = listOf(
+        PrompterTextColor.YELLOW to R.string.lyrics_editor_color_yellow,
+        PrompterTextColor.ORANGE to R.string.quickplaylists_group_color_orange,
+        PrompterTextColor.RED to R.string.light_color_red,
+        PrompterTextColor.BLUE to R.string.light_color_blue,
+        PrompterTextColor.GREEN to R.string.light_color_green,
+        PrompterTextColor.WHITE to R.string.lyrics_editor_color_none
+    )
+    val placeholder = stringResource(R.string.quickplaylists_prompter_text_label)
+    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        colors.forEach { (color, labelId) ->
+            TextButton(onClick = { onApply { applyPrompterColor(it, color, placeholder) } }) {
+                Text(stringResource(labelId), color = resolvePrompterTextColor(color, Color.White))
+            }
         }
     }
 }

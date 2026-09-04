@@ -59,8 +59,13 @@ enum class PrompterTextColor(val syntaxName: String) {
     }
 }
 
-fun parsePrompterRichText(source: String): PrompterRichTextDocument {
-    val lines = splitPrompterRichTextSourceLines(source).map(::parsePrompterRichTextLine)
+fun parsePrompterRichText(
+    source: String,
+    emptyColorOffsets: Set<Int> = emptySet()
+): PrompterRichTextDocument {
+    val lines = splitPrompterRichTextSourceLines(source).map {
+        parsePrompterRichTextLine(it, emptyColorOffsets)
+    }
     return PrompterRichTextDocument(
         source = source,
         lines = lines,
@@ -70,7 +75,7 @@ fun parsePrompterRichText(source: String): PrompterRichTextDocument {
     )
 }
 
-private fun parsePrompterRichTextLine(source: String): PrompterRichTextLine {
+private fun parsePrompterRichTextLine(source: String, emptyColorOffsets: Set<Int>): PrompterRichTextLine {
     if (source.trim() == "---") {
         return PrompterRichTextLine(
             source = source,
@@ -86,9 +91,11 @@ private fun parsePrompterRichTextLine(source: String): PrompterRichTextLine {
         source.startsWith("# ") -> PrompterRichTextBlockKind.TITLE to 2
         else -> PrompterRichTextBlockKind.BODY to 0
     }
-    val colorPass = parseColorMarkup(source, contentStart)
+    val colorPass = parseColorMarkup(source, contentStart, emptyColorOffsets)
     val markdownPass = parseMarkdownMarkup(colorPass.text)
-    val colorSpans = colorPass.spans.map { span ->
+    val colorSpans = colorPass.spans.mapNotNull { span ->
+        if (markdownPass.inputOffsetToPlainOffset[span.start] ==
+            markdownPass.inputOffsetToPlainOffset[span.endExclusive]) return@mapNotNull null
         PrompterRichTextSpan(
             start = markdownPass.inputOffsetToPlainOffset[span.start],
             endExclusive = markdownPass.inputOffsetToPlainOffset[span.endExclusive],
@@ -113,7 +120,7 @@ private data class InlineMarkupPass(
     val inputOffsetToPlainOffset: List<Int>
 )
 
-private fun parseColorMarkup(source: String, contentStart: Int): InlineMarkupPass {
+private fun parseColorMarkup(source: String, contentStart: Int, emptyColorOffsets: Set<Int>): InlineMarkupPass {
     val builder = RichTextLineBuilder(source)
     val spans = mutableListOf<PrompterRichTextSpan>()
     builder.skipUntil(contentStart)
@@ -152,7 +159,8 @@ private fun parseColorMarkup(source: String, contentStart: Int): InlineMarkupPas
             nestedOpening >= contentStartOffset &&
             nestedOpening < closingStart
         val isValid = color != null &&
-            closingStart > contentStartOffset &&
+            (closingStart > contentStartOffset ||
+                (closingStart == contentStartOffset && markerStart in emptyColorOffsets)) &&
             !hasNestedColor
 
         if (!isValid) {
@@ -165,7 +173,7 @@ private fun parseColorMarkup(source: String, contentStart: Int): InlineMarkupPas
         builder.copyUntil(closingStart)
         val spanEnd = builder.plainLength
         builder.skipUntil(closingStart + COLOR_CLOSING_TAG.length)
-        spans += PrompterRichTextSpan(
+        if (spanEnd > spanStart) spans += PrompterRichTextSpan(
             start = spanStart,
             endExclusive = spanEnd,
             style = PrompterRichTextStyle.ForegroundColor(requireNotNull(color))
