@@ -13,6 +13,7 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -60,6 +61,7 @@ import java.util.Locale
 private data class SongInfo(
     val title: String?,
     val content: String?,
+    val textSongId: String? = null,
     val displaySettingsKey: TextPrompterDisplaySettingsStore.Key? = null
 )
 
@@ -123,7 +125,9 @@ fun TextPrompterScreen(
 ) {
     val context = LocalContext.current
 
-    val songInfo = remember(songId) {
+    var showEditor by remember(songId) { mutableStateOf(false) }
+    var editRevision by remember(songId) { mutableIntStateOf(0) }
+    val songInfo = remember(songId, editRevision) {
         var result = SongInfo(title = null, content = null)
         try {
             when {
@@ -150,6 +154,7 @@ fun TextPrompterScreen(
                         result = SongInfo(
                             title = s.title,
                             content = s.content,
+                            textSongId = raw,
                             displaySettingsKey = TextPrompterDisplaySettingsStore.textSongKey(raw)
                         )
                     }
@@ -172,6 +177,7 @@ fun TextPrompterScreen(
                                 result = SongInfo(
                                     title = s.title,
                                     content = s.content,
+                                    textSongId = songId,
                                     displaySettingsKey = TextPrompterDisplaySettingsStore
                                         .textSongKey(songId)
                                 )
@@ -183,6 +189,7 @@ fun TextPrompterScreen(
                             result = SongInfo(
                                 title = s.title,
                                 content = s.content,
+                                textSongId = songId,
                                 displaySettingsKey = TextPrompterDisplaySettingsStore
                                     .textSongKey(songId)
                             )
@@ -193,10 +200,23 @@ fun TextPrompterScreen(
         } catch (_: Exception) {}
         result
     }
-    val displaySettings = remember(songId, songInfo.displaySettingsKey) {
+    val displaySettings = remember(songId, songInfo.displaySettingsKey, editRevision) {
         songInfo.displaySettingsKey?.let { key ->
             TextPrompterDisplaySettingsStore.get(context, key)
         } ?: TextPrompterDisplaySettings()
+    }
+
+    if (showEditor) {
+        songInfo.textSongId?.let { id ->
+            EditScrollingTextDialog(
+                textSongId = id,
+                onDismiss = { showEditor = false },
+                onSaved = {
+                    editRevision++
+                    showEditor = false
+                }
+            )
+        }
     }
 
     val scrollState = rememberScrollState()
@@ -375,6 +395,22 @@ fun TextPrompterScreen(
                     .fillMaxSize()
                     .zIndex(0f)
             )
+
+            if (songInfo.textSongId != null) {
+                FilledTonalIconButton(
+                    onClick = { showEditor = true },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(12.dp)
+                        .size(48.dp)
+                        .zIndex(10000f)
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = stringResource(R.string.quickplaylists_edit_prompter_title)
+                    )
+                }
+            }
 
             // 2) PROGRESS (calculs)
             val progress =

@@ -46,7 +46,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -71,9 +70,7 @@ import com.patrick.lrcreader.core.SmpPreparationNoticePrefs
 import com.patrick.lrcreader.core.TrackVolumePrefs
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.TextPrompterAlignment
-import com.patrick.lrcreader.core.TextPrompterChordPaletteStore
 import com.patrick.lrcreader.core.TextPrompterDisplaySettings
-import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
 import com.patrick.lrcreader.core.WorkspaceResolver
 import com.patrick.lrcreader.core.buildVariantFamilyItem
 import com.patrick.lrcreader.core.buildSmpItem
@@ -99,7 +96,7 @@ import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
 import com.patrick.lrcreader.ui.MoveResult
 import com.patrick.lrcreader.ui.CreateScrollingTextDialog
-import com.patrick.lrcreader.ui.ScrollingTextEditorDialog
+import com.patrick.lrcreader.ui.EditScrollingTextDialog
 import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.createScrollingText
 import com.patrick.lrcreader.ui.clearPersistedUris
@@ -1762,11 +1759,6 @@ fun LibraryScreen(
     var newScrollingTextPaletteInput by remember { mutableStateOf("") }
     var newScrollingTextAlignment by remember { mutableStateOf(TextPrompterAlignment.START) }
     var editPrompterId by remember { mutableStateOf<String?>(null) }
-    var editPrompterTitle by remember { mutableStateOf("") }
-    var editPrompterContentValue by remember { mutableStateOf(TextFieldValue()) }
-    var editPrompterPaletteInput by remember { mutableStateOf("") }
-    var editPrompterAlignment by remember { mutableStateOf(TextPrompterAlignment.START) }
-    var showEditPrompterDialog by remember { mutableStateOf(false) }
 
     fun openMoveBrowserForSelection(selection: Collection<Uri>) {
         val normalizedSelection = normalizeSelection(selection)
@@ -4851,25 +4843,6 @@ fun LibraryScreen(
                                         val textSong = TextSongRepository.get(context, prompterId)
                                         if (textSong != null) {
                                             editPrompterId = prompterId
-                                            editPrompterTitle = textSong.title
-                                            editPrompterContentValue = TextFieldValue(
-                                                text = textSong.content,
-                                                selection = TextRange(textSong.content.length)
-                                            )
-                                            val paletteKey = TextPrompterChordPaletteStore
-                                                .textSongKey(prompterId)
-                                            editPrompterPaletteInput = paletteKey
-                                                ?.let { TextPrompterChordPaletteStore.get(context, it) }
-                                                .orEmpty()
-                                                .joinToString(" ")
-                                            editPrompterAlignment = TextPrompterDisplaySettingsStore
-                                                .textSongKey(prompterId)
-                                                ?.let {
-                                                    TextPrompterDisplaySettingsStore.get(context, it)
-                                                }
-                                                ?.alignment
-                                                ?: TextPrompterAlignment.START
-                                            showEditPrompterDialog = true
                                         }
                                     } else {
                                         beginAliasRename(entry)
@@ -5816,61 +5789,19 @@ fun LibraryScreen(
                 )
             }
 
-            ScrollingTextEditorDialog(
-                show = showEditPrompterDialog && editPrompterId != null,
-                dialogTitle = stringResource(R.string.quickplaylists_edit_prompter_title),
-                title = editPrompterTitle,
-                contentValue = editPrompterContentValue,
-                confirmLabel = stringResource(R.string.common_save),
-                confirmEnabled = editPrompterTitle.isNotBlank(),
-                onTitleChange = { editPrompterTitle = it },
-                onContentValueChange = { editPrompterContentValue = it },
-                alignment = editPrompterAlignment,
-                onAlignmentChange = { editPrompterAlignment = it },
-                onDismiss = {
-                    showEditPrompterDialog = false
-                    editPrompterId = null
-                    editPrompterPaletteInput = ""
-                    editPrompterAlignment = TextPrompterAlignment.START
-                },
-                onConfirm = {
-                    val id = editPrompterId ?: return@ScrollingTextEditorDialog
-                    val title = editPrompterTitle.trim()
-                    val content = editPrompterContentValue.text.trim()
-                    if (title.isBlank()) return@ScrollingTextEditorDialog
-                    TextSongRepository.update(
-                        context = context,
-                        id = id,
-                        title = title,
-                        content = content
-                    )
-                    TextPrompterChordPaletteStore.textSongKey(id)?.let { paletteKey ->
-                        TextPrompterChordPaletteStore.save(
-                            context = context,
-                            key = paletteKey,
-                            chords = parseTextPrompterChordPaletteInput(editPrompterPaletteInput)
-                        )
+            editPrompterId?.let { id ->
+                EditScrollingTextDialog(
+                    textSongId = id,
+                    onDismiss = { editPrompterId = null },
+                    onSaved = {
+                        val folder = currentFolderUri
+                        if (folder != null) {
+                            entries = buildEntriesForFolder(folder, useCache = false)
+                        }
+                        editPrompterId = null
                     }
-                    TextPrompterDisplaySettingsStore.textSongKey(id)?.let { settingsKey ->
-                        TextPrompterDisplaySettingsStore.save(
-                            context = context,
-                            key = settingsKey,
-                            settings = TextPrompterDisplaySettings(editPrompterAlignment)
-                        )
-                    }
-                    val folder = currentFolderUri
-                    if (folder != null) {
-                        entries = buildEntriesForFolder(folder, useCache = false)
-                    }
-                    showEditPrompterDialog = false
-                    editPrompterId = null
-                    editPrompterPaletteInput = ""
-                    editPrompterAlignment = TextPrompterAlignment.START
-                },
-                paletteInput = editPrompterPaletteInput,
-                paletteChords = parseTextPrompterChordPaletteInput(editPrompterPaletteInput),
-                onPaletteInputChange = { editPrompterPaletteInput = it }
-            )
+                )
+            }
 
             CreateScrollingTextDialog(
                 show = showCreateScrollingTextDialog,
