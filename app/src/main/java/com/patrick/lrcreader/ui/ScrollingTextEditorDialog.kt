@@ -193,9 +193,6 @@ internal fun ScrollingTextEditorDialog(
                     if (visibility.showHeader) {
                         Spacer(Modifier.height(6.dp))
                     }
-                    if (!isPhone) {
-                        Text(stringResource(R.string.prompter_editor_chords), color = Color.LightGray, fontSize = 12.sp)
-                    }
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
