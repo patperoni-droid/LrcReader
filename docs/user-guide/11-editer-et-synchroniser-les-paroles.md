@@ -2,6 +2,12 @@
 
 L’éditeur de morceau permet de saisir les paroles, éditer les accords et associer chaque ligne à un moment précis de la musique.
 
+Ce chapitre concerne l'éditeur **synchronisé du morceau**. L'éditeur ChordPro ouvert
+par le crayon du Prompteur ou de Bibliothèque → Textes défilants est un autre parcours,
+sans onglet Synchro ni TAG : voir [Textes défilants](12-textes-defilants.md). Ses
+couleurs sont enregistrées dans le texte et son repli d'outils dépend du focus ;
+les règles de couleur et de clavier ci-dessous concernent les paroles synchronisées.
+
 ## Ouvrir l’éditeur
 
 1. lancez ou sélectionnez le morceau concerné ;

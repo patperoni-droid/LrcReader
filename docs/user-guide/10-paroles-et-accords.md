@@ -97,6 +97,10 @@ Modifier les paroles d’une variante ne doit pas modifier les paroles du morcea
 
 Consultez [Créer et utiliser des textes défilants](12-textes-defilants.md) pour les textes autonomes.
 
+Le Prompteur des textes défilants sait afficher des accords ChordPro au-dessus des
+paroles, avec sa propre mise en forme et ses couleurs. Cela n'ajoute pas un mode
+ChordPro synchronisé aux couches Paroles/Accords décrites dans ce chapitre.
+
 ## Problèmes courants
 
 ### Aucune parole n’apparaît

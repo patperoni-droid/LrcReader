@@ -81,9 +81,105 @@ Le texte ne doit pas recouvrir la playlist.
 
 ## Modifier un texte
 
-Ouvrez les options de l’entrée ou son écran d’édition, corrigez le titre ou le contenu, puis enregistrez.
+Deux accès ouvrent le même éditeur pour un texte du catalogue :
+
+- le crayon de son entrée dans **Bibliothèque → Textes défilants** ;
+- le crayon en haut à droite du Prompteur, pour modifier le texte actuellement affiché.
+
+Corrigez le titre ou le contenu, puis touchez **✓** pour enregistrer et fermer.
+**×** annule les modifications de cette session. Depuis le crayon du Prompteur,
+vous revenez directement au texte actualisé. Il n'y a pas d'enregistrement
+automatique du brouillon dans ce dialogue.
 
 Comme le catalogue possède le contenu, une modification est visible depuis toutes les playlists qui référencent ce texte.
+
+## Ajouter des accords
+
+Vous pouvez saisir ou coller des accords entre crochets :
+
+```text
+Je [Am]voulais te [F]dire
+```
+
+Dans le Prompteur, les accords reconnus apparaissent au-dessus des paroles, sans
+crochets. Un texte sans accords reste utilisable. `[Refrain]` reste du texte ;
+les directives ChordPro complètes comme `{title:}` ne sont pas interprétées.
+
+Avant d'entrer dans le contenu, renseignez le champ **Palette d’accords** avec,
+par exemple, `C Am F G7 C/E`, sans crochets. Vous retrouvez cette palette à la
+réouverture du même texte sur l'appareil. Elle n'est pas remplie automatiquement
+à partir des accords déjà présents.
+
+Placez le curseur puis touchez un accord : son tag est inséré à cet endroit,
+et vous pouvez continuer à taper juste après. Si vous avez sélectionné des paroles,
+l'accord est ajouté au début de la sélection sans supprimer ces paroles.
+Pour remplacer un accord, placez le curseur à l'intérieur de son tag, ou sélectionnez
+le tag entier, puis choisissez un autre accord. Pour le supprimer, effacez son texte.
+
+## Mettre en forme et colorer
+
+L'icône de texte souligné ouvre **Texte et couleur**. Les commandes disponibles sont :
+
+- **Titre**, **Section**, **Couplet**, **Refrain** ;
+- **Commentaire**, **Gras**, **Italique**, **Séparateur** ;
+- les pastilles jaune, orange, rouge, bleue, verte et **Aucune / défaut** pour la couleur par défaut.
+
+L'éditeur montre les marqueurs (`# Titre`, `## Refrain`, `**gras**`, `*italique*`,
+`---`, `<c=yellow>texte</c>`). Leur présentation mise en forme apparaît dans le Prompteur.
+Couplet et refrain créent des titres de section, pas des répétitions automatiques.
+
+Sélectionnez le texte avant d'appliquer un style ou une couleur. Sans sélection,
+un texte indicatif est proposé et sélectionné pour être remplacé. Pour colorer
+un accord seul, sélectionnez son tag complet, crochets compris.
+
+Pour recolorer une plage déjà colorée, placez le curseur à l'intérieur et choisissez
+une autre pastille : toute la plage change de couleur. **Aucune / défaut** retire la couleur
+explicite ; les paroles et accords reprennent chacun leur couleur habituelle.
+Gras ou Italique peuvent également être retirés en réappliquant le même bouton dans
+une plage simple. Les cas de styles imbriqués ou de sélection coupant un marqueur
+ne sont pas tous pris en charge ; certaines actions ne font alors rien.
+
+L'icône d'alignement ouvre **Gauche / Centré** pour l'ensemble du texte.
+Choisir une commande ferme son panneau et ramène au champ de texte.
+
+## Espace d'édition sur téléphone et tablette
+
+Quand le contenu reçoit le focus, l'en-tête, le champ titre et le champ de
+configuration de palette se replient. Les **boutons d'accords restent disponibles**.
+Ouvrir Texte/couleur ou Alignement ne restaure pas le titre pendant la saisie.
+La fermeture du clavier seule ne fait pas nécessairement réapparaître l'en-tête :
+c'est la sortie du focus du contenu qui le permet.
+
+Sur téléphone, les accords restent sur leur rangée horizontale, au-dessus de la
+barre d'actions. Retoucher le texte ou reprendre la saisie referme les panneaux
+secondaires, sans masquer les accords.
+
+Sur tablette, une seule ligne contient :
+
+**Texte/couleur → Alignement → accords → ✓ → ×**
+
+Les deux premières icônes sont blanches. Faites glisser horizontalement les accords
+s'ils ne tiennent pas dans la place disponible ; les autres actions restent fixes.
+Il n'y a ni ligne « Accords », ni barre de validation séparée en bas, ni palette
+latérale. Cette disposition gagne une ligne sans modifier celle du téléphone.
+Sur tablette, un panneau reste ouvert jusqu'à sa fermeture par son bouton, l'ouverture
+de l'autre panneau ou le choix d'une action ; le repli automatique au retoucher est
+propre au téléphone. L'interface dépend de la largeur disponible : une rotation ou
+le mode multifenêtre peut changer la disposition proposée.
+
+## Conservation et limites actuelles
+
+Accords, mise en forme et couleurs restent dans le texte enregistré. Les espaces
+et lignes vides aux extrémités peuvent être retirés lors de l'enregistrement ; les
+espaces et retours à la ligne à l'intérieur du texte sont conservés.
+Une sauvegarde complète protège le contenu du catalogue, couleurs comprises,
+mais ne transporte pas actuellement la palette personnalisée ni le choix d'alignement.
+
+Cette intégration ne synchronise pas les accords avec l'audio. Elle ne propose pas
+encore de transposition, de capo, d'import/export dédié de fichiers ChordPro, de
+masquage des accords ou de zoom propre au Prompteur. Le réglage de taille des paroles
+du Lecteur concerne les paroles synchronisées. Les mots très longs et les accords
+très serrés peuvent demander une mise en page manuelle.
 
 ## Retirer un texte d’une playlist
 

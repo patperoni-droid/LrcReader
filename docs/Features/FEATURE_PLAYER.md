@@ -228,6 +228,28 @@ Standalone scrolling texts are separate from the Player's synchronized Lyrics / 
 They contain free text without audio or `.lrc` timestamps and can be opened from the Library or
 from a playlist occurrence.
 
+`TextPrompterScreen` prepares inline `[chords]` and MusiMio rich-text markers once
+per content change. `PrompterTextViewport` renders chords above lyric portions,
+wraps by whole words and measures variable line heights. Plain source without
+recognized chords or formatting keeps the historical direct Text path. Color tags
+apply to both lyrics and enclosed chords. This does not add ChordPro support to the
+synchronized Lyrics/Chords layers or to the separate `PrompterArea` component.
+
+The top-right pencil edits the displayed catalog text through the same
+`EditScrollingTextDialog` as Library; save closes the dialog and reloads that text
+in place. Legacy note-backed entries do not receive this catalog edit pencil.
+The editor keeps chord buttons visible during text focus. Tablet combines
+Text/color → Alignment → chords → ✓ → × in one row, with white tool icons and a
+horizontally scrollable chord area occupying the remaining width; phone retains its
+separate chord row. There is no separate bottom validation bar.
+
+The standalone viewport currently uses 26 sp text / 32 sp line height and exposes
+no dedicated zoom control. The synchronized Lyrics Size setting below is not wired
+to it. Its existing scrolling animation captures the measured scroll extent at
+launch; editing or resizing during scrolling does not provide semantic position
+anchoring. See [CHORDPRO_PROMPTER_SPEC.md](../CHORDPRO_PROMPTER_SPEC.md) for exact
+syntax, size/scroll limits, focus rules and future scope.
+
 Prompter controls:
 
 - Play / Pause starts or pauses continuous scrolling;

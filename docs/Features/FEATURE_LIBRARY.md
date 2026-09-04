@@ -159,6 +159,19 @@ playlist.
 The pencil uses the localized `Create a scrolling text` accessibility label. The existing
 Import action and import pipeline remain unchanged.
 
+Existing catalog entries also have their own edit pencil. It opens
+`EditScrollingTextDialog(textSongId)`, the same session used by the pencil in
+`TextPrompterScreen`. Saving updates that identity; it does not create a second text
+or use the active audio song as target. Creation and playlist editing share the
+underlying `ScrollingTextEditorDialog` with their existing session callbacks.
+
+The editor supports inline ChordPro chords, a per-text chord palette, lightweight
+MusiMio formatting, colors and whole-text Start/Center alignment. The source remains
+visible in the editor; the prompter renders it. Phone keeps separate chord and action
+rows; tablet uses one row: Text/color → Alignment → chords → ✓ → ×. Chords stay
+available while editing on both layouts. Detailed grammar, selection behavior and
+limits: [CHORDPRO_PROMPTER_SPEC.md](../CHORDPRO_PROMPTER_SPEC.md).
+
 ⸻
 
 SMP FILES

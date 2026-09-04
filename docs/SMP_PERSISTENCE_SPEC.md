@@ -262,6 +262,59 @@ Créer depuis **Bibliothèque → Textes défilants** écrit dans le catalogue s
 d'occurrence de playlist. Créer depuis une playlist écrit dans le même catalogue puis ajoute une
 occurrence à la playlist sélectionnée.
 
+#### Source ChordPro et données dérivées
+
+État observé au 4 septembre 2026 (`dcd57d70`) : `TextSongRepository` conserve
+le contenu ChordPro comme une chaîne, avec ses `[accords]`, marqueurs de mise en
+forme et balises `<c=…>…</c>`. Aucun parser n'est appelé pour transformer la source
+au stockage ; les lignes, ancres et styles d'affichage sont recalculables en mémoire.
+
+Le JSON portable est de version 1 :
+
+```json
+{"version":1,"items":{"identifiant":{"title":"Titre","text":"Je <c=yellow>[Am]chante</c>"}}}
+```
+
+Les méthodes de création, mise à jour et import appliquent toutefois `trim()` au
+titre et au contenu : les espaces et retours à la ligne aux extrémités ne sont pas
+conservés. L'intérieur de la source reste inchangé ; l'échappement JSON ne modifie
+pas sa valeur après décodage. L'édition conserve le même identifiant et toutes les
+occurrences retrouvent le texte du catalogue, sans réécriture des LRC de morceaux.
+
+Le repository lit aussi le format historique SharedPreferences `text_song_repo`,
+clé `text_songs`, avec champs `title`/`content`. Au chargement, le JSON portable
+prévaut pour les identifiants communs. Les écritures actuelles mettent encore à jour
+les deux représentations ; le fichier portable passe par `ConfigJsonAtomicFileIo`.
+Cette double écriture est un constat de compatibilité historique, pas un modèle à
+reproduire pour une nouvelle fonctionnalité.
+
+#### Palette, alignement et transport
+
+- `TextPrompterChordPaletteStore` conserve la palette personnalisée en JSON dans
+  `text_prompter_chord_palette_prefs`, sous `text:<id>` ; les anciennes notes utilisent
+  un espace séparé `note:<id>`. Il ne réutilise pas `ChordPaletteStore` des accords LRC.
+- `TextPrompterDisplaySettingsStore` conserve l'alignement global Gauche/Centré dans
+  `text_prompter_display_settings_prefs`, avec les mêmes espaces de clés. Gauche (`START`) est
+  la valeur de repli. Ce choix de présentation est une préférence locale.
+- Ces deux stores sont sauvegardés à la validation de l'éditeur, puis rechargés à
+  sa réouverture. Ils ne font pas partie de la chaîne ChordPro ni du JSON du catalogue.
+- La sauvegarde complète du catalogue écrit `prompters.json` avec `id`, `title`,
+  `text` (`writeLibraryBackupPromptersToTree` dans `MoreScreen`). La restauration
+  passe par `TextSongRepository.importOne` selon le mode Conserver/Remplacer.
+  Les couleurs intégrées à la source suivent donc le texte transporté.
+- La palette personnalisée et l'alignement ne sont pas transportés par ce fichier.
+  Le contrat actuel de sauvegarde de l'État global ne sérialise pas ces stores.
+  En particulier, la palette saisie par l'utilisateur n'est pas reconstruite
+  automatiquement à partir du texte : sa portabilité reste à traiter explicitement,
+  sans modifier ici les règles normatives de propriété des données.
+- **Mettre à jour la bibliothèque** ne republie pas encore ce catalogue ; une
+  sauvegarde complète reste nécessaire après modification de textes défilants.
+  Leur transfert utilisateur par SMP Sync reste prévu plus tard.
+
+Voir la [spécification ChordPro du Prompteur](CHORDPRO_PROMPTER_SPEC.md) pour la
+grammaire, les parcours d'édition et les limites ; ne pas confondre ce catalogue
+avec les contenus de prompteur transportés dans une Famille SongUnit.
+
 ---
 
 ## 4. Périmètre 3 — Manifest
