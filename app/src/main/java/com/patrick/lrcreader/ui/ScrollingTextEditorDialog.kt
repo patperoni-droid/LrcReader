@@ -222,58 +222,39 @@ internal fun ScrollingTextEditorDialog(
                 Spacer(Modifier.height(8.dp))
             }
 
-            if (isPhone) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    IconButton(
-                        onClick = toggleMarkup,
-                        modifier = Modifier.size(48.dp).focusProperties { canFocus = false }
-                    ) {
-                        Icon(Icons.Default.TextFormat,
-                            contentDescription = stringResource(R.string.prompter_editor_text_colors),
-                            tint = Color(0xFF80CBC4))
-                    }
-                    IconButton(
-                        onClick = toggleAlignment,
-                        modifier = Modifier.size(48.dp).focusProperties { canFocus = false }
-                            .testTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.FormatAlignLeft,
-                            contentDescription = stringResource(R.string.prompter_format_alignment_label),
-                            tint = Color(0xFF80CBC4))
-                    }
-                    Spacer(Modifier.weight(1f))
-                    IconButton(
-                        onClick = confirmEditor,
-                        enabled = confirmEnabled,
-                        modifier = Modifier.size(48.dp).testTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
-                    ) {
-                        Icon(Icons.Default.Check, contentDescription = confirmLabel,
-                            tint = if (confirmEnabled) Color.White else Color.White.copy(alpha = 0.38f))
-                    }
-                    IconButton(
-                        onClick = dismissEditor,
-                        modifier = Modifier.size(48.dp).testTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG)
-                    ) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_cancel),
-                            tint = Color(0xFFB0BEC5))
-                    }
-                }
-            } else Row(modifier = Modifier.fillMaxWidth()) {
-                TextButton(modifier = Modifier.focusProperties { canFocus = false }, onClick = toggleMarkup) {
-                    Text(stringResource(R.string.prompter_editor_text_colors), color = Color(0xFF80CBC4))
-                }
-                TextButton(
-                    onClick = toggleAlignment,
-                    modifier = Modifier
-                        .testTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG)
-                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).focusProperties { canFocus = false },
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+            Row(modifier = Modifier.fillMaxWidth()) {
+                IconButton(
+                    onClick = toggleMarkup,
+                    modifier = Modifier.size(48.dp).focusProperties { canFocus = false }
                 ) {
-                    Text(
-                        text = stringResource(R.string.prompter_format_alignment_label),
-                        color = Color(0xFF80CBC4),
-                        fontSize = 13.sp
-                    )
+                    Icon(Icons.Default.TextFormat,
+                        contentDescription = stringResource(R.string.prompter_editor_text_colors),
+                        tint = Color(0xFF80CBC4))
+                }
+                IconButton(
+                    onClick = toggleAlignment,
+                    modifier = Modifier.size(48.dp).focusProperties { canFocus = false }
+                        .testTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG)
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.FormatAlignLeft,
+                        contentDescription = stringResource(R.string.prompter_format_alignment_label),
+                        tint = Color(0xFF80CBC4))
+                }
+                Spacer(Modifier.weight(1f))
+                IconButton(
+                    onClick = confirmEditor,
+                    enabled = confirmEnabled,
+                    modifier = Modifier.size(48.dp).testTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = confirmLabel,
+                        tint = if (confirmEnabled) Color.White else Color.White.copy(alpha = 0.38f))
+                }
+                IconButton(
+                    onClick = dismissEditor,
+                    modifier = Modifier.size(48.dp).testTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_cancel),
+                        tint = Color(0xFFB0BEC5))
                 }
             }
 
@@ -320,31 +301,7 @@ internal fun ScrollingTextEditorDialog(
                 minLines = 10
             )
 
-            if (!isPhone) {
-                Spacer(Modifier.height(12.dp))
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        onClick = dismissEditor,
-                        modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG)
-                    ) {
-                        Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
-                    }
-
-                    Spacer(Modifier.width(8.dp))
-
-                    TextButton(
-                        onClick = confirmEditor,
-                        enabled = confirmEnabled,
-                        modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
-                    ) {
-                        Text(confirmLabel, color = Color.White)
-                    }
-                }
-            }
         }
     }
 }
