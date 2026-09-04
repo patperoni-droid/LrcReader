@@ -1274,4 +1274,12 @@ No olvides guardar.</string>
     <string name="prompter_markup_divider">Separador</string>
     <string name="prompter_editor_text_colors">Texto y color</string>
     <string name="prompter_editor_chords">Acordes</string>
+
+    <!-- Open beta welcome -->
+    <string name="open_beta_welcome_title">Te damos la bienvenida a MusiMio</string>
+    <string name="open_beta_welcome_status">MusiMio se encuentra actualmente en beta abierta.</string>
+    <string name="open_beta_welcome_evolving">La aplicación sigue evolucionando y algunas funciones pueden mejorarse o modificarse.</string>
+    <string name="open_beta_welcome_feedback_message">Si encuentras un error o tienes una idea, tus comentarios nos ayudan enormemente a mejorar MusiMio.</string>
+    <string name="open_beta_send_feedback">Enviar comentarios</string>
+    <string name="open_beta_welcome_thanks">Gracias por formar parte de la aventura 🎵</string>
 </resources>

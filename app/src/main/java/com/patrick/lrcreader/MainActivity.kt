@@ -10,6 +10,7 @@ import android.provider.OpenableColumns
 import java.io.File
 import java.io.FileOutputStream
 import com.patrick.lrcreader.ui.library.SetupInstallScreen
+import com.patrick.lrcreader.ui.OpenBetaWelcomeDialog
 import android.net.Uri
 import android.provider.DocumentsContract
 import kotlinx.coroutines.Dispatchers
@@ -1294,6 +1295,13 @@ class MainActivity : AppCompatActivity() {
                 }
 // -------------------- FIN SETUP SPL --------------------
 
+                var showOpenBetaWelcome by remember {
+                    mutableStateOf(OpenBetaWelcomePrefs.shouldShow(ctx))
+                }
+                fun dismissOpenBetaWelcome() {
+                    OpenBetaWelcomePrefs.markSeen(ctx)
+                    showOpenBetaWelcome = false
+                }
 
                 val audioPlayerEpoch by AudioEngine.playerEpoch.collectAsState()
                 val playlistRepoVersion = PlaylistRepository.version.value
@@ -7191,6 +7199,17 @@ class MainActivity : AppCompatActivity() {
                             )
                         }
                     }
+                }
+
+                if (showOpenBetaWelcome) {
+                    OpenBetaWelcomeDialog(
+                        onDismiss = ::dismissOpenBetaWelcome,
+                        onSendFeedback = {
+                            val request = OpenBetaWelcomePrefs.feedbackRequest()
+                            dismissOpenBetaWelcome()
+                            ctx.startActivity(Intent(request.action, Uri.parse(request.url)))
+                        }
+                    )
                 }
             }
         }
