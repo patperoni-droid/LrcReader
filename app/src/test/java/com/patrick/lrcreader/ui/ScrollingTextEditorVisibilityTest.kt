@@ -10,16 +10,27 @@ class ScrollingTextEditorVisibilityTest {
     @Test fun phoneDuringEditingReleasesHeaderAndChordSpace() {
         assertEquals(ScrollingTextEditorVisibility(false, false), scrollingTextEditorVisibility(true, true, false))
     }
-    @Test fun phoneCanRecallToolsWithoutLosingTextFocus() {
-        assertEquals(ScrollingTextEditorVisibility(true, true), scrollingTextEditorVisibility(true, true, true))
+    @Test fun phoneOpensOnlyTextAndColorWhileEditing() {
+        assertEquals(ScrollingTextEditorVisibility(false, false, true, false),
+            scrollingTextEditorVisibility(true, true, markupPanelOpen = true))
+    }
+    @Test fun phoneOpensOnlyAlignmentWhileEditing() {
+        assertEquals(ScrollingTextEditorVisibility(false, false, false, true),
+            scrollingTextEditorVisibility(true, true, alignmentPanelOpen = true))
+    }
+    @Test fun returningToTextWithPanelsClosedKeepsHeaderAndChordsHidden() {
+        assertEquals(ScrollingTextEditorVisibility(false, false, false, false),
+            scrollingTextEditorVisibility(true, true, markupPanelOpen = false, alignmentPanelOpen = false))
     }
     @Test fun leavingFocusRestoresPhoneTools() {
         assertEquals(ScrollingTextEditorVisibility(true, true), scrollingTextEditorVisibility(true, false, false))
     }
     @Test fun tabletKeepsItsOriginalFocusRuleAndVisibleChordButtons() {
-        for (tools in listOf(false, true)) {
-            assertEquals(ScrollingTextEditorVisibility(true, true), scrollingTextEditorVisibility(false, false, tools))
-            assertEquals(ScrollingTextEditorVisibility(false, true), scrollingTextEditorVisibility(false, true, tools))
+        for ((markup, alignment) in listOf(false to false, true to false, false to true)) {
+            assertEquals(ScrollingTextEditorVisibility(true, true, markup, alignment),
+                scrollingTextEditorVisibility(false, false, markup, alignment))
+            assertEquals(ScrollingTextEditorVisibility(false, true, markup, alignment),
+                scrollingTextEditorVisibility(false, true, markup, alignment))
         }
     }
     @Test fun phoneRecognizesFocusInsideTextFieldWhileTabletRuleIsUnchanged() {

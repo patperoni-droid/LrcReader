@@ -97,13 +97,13 @@ internal fun ScrollingTextEditorDialog(
     var isMarkupPaletteOpen by remember { mutableStateOf(false) }
     // Same phone/tablet breakpoint as SmpAdaptive; no keyboard-dependent layout rule.
     val isPhone = LocalConfiguration.current.screenWidthDp < 600
-    var phoneToolsRequested by remember { mutableStateOf(false) }
     val contentInteractions = remember { MutableInteractionSource() }
-    val visibility = scrollingTextEditorVisibility(isPhone, isContentFocused, phoneToolsRequested)
+    val visibility = scrollingTextEditorVisibility(
+        isPhone, isContentFocused, isMarkupPaletteOpen, isFormatPanelOpen
+    )
 
     fun collapsePhoneTools() {
         if (isPhone) {
-            phoneToolsRequested = false
             isMarkupPaletteOpen = false
             isFormatPanelOpen = false
         }
@@ -200,7 +200,6 @@ internal fun ScrollingTextEditorDialog(
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 TextButton(modifier = Modifier.focusProperties { canFocus = false }, onClick = {
-                    if (isPhone) phoneToolsRequested = !isMarkupPaletteOpen
                     isMarkupPaletteOpen = !isMarkupPaletteOpen
                     isFormatPanelOpen = false
                 }) {
@@ -208,7 +207,6 @@ internal fun ScrollingTextEditorDialog(
                 }
                 TextButton(
                     onClick = {
-                        if (isPhone) phoneToolsRequested = !isFormatPanelOpen
                         isFormatPanelOpen = !isFormatPanelOpen
                         isMarkupPaletteOpen = false
                         contentFocusRequester.requestFocus()
@@ -226,7 +224,7 @@ internal fun ScrollingTextEditorDialog(
                 }
             }
 
-            if (isMarkupPaletteOpen) {
+            if (visibility.showMarkupPanel) {
                 PrompterMarkupPalette { transform ->
                     onContentValueChange(transform(contentValue))
                     isMarkupPaletteOpen = false
@@ -235,7 +233,7 @@ internal fun ScrollingTextEditorDialog(
                 }
             }
 
-            if (isFormatPanelOpen) {
+            if (visibility.showAlignmentPanel) {
                 ScrollingTextFormatPanel(
                     alignment = alignment,
                     onAlignmentChange = { selectedAlignment ->
