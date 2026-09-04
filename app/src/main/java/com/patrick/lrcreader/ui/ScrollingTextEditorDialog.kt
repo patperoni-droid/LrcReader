@@ -34,6 +34,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -91,6 +95,27 @@ internal fun ScrollingTextEditorDialog(
     var isContentFocused by remember { mutableStateOf(false) }
     var isFormatPanelOpen by remember { mutableStateOf(false) }
     var isMarkupPaletteOpen by remember { mutableStateOf(false) }
+    // Same phone/tablet breakpoint as SmpAdaptive; no keyboard-dependent layout rule.
+    val isPhone = LocalConfiguration.current.screenWidthDp < 600
+    var phoneToolsRequested by remember { mutableStateOf(false) }
+    val contentInteractions = remember { MutableInteractionSource() }
+    val visibility = scrollingTextEditorVisibility(isPhone, isContentFocused, phoneToolsRequested)
+
+    fun collapsePhoneTools() {
+        if (isPhone) {
+            phoneToolsRequested = false
+            isMarkupPaletteOpen = false
+            isFormatPanelOpen = false
+        }
+    }
+
+    LaunchedEffect(isPhone, contentInteractions) {
+        if (isPhone) {
+            contentInteractions.interactions.collect { interaction ->
+                if (interaction is PressInteraction.Press && isContentFocused) collapsePhoneTools()
+            }
+        }
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -107,7 +132,7 @@ internal fun ScrollingTextEditorDialog(
                 .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(18.dp))
                 .padding(16.dp)
         ) {
-            if (!isContentFocused) {
+            if (visibility.showHeader) {
                 Text(
                     text = dialogTitle,
                     color = Color.White,
@@ -129,8 +154,8 @@ internal fun ScrollingTextEditorDialog(
                 Spacer(Modifier.height(12.dp))
             }
 
-            if (paletteInput != null) {
-                if (!isContentFocused) {
+            if (paletteInput != null && visibility.showChords) {
+                if (visibility.showHeader) {
                     OutlinedTextField(
                         value = paletteInput,
                         onValueChange = onPaletteInputChange,
@@ -143,7 +168,7 @@ internal fun ScrollingTextEditorDialog(
                 }
 
                 if (paletteChords.isNotEmpty()) {
-                    if (!isContentFocused) {
+                    if (visibility.showHeader) {
                         Spacer(Modifier.height(6.dp))
                     }
                     Text(stringResource(R.string.prompter_editor_chords), color = Color.LightGray, fontSize = 12.sp)
@@ -175,6 +200,7 @@ internal fun ScrollingTextEditorDialog(
 
             Row(modifier = Modifier.fillMaxWidth()) {
                 TextButton(modifier = Modifier.focusProperties { canFocus = false }, onClick = {
+                    if (isPhone) phoneToolsRequested = !isMarkupPaletteOpen
                     isMarkupPaletteOpen = !isMarkupPaletteOpen
                     isFormatPanelOpen = false
                 }) {
@@ -182,6 +208,7 @@ internal fun ScrollingTextEditorDialog(
                 }
                 TextButton(
                     onClick = {
+                        if (isPhone) phoneToolsRequested = !isFormatPanelOpen
                         isFormatPanelOpen = !isFormatPanelOpen
                         isMarkupPaletteOpen = false
                         contentFocusRequester.requestFocus()
@@ -203,6 +230,7 @@ internal fun ScrollingTextEditorDialog(
                 PrompterMarkupPalette { transform ->
                     onContentValueChange(transform(contentValue))
                     isMarkupPaletteOpen = false
+                    collapsePhoneTools()
                     contentFocusRequester.requestFocus()
                 }
             }
@@ -213,6 +241,7 @@ internal fun ScrollingTextEditorDialog(
                     onAlignmentChange = { selectedAlignment ->
                         onAlignmentChange(selectedAlignment)
                         isFormatPanelOpen = false
+                        collapsePhoneTools()
                         contentFocusRequester.requestFocus()
                     }
                 )
@@ -221,12 +250,20 @@ internal fun ScrollingTextEditorDialog(
 
             OutlinedTextField(
                 value = contentValue,
-                onValueChange = onContentValueChange,
+                onValueChange = {
+                    collapsePhoneTools()
+                    onContentValueChange(it)
+                },
+                interactionSource = if (isPhone) contentInteractions else null,
                 label = { Text(stringResource(R.string.quickplaylists_prompter_text_label)) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f, fill = true)
-                    .onFocusChanged { isContentFocused = it.isFocused }
+                    .onFocusChanged {
+                        val focused = scrollingTextEditorContentFocused(isPhone, it.isFocused, it.hasFocus)
+                        if (focused && !isContentFocused) collapsePhoneTools()
+                        isContentFocused = focused
+                    }
                     .focusRequester(contentFocusRequester)
                     .testTag(SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG),
                 minLines = 10
