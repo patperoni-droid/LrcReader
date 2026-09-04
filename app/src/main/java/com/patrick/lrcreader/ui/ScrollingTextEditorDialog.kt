@@ -2,6 +2,15 @@ package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -137,22 +146,22 @@ internal fun ScrollingTextEditorDialog(
                     if (!isContentFocused) {
                         Spacer(Modifier.height(6.dp))
                     }
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    Text(stringResource(R.string.prompter_editor_chords), color = Color.LightGray, fontSize = 12.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         paletteChords.forEach { chord ->
                             TextButton(
                                 onClick = {
                                     onContentValueChange(
-                                        insertChordProAtSelection(contentValue, chord)
+                                        editOrInsertPrompterChord(contentValue, chord)
                                     )
                                     contentFocusRequester.requestFocus()
                                 },
                                 modifier = Modifier.testTag(
                                     SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord
-                                ).defaultMinSize(minWidth = 0.dp, minHeight = 34.dp),
+                                ).defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).focusProperties { canFocus = false },
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
@@ -165,11 +174,11 @@ internal fun ScrollingTextEditorDialog(
             }
 
             Row(modifier = Modifier.fillMaxWidth()) {
-                TextButton(onClick = {
+                TextButton(modifier = Modifier.focusProperties { canFocus = false }, onClick = {
                     isMarkupPaletteOpen = !isMarkupPaletteOpen
                     isFormatPanelOpen = false
                 }) {
-                    Text(stringResource(R.string.prompter_markup_palette), color = Color(0xFF80CBC4))
+                    Text(stringResource(R.string.prompter_editor_text_colors), color = Color(0xFF80CBC4))
                 }
                 TextButton(
                     onClick = {
@@ -179,11 +188,11 @@ internal fun ScrollingTextEditorDialog(
                     },
                     modifier = Modifier
                         .testTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG)
-                        .defaultMinSize(minWidth = 0.dp, minHeight = 34.dp),
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).focusProperties { canFocus = false },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Text(
-                        text = stringResource(R.string.prompter_format_action),
+                        text = stringResource(R.string.prompter_format_alignment_label),
                         color = Color(0xFF80CBC4),
                         fontSize = 13.sp
                     )
@@ -311,8 +320,14 @@ private fun PrompterMarkupPalette(onApply: ((TextFieldValue) -> TextFieldValue) 
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
         commands.forEach { (command, labelId) ->
             val label = stringResource(labelId)
-            TextButton(onClick = { onApply { insertPrompterMarkup(it, command, label) } }) {
-                Text(label)
+            TextButton(
+                modifier = Modifier.defaultMinSize(minHeight = 48.dp).focusProperties { canFocus = false },
+                onClick = { onApply { insertPrompterMarkup(it, command, label) } }
+            ) {
+                Text(label,
+                    fontWeight = if (command == PrompterMarkupCommand.BOLD) FontWeight.Bold else null,
+                    fontStyle = if (command == PrompterMarkupCommand.ITALIC) FontStyle.Italic else null)
+
             }
         }
     }
@@ -325,10 +340,24 @@ private fun PrompterMarkupPalette(onApply: ((TextFieldValue) -> TextFieldValue) 
         PrompterTextColor.WHITE to R.string.lyrics_editor_color_none
     )
     val placeholder = stringResource(R.string.quickplaylists_prompter_text_label)
+    Text(stringResource(R.string.lyrics_editor_color_section), color = Color.LightGray, fontSize = 12.sp)
     Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
         colors.forEach { (color, labelId) ->
-            TextButton(onClick = { onApply { applyPrompterColor(it, color, placeholder) } }) {
-                Text(stringResource(labelId), color = resolvePrompterTextColor(color, Color.White))
+            TextButton(
+                modifier = Modifier.defaultMinSize(minHeight = 48.dp).focusProperties { canFocus = false },
+                onClick = { onApply {
+                    if (color == PrompterTextColor.WHITE) removePrompterColor(it)
+                    else applyPrompterColor(it, color, placeholder)
+                } }
+            ) {
+                if (color == PrompterTextColor.WHITE) {
+                    Icon(Icons.Default.Restore, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                } else Box(Modifier.size(20.dp)
+                    .background(resolvePrompterTextColor(color, Color.White), CircleShape)
+                    .border(1.dp, Color.White.copy(alpha = 0.6f), CircleShape))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(labelId), color = Color.White)
+
             }
         }
     }

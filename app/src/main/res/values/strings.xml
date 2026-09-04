@@ -1363,4 +1363,6 @@ N’oubliez pas de sauvegarder.</string>
     <string name="prompter_markup_bold">Gras</string>
     <string name="prompter_markup_italic">Italique</string>
     <string name="prompter_markup_divider">Séparateur</string>
+    <string name="prompter_editor_text_colors">Texte et couleur</string>
+    <string name="prompter_editor_chords">Accords</string>
 </resources>

@@ -4,6 +4,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import com.patrick.lrcreader.core.PrompterTextColor
 import com.patrick.lrcreader.core.parseChordPaletteInput
+import com.patrick.lrcreader.core.parseChordPro
 import kotlin.math.min
 
 internal fun parseTextPrompterChordPaletteInput(raw: String): List<String> =
@@ -46,6 +47,9 @@ internal fun insertPrompterMarkup(
     command: PrompterMarkupCommand,
     placeholder: String
 ): TextFieldValue {
+    if (command == PrompterMarkupCommand.BOLD || command == PrompterMarkupCommand.ITALIC) {
+        return togglePrompterEmphasis(value, command, placeholder)
+    }
     val start = value.selection.min
     val end = value.selection.max
     val selected = value.text.substring(start, end)
@@ -76,6 +80,20 @@ internal fun applyPrompterColor(
     color: PrompterTextColor,
     placeholder: String
 ): TextFieldValue {
+    if (hasPartialMarkupSelection(value)) return value
+    val existing = prompterColorRegion.findAll(value.text).firstOrNull { match ->
+        val body = match.groups[2]!!
+        value.selection.min >= body.range.first && value.selection.max <= body.range.last + 1
+    }
+    if (existing != null && "<c=" !in existing.groupValues[2]) {
+        val oldEnd = existing.groups[2]!!.range.first
+        val opening = "<c=${color.syntaxName}>"
+        val delta = opening.length - (oldEnd - existing.range.first)
+        return TextFieldValue(
+            value.text.replaceRange(existing.range.first, oldEnd, opening),
+            TextRange(value.selection.start + delta, value.selection.end + delta)
+        )
+    }
     var start = value.selection.min
     var end = value.selection.max
     // Recolour an existing region instead of nesting unsupported colour tags.
@@ -90,6 +108,7 @@ internal fun applyPrompterColor(
     val selected = value.text.substring(start, end)
     val body = selected.ifEmpty { placeholder }
     val uncolored = prompterColorRegion.replace(body) { it.groupValues[2] }
+    if ("<c=" in uncolored || "</c>" in uncolored) return value
     val opening = "<c=${color.syntaxName}>"
     // The existing parser is line-based. Keep headings outside the inline colour tag.
     val colored = Regex("[^\r\n]+").replace(uncolored) { match ->
@@ -106,4 +125,96 @@ internal fun applyPrompterColor(
         TextRange(start + opening.length, start + opening.length + placeholder.length)
     } else TextRange(start + colored.length)
     return TextFieldValue(value.text.replaceRange(start, end, colored), selection)
+}
+
+
+/** Palette action: a caret inside an existing valid chord edits that chord. */
+internal fun editOrInsertPrompterChord(value: TextFieldValue, chord: String): TextFieldValue {
+    val anchor = parseChordPro(value.text).lines.flatMap { it.anchors }.firstOrNull {
+        val start = it.sourceRange.first
+        val end = it.sourceRange.last + 1
+        if (value.selection.collapsed) value.selection.start > start && value.selection.start < end
+        else value.selection.min == start && value.selection.max == end
+    } ?: return insertChordProAtSelection(value, chord)
+    val tag = "[${chord.trim()}]"
+    if (!parseChordPro(tag).hasChords) return value
+    val start = anchor.sourceRange.first
+    return TextFieldValue(
+        value.text.replaceRange(start, anchor.sourceRange.last + 1, tag),
+        TextRange(start + tag.length)
+    )
+}
+
+private fun removeMarkupRanges(value: TextFieldValue, ranges: List<IntRange>): TextFieldValue {
+    if (ranges.isEmpty()) return value
+    val sorted = ranges.sortedBy { it.first }
+    fun map(offset: Int) = offset - sorted.sumOf {
+        (offset - it.first).coerceIn(0, it.last - it.first + 1)
+    }
+    var text = value.text
+    sorted.asReversed().forEach { text = text.removeRange(it.first, it.last + 1) }
+    return TextFieldValue(text, TextRange(map(value.selection.start), map(value.selection.end)))
+}
+
+/** Default removes explicit colour without introducing another wrapper. */
+internal fun removePrompterColor(value: TextFieldValue): TextFieldValue {
+    val ranges = prompterColorRegion.findAll(value.text).filter { match ->
+        "<c=" !in match.groupValues[2] &&
+            if (value.selection.collapsed) {
+                value.selection.start >= match.range.first && value.selection.start <= match.range.last
+            } else value.selection.min <= match.range.last && value.selection.max > match.range.first
+    }.flatMap { match ->
+        val body = match.groups[2]!!
+        sequenceOf(match.range.first until body.range.first, (body.range.last + 1)..match.range.last)
+    }.toList()
+    return removeMarkupRanges(value, ranges)
+}
+
+// Selection boundaries must not cut through markup, even when the visible text is valid.
+private fun hasPartialMarkupSelection(value: TextFieldValue): Boolean =
+    Regex("<c=[^>]*>|</c>|\\*+").findAll(value.text).any { token ->
+        (value.selection.min > token.range.first && value.selection.min <= token.range.last) ||
+            (value.selection.max > token.range.first && value.selection.max <= token.range.last)
+    } || parseChordPro(value.text).lines.any { line ->
+        line.anchors.any { chord ->
+            (value.selection.min > chord.sourceRange.first && value.selection.min <= chord.sourceRange.last) ||
+                (value.selection.max > chord.sourceRange.first && value.selection.max <= chord.sourceRange.last)
+        }
+    }
+
+private fun togglePrompterEmphasis(
+    value: TextFieldValue,
+    command: PrompterMarkupCommand,
+    placeholder: String
+): TextFieldValue {
+    if (hasPartialMarkupSelection(value)) return value
+    val marker = command.prefix
+    val regions = Regex("(?<!\\*)\\*\\*[^*\r\n]+\\*\\*(?!\\*)|(?<!\\*)\\*[^*\r\n]+\\*(?!\\*)")
+        .findAll(value.text).toList()
+    val existing = regions.firstOrNull { match ->
+        val width = if (match.value.startsWith("**")) 2 else 1
+        (value.selection.min >= match.range.first + width && value.selection.max <= match.range.last + 1 - width) ||
+            (value.selection.min == match.range.first && value.selection.max == match.range.last + 1)
+    }
+    if (existing != null) {
+        val width = if (existing.value.startsWith("**")) 2 else 1
+        if (width != marker.length) return value // Mixed nesting is unsupported by the parser.
+        return removeMarkupRanges(value, listOf(
+            existing.range.first until existing.range.first + width,
+            (existing.range.last + 1 - width)..existing.range.last
+        ))
+    }
+    val start = value.selection.min
+    val end = value.selection.max
+    if (regions.any { start <= it.range.last && end > it.range.first ||
+            (value.selection.collapsed && (start == it.range.first || start == it.range.last + 1)) }) return value
+    val selected = value.text.substring(start, end)
+    if ('*' in selected) return value
+    val body = selected.ifEmpty { placeholder }
+    val wrapped = Regex("[^\r\n]+").replace(body) { marker + it.value + marker }
+    val text = value.text.replaceRange(start, end, wrapped)
+    return TextFieldValue(text,
+        if (selected.isEmpty()) TextRange(start + marker.length, start + marker.length + body.length)
+        else TextRange(start, start + wrapped.length)
+    )
 }

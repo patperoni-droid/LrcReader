@@ -1272,4 +1272,6 @@ No olvides guardar.</string>
     <string name="prompter_markup_bold">Negrita</string>
     <string name="prompter_markup_italic">Cursiva</string>
     <string name="prompter_markup_divider">Separador</string>
+    <string name="prompter_editor_text_colors">Texto y color</string>
+    <string name="prompter_editor_chords">Acordes</string>
 </resources>

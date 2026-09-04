@@ -1357,4 +1357,6 @@ Don’t forget to save.</string>
     <string name="prompter_markup_bold">Bold</string>
     <string name="prompter_markup_italic">Italic</string>
     <string name="prompter_markup_divider">Divider</string>
+    <string name="prompter_editor_text_colors">Text and color</string>
+    <string name="prompter_editor_chords">Chords</string>
 </resources>
