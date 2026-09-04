@@ -4,6 +4,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.TextFormat
+import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -122,6 +127,23 @@ internal fun ScrollingTextEditorDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         val focusManager = LocalFocusManager.current
+        val toggleMarkup: () -> Unit = {
+            isMarkupPaletteOpen = !isMarkupPaletteOpen
+            isFormatPanelOpen = false
+        }
+        val toggleAlignment: () -> Unit = {
+            isFormatPanelOpen = !isFormatPanelOpen
+            isMarkupPaletteOpen = false
+            contentFocusRequester.requestFocus()
+        }
+        val dismissEditor: () -> Unit = {
+            focusManager.clearFocus(force = true)
+            onDismiss()
+        }
+        val confirmEditor: () -> Unit = {
+            focusManager.clearFocus(force = true)
+            onConfirm()
+        }
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
@@ -171,7 +193,9 @@ internal fun ScrollingTextEditorDialog(
                     if (visibility.showHeader) {
                         Spacer(Modifier.height(6.dp))
                     }
-                    Text(stringResource(R.string.prompter_editor_chords), color = Color.LightGray, fontSize = 12.sp)
+                    if (!isPhone) {
+                        Text(stringResource(R.string.prompter_editor_chords), color = Color.LightGray, fontSize = 12.sp)
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -198,19 +222,48 @@ internal fun ScrollingTextEditorDialog(
                 Spacer(Modifier.height(8.dp))
             }
 
-            Row(modifier = Modifier.fillMaxWidth()) {
-                TextButton(modifier = Modifier.focusProperties { canFocus = false }, onClick = {
-                    isMarkupPaletteOpen = !isMarkupPaletteOpen
-                    isFormatPanelOpen = false
-                }) {
+            if (isPhone) {
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    IconButton(
+                        onClick = toggleMarkup,
+                        modifier = Modifier.size(48.dp).focusProperties { canFocus = false }
+                    ) {
+                        Icon(Icons.Default.TextFormat,
+                            contentDescription = stringResource(R.string.prompter_editor_text_colors),
+                            tint = Color(0xFF80CBC4))
+                    }
+                    IconButton(
+                        onClick = toggleAlignment,
+                        modifier = Modifier.size(48.dp).focusProperties { canFocus = false }
+                            .testTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.FormatAlignLeft,
+                            contentDescription = stringResource(R.string.prompter_format_alignment_label),
+                            tint = Color(0xFF80CBC4))
+                    }
+                    Spacer(Modifier.weight(1f))
+                    IconButton(
+                        onClick = confirmEditor,
+                        enabled = confirmEnabled,
+                        modifier = Modifier.size(48.dp).testTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = confirmLabel,
+                            tint = if (confirmEnabled) Color.White else Color.White.copy(alpha = 0.38f))
+                    }
+                    IconButton(
+                        onClick = dismissEditor,
+                        modifier = Modifier.size(48.dp).testTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.common_cancel),
+                            tint = Color(0xFFB0BEC5))
+                    }
+                }
+            } else Row(modifier = Modifier.fillMaxWidth()) {
+                TextButton(modifier = Modifier.focusProperties { canFocus = false }, onClick = toggleMarkup) {
                     Text(stringResource(R.string.prompter_editor_text_colors), color = Color(0xFF80CBC4))
                 }
                 TextButton(
-                    onClick = {
-                        isFormatPanelOpen = !isFormatPanelOpen
-                        isMarkupPaletteOpen = false
-                        contentFocusRequester.requestFocus()
-                    },
+                    onClick = toggleAlignment,
                     modifier = Modifier
                         .testTag(SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG)
                         .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).focusProperties { canFocus = false },
@@ -267,33 +320,29 @@ internal fun ScrollingTextEditorDialog(
                 minLines = 10
             )
 
-            Spacer(Modifier.height(12.dp))
+            if (!isPhone) {
+                Spacer(Modifier.height(12.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(
-                    onClick = {
-                        focusManager.clearFocus(force = true)
-                        onDismiss()
-                    },
-                    modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
-                }
+                    TextButton(
+                        onClick = dismissEditor,
+                        modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_DISMISS_TAG)
+                    ) {
+                        Text(stringResource(R.string.common_cancel), color = Color(0xFFB0BEC5))
+                    }
 
-                Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.width(8.dp))
 
-                TextButton(
-                    onClick = {
-                        focusManager.clearFocus(force = true)
-                        onConfirm()
-                    },
-                    enabled = confirmEnabled,
-                    modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
-                ) {
-                    Text(confirmLabel, color = Color.White)
+                    TextButton(
+                        onClick = confirmEditor,
+                        enabled = confirmEnabled,
+                        modifier = Modifier.testTag(SCROLLING_TEXT_EDITOR_CONFIRM_TAG)
+                    ) {
+                        Text(confirmLabel, color = Color.White)
+                    }
                 }
             }
         }
