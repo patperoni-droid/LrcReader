@@ -71,8 +71,8 @@ internal fun EditScrollingTextDialog(
                     )
                 }
                 settingsKey?.let {
-                    TextPrompterDisplaySettingsStore.save(
-                        context, it, TextPrompterDisplaySettings(alignment)
+                    TextPrompterDisplaySettingsStore.saveAlignment(
+                        context, it, alignment
                     )
                 }
                 onSaved()

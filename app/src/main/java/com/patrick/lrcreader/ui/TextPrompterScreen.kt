@@ -127,7 +127,6 @@ fun TextPrompterScreen(
 
     var showEditor by remember(songId) { mutableStateOf(false) }
     var editRevision by remember(songId) { mutableIntStateOf(0) }
-    var transposeSemitones by remember(songId) { mutableIntStateOf(0) }
     val songInfo = remember(songId, editRevision) {
         var result = SongInfo(title = null, content = null)
         try {
@@ -206,13 +205,23 @@ fun TextPrompterScreen(
             TextPrompterDisplaySettingsStore.get(context, key)
         } ?: TextPrompterDisplaySettings()
     }
+    var transposeSemitones by remember(songId, songInfo.displaySettingsKey, editRevision) {
+        mutableIntStateOf(displaySettings.transposeSemitones)
+    }
+
+    fun updateTransposeSemitones(value: Int) {
+        transposeSemitones = value
+        songInfo.displaySettingsKey?.let { key ->
+            TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, key, value)
+        }
+    }
 
     if (showEditor) {
         songInfo.textSongId?.let { id ->
             EditScrollingTextDialog(
                 textSongId = id,
                 transposeSemitones = transposeSemitones,
-                onTransposeSemitonesChange = { transposeSemitones = it },
+                onTransposeSemitonesChange = ::updateTransposeSemitones,
                 onDismiss = { showEditor = false },
                 onSaved = {
                     editRevision++

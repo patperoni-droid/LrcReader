@@ -21,6 +21,150 @@ class TextPrompterDisplaySettingsStoreTest {
             TextPrompterDisplaySettings(),
             TextPrompterDisplaySettingsStore.get(context, key)
         )
+        assertEquals(0, TextPrompterDisplaySettingsStore.get(context, key).transposeSemitones)
+    }
+
+    @Test
+    fun positiveTranspositionSurvivesSaveAndReload() {
+        val storedValues = mutableMapOf<String, String>()
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("text-1"))
+
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(
+            contextWithPreferences(storedValues),
+            key,
+            2
+        )
+
+        assertEquals(
+            2,
+            TextPrompterDisplaySettingsStore.get(
+                contextWithPreferences(storedValues),
+                key
+            ).transposeSemitones
+        )
+    }
+
+    @Test
+    fun negativeTranspositionSurvivesSaveAndReload() {
+        val storedValues = mutableMapOf<String, String>()
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("text-1"))
+
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(
+            contextWithPreferences(storedValues),
+            key,
+            -3
+        )
+
+        assertEquals(
+            -3,
+            TextPrompterDisplaySettingsStore.get(
+                contextWithPreferences(storedValues),
+                key
+            ).transposeSemitones
+        )
+    }
+
+    @Test
+    fun textsKeepIndependentTranspositionValues() {
+        val storedValues = mutableMapOf<String, String>()
+        val context = contextWithPreferences(storedValues)
+        val first = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("text-a"))
+        val second = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("text-b"))
+
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, first, 2)
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, second, -3)
+
+        assertEquals(2, TextPrompterDisplaySettingsStore.get(context, first).transposeSemitones)
+        assertEquals(-3, TextPrompterDisplaySettingsStore.get(context, second).transposeSemitones)
+    }
+
+    @Test
+    fun invalidAndOutOfRangeValuesLoadSafely() {
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("text-1"))
+
+        assertEquals(
+            0,
+            TextPrompterDisplaySettingsStore.get(
+                contextWithPreferences(
+                    mutableMapOf("text:text-1" to "{\"transposeSemitones\":\"invalid\"}")
+                ),
+                key
+            ).transposeSemitones
+        )
+        assertEquals(
+            11,
+            TextPrompterDisplaySettingsStore.get(
+                contextWithPreferences(
+                    mutableMapOf("text:text-1" to "{\"transposeSemitones\":99}")
+                ),
+                key
+            ).transposeSemitones
+        )
+        assertEquals(
+            -11,
+            TextPrompterDisplaySettingsStore.get(
+                contextWithPreferences(
+                    mutableMapOf("text:text-1" to "{\"transposeSemitones\":-99}")
+                ),
+                key
+            ).transposeSemitones
+        )
+
+        val storedValues = mutableMapOf<String, String>()
+        val context = contextWithPreferences(storedValues)
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, key, 99)
+        assertEquals(11, TextPrompterDisplaySettingsStore.get(context, key).transposeSemitones)
+    }
+
+    @Test
+    fun historicalAlignmentOnlyValueDefaultsTranspositionToZero() {
+        val context = contextWithPreferences(
+            mutableMapOf("text:text-1" to "{\"alignment\":\"CENTER\"}")
+        )
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("text-1"))
+        val settings = TextPrompterDisplaySettingsStore.get(context, key)
+
+        assertEquals(TextPrompterAlignment.CENTER, settings.alignment)
+        assertEquals(0, settings.transposeSemitones)
+    }
+
+    @Test
+    fun returningToZeroRemovesDefaultOverride() {
+        val storedValues = mutableMapOf<String, String>()
+        val context = contextWithPreferences(storedValues)
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("text-1"))
+
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, key, 2)
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, key, 0)
+
+        assertFalse(storedValues.containsKey("text:text-1"))
+        assertEquals(0, TextPrompterDisplaySettingsStore.get(context, key).transposeSemitones)
+    }
+
+    @Test
+    fun savingAlignmentPreservesExistingTransposition() {
+        val storedValues = mutableMapOf<String, String>()
+        val context = contextWithPreferences(storedValues)
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("text-1"))
+
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, key, 2)
+        TextPrompterDisplaySettingsStore.saveAlignment(
+            context,
+            key,
+            TextPrompterAlignment.CENTER
+        )
+
+        assertEquals(
+            TextPrompterDisplaySettings(TextPrompterAlignment.CENTER, 2),
+            TextPrompterDisplaySettingsStore.get(context, key)
+        )
+
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, key, -3)
+
+        assertEquals(
+            TextPrompterDisplaySettings(TextPrompterAlignment.CENTER, -3),
+            TextPrompterDisplaySettingsStore.get(context, key)
+        )
     }
 
     @Test

@@ -4059,10 +4059,10 @@ fun QuickPlaylistsScreen(
                             key = TextPrompterChordPaletteStore.legacyNoteKey(numericId),
                             chords = parseTextPrompterChordPaletteInput(editTextPaletteInput)
                         )
-                        TextPrompterDisplaySettingsStore.save(
+                        TextPrompterDisplaySettingsStore.saveAlignment(
                             context = context,
                             key = TextPrompterDisplaySettingsStore.legacyNoteKey(numericId),
-                            settings = TextPrompterDisplaySettings(editTextAlignment)
+                            alignment = editTextAlignment
                         )
                     }
                 } else {
@@ -4082,10 +4082,10 @@ fun QuickPlaylistsScreen(
                             )
                         }
                         TextPrompterDisplaySettingsStore.textSongKey(idPart)?.let { settingsKey ->
-                            TextPrompterDisplaySettingsStore.save(
+                            TextPrompterDisplaySettingsStore.saveAlignment(
                                 context = context,
                                 key = settingsKey,
-                                settings = TextPrompterDisplaySettings(editTextAlignment)
+                                alignment = editTextAlignment
                             )
                         }
                     }
