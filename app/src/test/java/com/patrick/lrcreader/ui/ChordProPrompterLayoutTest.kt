@@ -68,6 +68,52 @@ class ChordProPrompterLayoutTest {
     }
 
     @Test
+    fun zeroTranspositionKeepsExactChordSpellingAndSource() {
+        val source = "[Dbmaj7]Bonjour [F#/A#]toi"
+        val document = parseChordPro(source)
+        val lines = buildChordProPrompterLines(document, transposeSemitones = 0)!!
+
+        assertEquals(source, document.source)
+        assertEquals(listOf("Dbmaj7", "F#/A#"), lines.single().allChords())
+        assertEquals("Bonjour toi", lines.single().renderedLyrics())
+    }
+
+    @Test
+    fun positiveTranspositionChangesOnlyRenderedChords() {
+        val source = "[C]Je chante avec [G]toi [Am]ce soir [F]"
+        val document = parseChordPro(source)
+        val lines = buildChordProPrompterLines(document, transposeSemitones = 2)!!
+
+        assertEquals(source, document.source)
+        assertEquals(listOf("D", "A", "Bm", "G"), lines.single().allChords())
+        assertEquals("Je chante avec toi ce soir ", lines.single().renderedLyrics())
+    }
+
+    @Test
+    fun negativeTranspositionAndSlashChordUseParsedSymbols() {
+        val source = "[D/F#]Début [C/E]fin [Refrain]"
+        val document = parseChordPro(source)
+        val lines = buildChordProPrompterLines(document, transposeSemitones = -2)!!
+
+        assertEquals(source, document.source)
+        assertEquals(listOf("C/E", "A#/D"), lines.single().allChords())
+        assertEquals("Début fin [Refrain]", lines.single().renderedLyrics())
+    }
+
+    @Test
+    fun richTextTranspositionKeepsLyricsAndChordColor() {
+        val source = "Je <c=yellow>[C/E]chante</c>"
+        val document = preparePrompterText(source)
+        val line = buildRichTextPrompterLines(document, transposeSemitones = 2).single()
+        val chordRun = line.words[1].runs.single()
+
+        assertEquals(source, document.source)
+        assertEquals("Je chante", line.renderedLyrics())
+        assertEquals(listOf("D/F#"), chordRun.chords)
+        assertEquals(listOf(PrompterTextColor.YELLOW), chordRun.chordColors)
+    }
+
+    @Test
     fun mixedDocument_keepsLineWithoutChordCompact() {
         val lines = render("[C]Avec accord\nSans accord")
 

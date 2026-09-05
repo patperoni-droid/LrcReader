@@ -1365,6 +1365,9 @@ N’oubliez pas de sauvegarder.</string>
     <string name="prompter_markup_divider">Séparateur</string>
     <string name="prompter_editor_text_colors">Texte et couleur</string>
     <string name="prompter_editor_chords">Accords</string>
+    <string name="prompter_transposition_decrease">Diminuer la transposition</string>
+    <string name="prompter_transposition_increase">Augmenter la transposition</string>
+    <string name="prompter_transposition_value">Transposition : %1$s</string>
 
     <!-- Open beta welcome -->
     <string name="open_beta_welcome_title">Bienvenue sur MusiMio</string>

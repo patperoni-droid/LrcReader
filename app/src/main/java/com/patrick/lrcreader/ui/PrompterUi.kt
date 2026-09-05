@@ -40,6 +40,7 @@ import com.patrick.lrcreader.core.PrompterRichTextSpan
 import com.patrick.lrcreader.core.PrompterRichTextStyle
 import com.patrick.lrcreader.core.PrompterTextColor
 import com.patrick.lrcreader.core.TextPrompterAlignment
+import com.patrick.lrcreader.core.transposeChord
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.ui.theme.SplColors
 import kotlinx.coroutines.delay
@@ -93,7 +94,8 @@ internal fun resolvePrompterRenderMode(document: PrompterPreparedDocument): Prom
     }
 
 internal fun buildChordProPrompterLines(
-    document: ChordProDocument
+    document: ChordProDocument,
+    transposeSemitones: Int = 0
 ): List<PrompterChordRenderLine>? {
     if (!document.hasChords) return null
 
@@ -105,26 +107,37 @@ internal fun buildChordProPrompterLines(
                 hasChords = false
             )
         } else {
-            buildChordProPrompterLine(line)
+            buildChordProPrompterLine(line, transposeSemitones)
         }
     }
 }
 
-private fun buildChordProPrompterLine(line: ChordProLine): PrompterChordRenderLine {
+private fun buildChordProPrompterLine(
+    line: ChordProLine,
+    transposeSemitones: Int
+): PrompterChordRenderLine {
     return buildPrompterRenderLine(
         lyricText = line.lyricText,
         chordsByOffset = line.anchors.groupBy(
             keySelector = { it.lyricOffset },
-            valueTransform = { it.symbol.raw }
+            valueTransform = {
+                if (transposeSemitones == 0) it.symbol.raw
+                else transposeChord(it.symbol, transposeSemitones)
+            }
         )
     )
 }
 
 internal fun buildRichTextPrompterLines(
-    document: PrompterPreparedDocument
-): List<PrompterChordRenderLine> = document.lines.map(::buildRichTextPrompterLine)
+    document: PrompterPreparedDocument,
+    transposeSemitones: Int = 0
+): List<PrompterChordRenderLine> =
+    document.lines.map { buildRichTextPrompterLine(it, transposeSemitones) }
 
-private fun buildRichTextPrompterLine(line: PrompterPreparedLine): PrompterChordRenderLine {
+private fun buildRichTextPrompterLine(
+    line: PrompterPreparedLine,
+    transposeSemitones: Int
+): PrompterChordRenderLine {
     if (!line.hasChords) {
         return PrompterChordRenderLine(
             lyricText = line.plainText,
@@ -139,7 +152,10 @@ private fun buildRichTextPrompterLine(line: PrompterPreparedLine): PrompterChord
         lyricText = line.plainText,
         chordsByOffset = line.chords.groupBy(
             keySelector = { it.plainTextOffset },
-            valueTransform = { it.symbol.raw }
+            valueTransform = {
+                if (transposeSemitones == 0) it.symbol.raw
+                else transposeChord(it.symbol, transposeSemitones)
+            }
         ),
         blockKind = line.blockKind,
         spans = line.spans,
@@ -248,6 +264,7 @@ fun PrompterTextViewport(
     scrollState: ScrollState,
     modifier: Modifier = Modifier,
     alignment: TextPrompterAlignment = TextPrompterAlignment.START,
+    transposeSemitones: Int = 0,
     bgColor: Color = Color(0xFF050912),
     textColor: Color = Color.White,
     fontSize: Int = 26,
@@ -275,7 +292,7 @@ fun PrompterTextViewport(
                 val renderMode = remember(preparedDocument) {
                     resolvePrompterRenderMode(preparedDocument)
                 }
-                val renderedLines = remember(preparedDocument, renderMode) {
+                val renderedLines = remember(preparedDocument, renderMode, transposeSemitones) {
                     when (renderMode) {
                         PrompterRenderMode.PLAIN_TEXT -> null
                         PrompterRenderMode.CHORD_PRO -> buildChordProPrompterLines(
@@ -283,9 +300,13 @@ fun PrompterTextViewport(
                                 source = preparedDocument.source,
                                 lines = preparedDocument.lines.map { it.chordProLine },
                                 hasChords = preparedDocument.hasChords
-                            )
+                            ),
+                            transposeSemitones
                         )
-                        PrompterRenderMode.RICH_TEXT -> buildRichTextPrompterLines(preparedDocument)
+                        PrompterRenderMode.RICH_TEXT -> buildRichTextPrompterLines(
+                            preparedDocument,
+                            transposeSemitones
+                        )
                     }
                 }
 

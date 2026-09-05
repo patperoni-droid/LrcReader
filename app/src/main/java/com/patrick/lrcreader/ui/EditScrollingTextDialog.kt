@@ -15,6 +15,8 @@ import com.patrick.lrcreader.exo.R
 @Composable
 internal fun EditScrollingTextDialog(
     textSongId: String,
+    transposeSemitones: Int? = null,
+    onTransposeSemitonesChange: (Int) -> Unit = {},
     onDismiss: () -> Unit,
     onSaved: () -> Unit
 ) {
@@ -52,6 +54,8 @@ internal fun EditScrollingTextDialog(
         onContentValueChange = { contentValue = it },
         alignment = alignment,
         onAlignmentChange = { alignment = it },
+        transposeSemitones = transposeSemitones,
+        onTransposeSemitonesChange = onTransposeSemitonesChange,
         onDismiss = onDismiss,
         onConfirm = {
             if (title.isNotBlank()) {

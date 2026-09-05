@@ -4,8 +4,10 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.TextFormat
 import androidx.compose.material.icons.automirrored.filled.FormatAlignLeft
 import androidx.compose.material3.IconButton
@@ -56,7 +58,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -75,6 +80,18 @@ internal const val SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG = "scrolling_text_edi
 internal const val SCROLLING_TEXT_EDITOR_FORMAT_PANEL_TAG = "scrolling_text_editor_format_panel"
 internal const val SCROLLING_TEXT_EDITOR_ALIGNMENT_START_TAG = "scrolling_text_editor_alignment_start"
 internal const val SCROLLING_TEXT_EDITOR_ALIGNMENT_CENTER_TAG = "scrolling_text_editor_alignment_center"
+internal const val SCROLLING_TEXT_EDITOR_TRANSPOSE_DECREASE_TAG = "scrolling_text_editor_transpose_decrease"
+internal const val SCROLLING_TEXT_EDITOR_TRANSPOSE_INCREASE_TAG = "scrolling_text_editor_transpose_increase"
+internal const val PROMPTER_TRANSPOSE_MIN = -11
+internal const val PROMPTER_TRANSPOSE_MAX = 11
+
+internal fun stepPrompterTransposition(current: Int, delta: Int): Int =
+    (current.toLong() + delta)
+        .coerceIn(PROMPTER_TRANSPOSE_MIN.toLong(), PROMPTER_TRANSPOSE_MAX.toLong())
+        .toInt()
+
+internal fun formatPrompterTransposition(semitones: Int): String =
+    if (semitones > 0) "+$semitones" else semitones.toString()
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -93,7 +110,9 @@ internal fun ScrollingTextEditorDialog(
     onAlignmentChange: (TextPrompterAlignment) -> Unit = {},
     paletteInput: String? = null,
     paletteChords: List<String> = emptyList(),
-    onPaletteInputChange: (String) -> Unit = {}
+    onPaletteInputChange: (String) -> Unit = {},
+    transposeSemitones: Int? = null,
+    onTransposeSemitonesChange: (Int) -> Unit = {}
 ) {
     if (!show) return
     val contentFocusRequester = remember { FocusRequester() }
@@ -266,6 +285,12 @@ internal fun ScrollingTextEditorDialog(
                         }
                     }
                 }
+                transposeSemitones?.let { semitones ->
+                    PrompterTranspositionControl(
+                        semitones = semitones,
+                        onSemitonesChange = onTransposeSemitonesChange
+                    )
+                }
                 IconButton(
                     onClick = confirmEditor,
                     enabled = confirmEnabled,
@@ -327,6 +352,72 @@ internal fun ScrollingTextEditorDialog(
             )
 
 
+        }
+    }
+}
+
+@Composable
+private fun PrompterTranspositionControl(
+    semitones: Int,
+    onSemitonesChange: (Int) -> Unit
+) {
+    val formattedSemitones = formatPrompterTransposition(semitones)
+    val valueDescription = stringResource(
+        R.string.prompter_transposition_value,
+        formattedSemitones
+    )
+    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        IconButton(
+            onClick = {
+                onSemitonesChange(stepPrompterTransposition(semitones, -1))
+            },
+            enabled = semitones > PROMPTER_TRANSPOSE_MIN,
+            modifier = Modifier
+                .size(width = 40.dp, height = 48.dp)
+                .focusProperties { canFocus = false }
+                .testTag(SCROLLING_TEXT_EDITOR_TRANSPOSE_DECREASE_TAG)
+        ) {
+            Icon(
+                Icons.Default.Remove,
+                contentDescription = stringResource(R.string.prompter_transposition_decrease),
+                tint = if (semitones > PROMPTER_TRANSPOSE_MIN) {
+                    Color.White
+                } else {
+                    Color.White.copy(alpha = 0.38f)
+                }
+            )
+        }
+        Text(
+            text = formattedSemitones,
+            color = Color.White,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .width(30.dp)
+                .semantics {
+                    contentDescription = valueDescription
+                }
+        )
+        IconButton(
+            onClick = {
+                onSemitonesChange(stepPrompterTransposition(semitones, 1))
+            },
+            enabled = semitones < PROMPTER_TRANSPOSE_MAX,
+            modifier = Modifier
+                .size(width = 40.dp, height = 48.dp)
+                .focusProperties { canFocus = false }
+                .testTag(SCROLLING_TEXT_EDITOR_TRANSPOSE_INCREASE_TAG)
+        ) {
+            Icon(
+                Icons.Default.Add,
+                contentDescription = stringResource(R.string.prompter_transposition_increase),
+                tint = if (semitones < PROMPTER_TRANSPOSE_MAX) {
+                    Color.White
+                } else {
+                    Color.White.copy(alpha = 0.38f)
+                }
+            )
         }
     }
 }

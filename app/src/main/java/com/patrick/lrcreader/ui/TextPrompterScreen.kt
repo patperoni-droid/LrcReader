@@ -127,6 +127,7 @@ fun TextPrompterScreen(
 
     var showEditor by remember(songId) { mutableStateOf(false) }
     var editRevision by remember(songId) { mutableIntStateOf(0) }
+    var transposeSemitones by remember(songId) { mutableIntStateOf(0) }
     val songInfo = remember(songId, editRevision) {
         var result = SongInfo(title = null, content = null)
         try {
@@ -210,6 +211,8 @@ fun TextPrompterScreen(
         songInfo.textSongId?.let { id ->
             EditScrollingTextDialog(
                 textSongId = id,
+                transposeSemitones = transposeSemitones,
+                onTransposeSemitonesChange = { transposeSemitones = it },
                 onDismiss = { showEditor = false },
                 onSaved = {
                     editRevision++
@@ -389,6 +392,7 @@ fun TextPrompterScreen(
                 preparedDocument = preparedDocument,
                 scrollState = scrollState,
                 alignment = displaySettings.alignment,
+                transposeSemitones = transposeSemitones,
                 startOffsetFraction = 0.55f,
                 bottomOffsetFraction = 0.30f,
                 modifier = Modifier
