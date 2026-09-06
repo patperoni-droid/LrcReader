@@ -4099,7 +4099,7 @@ fun LibraryScreen(
                                                         playlistSelection = playlistSelection.toggle(playlistName)
                                                     }
                                                 )
-                                                .padding(start = 14.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+                                                .padding(start = 14.dp, top = 2.dp, end = 8.dp, bottom = 2.dp),
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             if (playlistSelection.isActive) {
@@ -4119,12 +4119,12 @@ fun LibraryScreen(
                                             Box(
                                                 modifier = Modifier
                                                     .weight(1f)
-                                                    .padding(vertical = 4.dp)
+                                                    .padding(vertical = 0.dp)
                                             ) {
                                                 Text(
                                                     text = playlistName,
                                                     color = titleColor,
-                                                    fontSize = 15.sp
+                                                    fontSize = 13.sp
                                                 )
                                             }
                                             if (!playlistSelection.isActive) Box {
@@ -4437,7 +4437,7 @@ fun LibraryScreen(
                                                 Column(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
-                                                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                                                        .padding(horizontal = 10.dp, vertical = 2.dp),
                                                     verticalArrangement = Arrangement.spacedBy(5.dp)
                                                 ) {
                                                     Row(
@@ -4526,7 +4526,7 @@ fun LibraryScreen(
                                                         Text(
                                                             text = song.displayTitle,
                                                             color = titleColor,
-                                                            fontSize = 16.sp,
+                                                            fontSize = 13.sp,
                                                             maxLines = 1,
                                                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                                                             modifier = Modifier.weight(1f)

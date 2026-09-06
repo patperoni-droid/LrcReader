@@ -255,7 +255,7 @@ fun LibraryList(
                                     Modifier
                                 } else {
                                     Modifier
-                                        .padding(vertical = 3.dp)
+                                        .padding(vertical = 0.dp)
                                         .background(cardBg, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                                         .border(
                                             1.dp,
@@ -279,7 +279,7 @@ fun LibraryList(
                                     Modifier
                                 }
                             )
-                            .padding(horizontal = 12.dp, vertical = if (isExplorerMode) 8.dp else 8.dp),
+                            .padding(horizontal = 12.dp, vertical = if (isExplorerMode) 8.dp else 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (usesLongPressSelection && selectionMode) {
@@ -348,7 +348,7 @@ fun LibraryList(
                                     color = Color.White,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    fontSize = 14.sp
+                                    fontSize = 13.sp
                                 )
                             }
 
