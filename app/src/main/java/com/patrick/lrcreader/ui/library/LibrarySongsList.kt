@@ -238,7 +238,7 @@ fun LibrarySongsList(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 3.dp)
+                            .padding(vertical = 1.dp)
                             .background(rowBackground, rowShape)
                             .border(
                                 if (anySelected || isKeyboardSelected) 2.dp else 0.dp,
@@ -283,7 +283,7 @@ fun LibrarySongsList(
                             Text(
                                 text = activeSong.displayTitle,
                                 color = if (isCurrentPlaying) Color(0xFFFFFDE7) else Color.White,
-                                fontSize = 15.sp,
+                                fontSize = 14.sp,
                                 fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
@@ -487,7 +487,7 @@ fun LibrarySongsList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 3.dp)
+                        .padding(vertical = 1.dp)
                         .background(rowBackground, rowShape)
                         .then(
                             if (rowStrokeWidth > 0.dp) {
@@ -498,7 +498,7 @@ fun LibrarySongsList(
                         )
                         .then(rowClick)
                         .alpha(if (canPlay) 1f else 0.72f)
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Box(
@@ -544,7 +544,7 @@ fun LibrarySongsList(
                         Text(
                             text = song.displayTitle,
                             color = titleColor,
-                            fontSize = 15.sp,
+                            fontSize = 14.sp,
                             fontWeight = if (isCurrentPlaying) FontWeight.SemiBold else FontWeight.Normal,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
