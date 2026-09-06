@@ -46,7 +46,7 @@ class PlaybackStructureProgressTest {
         val widths = playbackStructureSegmentWidthsDp(
             model = repeatedStructure,
             viewportWidthDp = 400f,
-            minimumSegmentWidthDp = 48f
+            minimumSegmentWidthDp = PlaybackProgressBarDefaults.StructureSegmentMinWidth.value
         )
 
         assertEquals(listOf(200f, 200f), widths)
@@ -68,11 +68,11 @@ class PlaybackStructureProgressTest {
         val widths = playbackStructureSegmentWidthsDp(
             model = model,
             viewportWidthDp = 320f,
-            minimumSegmentWidthDp = 48f
+            minimumSegmentWidthDp = PlaybackProgressBarDefaults.StructureSegmentMinWidth.value
         )
 
-        assertTrue(widths.all { width -> width == 48f })
-        assertEquals(480f, widths.sum(), 0f)
+        assertTrue(widths.all { width -> width == arrangementTrackBlockWidthDp(null) })
+        assertEquals(1_680f, widths.sum(), 0f)
     }
 
     @Test
@@ -87,16 +87,17 @@ class PlaybackStructureProgressTest {
         val widths = playbackStructureSegmentWidthsDp(
             model = model,
             viewportWidthDp = 100f,
-            minimumSegmentWidthDp = 48f
+            minimumSegmentWidthDp = PlaybackProgressBarDefaults.StructureSegmentMinWidth.value
         )
 
-        assertEquals(104f, playbackStructurePlayheadOffsetDp(model, widths, 0.85f), 0.001f)
-        assertEquals(152f, playbackStructurePlayheadOffsetDp(model, widths, 0.95f), 0.001f)
+        assertEquals(252f, playbackStructurePlayheadOffsetDp(model, widths, 0.85f), 0.001f)
+        assertEquals(420f, playbackStructurePlayheadOffsetDp(model, widths, 0.95f), 0.001f)
     }
 
     @Test
     fun `minimum touch width still leaves the label visible inside the card`() {
-        val visualWidthDp = 48f - 2f * ArrangementTrackSegmentVisualInset.value
+        val visualWidthDp = PlaybackProgressBarDefaults.StructureSegmentMinWidth.value -
+            2f * ArrangementTrackSegmentVisualInset.value
 
         assertTrue(shouldShowPlaybackStructureSegmentLabel(visualWidthDp))
     }

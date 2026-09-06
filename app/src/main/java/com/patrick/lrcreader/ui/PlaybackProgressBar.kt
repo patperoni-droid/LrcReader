@@ -47,7 +47,7 @@ import kotlinx.coroutines.delay
 object PlaybackProgressBarDefaults {
     val Height = 56.dp
     val ClassicHeight = 28.dp
-    val StructureSegmentMinWidth = 48.dp
+    val StructureSegmentMinWidth = arrangementTrackBlockWidthDp(null).dp
 }
 
 data class PlaybackStructureModel(
