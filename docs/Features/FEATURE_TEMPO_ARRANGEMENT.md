@@ -132,8 +132,9 @@ Contrat de stockage :
 - l'ouverture d'une variante charge donc les données depuis son dossier normalisé, mais résout l'audio depuis le parent ;
 - une variante active conserve les accès `Timeline`, `Arrangement` et `Waveform` du lecteur sur téléphone et tablette ;
 - `Arrangement` ouvre le projet appartenant à la variante, tandis que `Waveform` résout le morceau parent qui possède réellement l'audio ;
-- une mise à jour conserve le `songId` et le titre de la variante et remplace son projet de façon atomique ;
+- « Mettre à jour » conserve le `songId` et le titre de la variante, remplace son projet de façon atomique, puis recharge immédiatement sa Structure dans le Player sans changer son `variantSongId` ni créer une nouvelle variante ;
 - « Enregistrer comme nouvelle variante » crée un nouveau `songId` et ne modifie ni la variante ouverte ni le parent ;
+- la chanson originale reste protégée : sa segmentation et sa Structure ne sont jamais remplacées par celles d'une variante ;
 - aucun accès au `.smp` n'est autorisé pour cette édition runtime.
 
 Exemple : avec `Marina-AR01`, `Marina-AR02` et `Marina-AR03`, il doit être possible de rouvrir `Marina-AR01`, la tester et continuer à la modifier sans reconstruire ses segments.

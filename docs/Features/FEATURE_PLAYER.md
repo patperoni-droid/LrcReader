@@ -95,6 +95,12 @@ Arrangement Structure audio modes:
   validated across several phone models;
 - switching mode never changes Arrangement data and never creates a second visible transport.
 
+Variant Structure track readability:
+
+- in Player views, each Structure segment keeps the same `168 dp` minimum readable width used by Arrangement;
+- segments overflow into a horizontally scrollable track instead of being compressed to fit the available width;
+- selection, active-segment highlighting, playhead behavior and existing auto-scroll remain unchanged.
+
 MediaTek decoder stability:
 
 - on MediaTek hardware only, MediaCodec input queueing is forced to synchronous mode to avoid runtime MP3 decoder failures observed with `c2.mtk.mp3.decoder` on Android API 36;
