@@ -973,25 +973,6 @@ class MainActivity : AppCompatActivity() {
                         savedSong
                     }
 
-                val updateVirtualArrangement:
-                    suspend (String, String, ArrangementData) -> com.patrick.lrcreader.smp.SongUnit? =
-                    { variantId, title, arrangement ->
-                        val updatedSong = ArrangementVariantStore.update(
-                            context = ctx.applicationContext,
-                            variantId = variantId,
-                            title = title,
-                            sourceSongId = arrangement.sourceSongId,
-                            arrangement = arrangement
-                        ).getOrNull()
-                        if (updatedSong != null) {
-                            withContext(Dispatchers.Main) {
-                                smpSongsById = smpSongsById + (updatedSong.id to updatedSong)
-                                smpCacheRefreshTick++
-                            }
-                        }
-                        updatedSong
-                    }
-
                 fun runPlaylistBatchImport(
                     playlistName: String,
                     plan: SmpBatchImportProcessor.BatchPlan
@@ -1311,6 +1292,58 @@ class MainActivity : AppCompatActivity() {
                     mark("compose.AudioEngine.getPlayer:after")
                     player
                 }
+                val updateVirtualArrangement:
+                    suspend (String, String, ArrangementData) -> com.patrick.lrcreader.smp.SongUnit? =
+                    { variantId, title, arrangement ->
+                        val updatedSong = ArrangementVariantStore.update(
+                            context = ctx.applicationContext,
+                            variantId = variantId,
+                            title = title,
+                            sourceSongId = arrangement.sourceSongId,
+                            arrangement = arrangement
+                        ).getOrNull()
+                        if (updatedSong != null) {
+                            val songsAfterUpdate = smpSongsById + (updatedSong.id to updatedSong)
+                            val refreshedPlayback = activeVirtualArrangementPlayback
+                                ?.takeIf { active -> active.variantSongId == updatedSong.id }
+                                ?.let {
+                                    VirtualArrangementPlaybackResolver.resolve(
+                                        context = ctx.applicationContext,
+                                        variantSong = updatedSong,
+                                        songsById = songsAfterUpdate
+                                    )
+                                }
+                            withContext(Dispatchers.Main) {
+                                smpSongsById = songsAfterUpdate
+                                smpCacheRefreshTick++
+                                val activePlayback = activeVirtualArrangementPlayback
+                                if (
+                                    refreshedPlayback != null &&
+                                    activePlayback?.variantSongId == updatedSong.id
+                                ) {
+                                    val arrangementPositionMs = activePlayback.clockSnapshot(
+                                        currentMediaId = exoPlayer.currentMediaItem?.mediaId,
+                                        fallbackOccurrenceIndex =
+                                            exoPlayer.currentMediaItemIndex.coerceAtLeast(0),
+                                        localPositionMs = exoPlayer.currentPosition
+                                    )?.arrangementPositionMs ?: 0L
+                                    val (mediaItemIndex, positionMs) =
+                                        refreshedPlayback.seekTargetAt(arrangementPositionMs)
+                                            ?: (0 to 0L)
+                                    val playWhenReady = exoPlayer.playWhenReady
+                                    exoPlayer.setMediaItems(
+                                        refreshedPlayback.mediaItems,
+                                        mediaItemIndex,
+                                        positionMs
+                                    )
+                                    exoPlayer.prepare()
+                                    exoPlayer.playWhenReady = playWhenReady
+                                    activeVirtualArrangementPlayback = refreshedPlayback
+                                }
+                            }
+                        }
+                        updatedSong
+                    }
                 LaunchedEffect(exoPlayer, activeVirtualArrangementPlayback?.variantSongId) {
                     exoPlayer.repeatMode = Player.REPEAT_MODE_OFF
                 }

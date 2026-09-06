@@ -12,6 +12,38 @@ import org.mockito.Mockito
 class PreparedArrangementPlaybackTest {
 
     @Test
+    fun updatedVariantSeekTargetKeepsLogicalArrangementPosition() {
+        val prepared = requireNotNull(
+            prepareVirtualArrangementPlayback(
+                variantSongId = "variant",
+                title = "Variant",
+                sourceSongId = "parent",
+                sourceAudioUri = audioUri("updated-variant"),
+                playbackProfile = null,
+                arrangement = ArrangementData(
+                    version = 2,
+                    sourceSongId = "parent",
+                    segments = emptyList(),
+                    structureSegmentIds = emptyList(),
+                    entries = listOf(
+                        ArrangementEntryData("verse", "Verse", 0L, 2_000L),
+                        ArrangementEntryData(
+                            "chorus",
+                            "Chorus",
+                            2_000L,
+                            4_000L,
+                            repeatCount = 2
+                        )
+                    )
+                )
+            )
+        )
+
+        assertEquals(1 to 500L, prepared.seekTargetAt(2_500L))
+        assertEquals(2 to 2_000L, prepared.seekTargetAt(prepared.durationMs))
+    }
+
+    @Test
     fun normalSongPreparation_expandsOneAndManyRepeatsFromOneAudioSource() {
         val sourceUri = audioUri("normal")
 

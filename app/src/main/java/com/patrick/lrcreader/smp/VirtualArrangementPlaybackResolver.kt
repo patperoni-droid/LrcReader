@@ -24,6 +24,17 @@ class PreparedVirtualArrangementPlayback internal constructor(
         preparedPlayback.occurrences
     internal val assetTimeDomain: ArrangementAssetTimeDomain = preparedPlayback.assetTimeDomain
 
+    internal fun seekTargetAt(arrangementPositionMs: Long): Pair<Int, Long>? {
+        if (occurrences.isEmpty()) return null
+        val safePositionMs = arrangementPositionMs.coerceIn(0L, durationMs)
+        val occurrenceIndex = occurrences.indexOfFirst { occurrence ->
+            safePositionMs < occurrence.arrangementStartMs + occurrence.durationMs
+        }.takeIf { index -> index >= 0 } ?: occurrences.lastIndex
+        val occurrence = occurrences[occurrenceIndex]
+        return occurrenceIndex to
+            (safePositionMs - occurrence.arrangementStartMs).coerceIn(0L, occurrence.durationMs)
+    }
+
     internal fun clockSnapshot(
         currentMediaId: String?,
         fallbackOccurrenceIndex: Int,
