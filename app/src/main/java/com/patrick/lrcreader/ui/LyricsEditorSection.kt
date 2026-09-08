@@ -71,6 +71,7 @@ import com.patrick.lrcreader.core.formatCapturedLiveChordLine
 import com.patrick.lrcreader.core.inferChordPaletteFromText
 import com.patrick.lrcreader.core.isLiveCaptureAllowed
 import com.patrick.lrcreader.core.insertChordAtCursor
+import com.patrick.lrcreader.core.parseChordPro
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.parseChordPaletteInput
 import com.patrick.lrcreader.exo.BuildConfig
@@ -1754,7 +1755,7 @@ private fun importLyricsFromAudio(
     }
 }
 
-private fun mergeLyricsWithOldTimings(
+internal fun mergeLyricsWithOldTimings(
     newLines: List<String>,
     oldLines: List<LrcLine>
 ): List<LrcLine> {
@@ -1764,15 +1765,17 @@ private fun mergeLyricsWithOldTimings(
 
     val result = mutableListOf<LrcLine>()
     val used = BooleanArray(oldLines.size)
+    val oldMatchKeys = oldLines.map { lyricsTimingMatchKey(it.text) }
 
     for (newTextRaw in newLines) {
         val newText = newTextRaw.trim()
         if (newText.isEmpty()) continue
+        val newMatchKey = lyricsTimingMatchKey(newText)
 
         var matchedIndex = -1
         for (i in oldLines.indices) {
             if (used[i]) continue
-            if (oldLines[i].text.trim() == newText) {
+            if (oldMatchKeys[i] == newMatchKey) {
                 matchedIndex = i
                 break
             }
@@ -1788,6 +1791,16 @@ private fun mergeLyricsWithOldTimings(
     }
 
     return result
+}
+
+private fun lyricsTimingMatchKey(text: String): String {
+    val trimmedText = text.trim()
+    val chordProDocument = parseChordPro(trimmedText)
+    return if (chordProDocument.hasChords && chordProDocument.lines.size == 1) {
+        chordProDocument.lines.single().lyricText.trim()
+    } else {
+        trimmedText
+    }
 }
 
 private fun buildLyricsTimingPreviewText(
