@@ -132,11 +132,11 @@ internal fun buildRichTextPrompterLines(
     document: PrompterPreparedDocument,
     transposeSemitones: Int = 0
 ): List<PrompterChordRenderLine> =
-    document.lines.map { buildRichTextPrompterLine(it, transposeSemitones) }
+    document.lines.map { buildSinglePrompterRenderLine(it, transposeSemitones) }
 
-private fun buildRichTextPrompterLine(
+internal fun buildSinglePrompterRenderLine(
     line: PrompterPreparedLine,
-    transposeSemitones: Int
+    transposeSemitones: Int = 0
 ): PrompterChordRenderLine {
     if (!line.hasChords) {
         return PrompterChordRenderLine(
@@ -357,113 +357,134 @@ private fun ChordProPrompterContent(
     alignment: TextPrompterAlignment,
     modifier: Modifier = Modifier
 ) {
-    val emptyLineHeight = with(LocalDensity.current) { lineHeight.sp.toDp() }
-
     Column(modifier = modifier) {
         lines.forEach { line ->
-            if (richTextEnabled && line.blockKind == PrompterRichTextBlockKind.DIVIDER) {
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    color = textColor.copy(alpha = 0.35f),
-                    thickness = 1.dp
-                )
-            } else if (!line.hasChords) {
-                if (line.lyricText.isEmpty()) {
-                    Spacer(Modifier.height(emptyLineHeight))
-                } else if (!richTextEnabled) {
-                    Text(
-                        text = line.lyricText,
-                        color = textColor,
-                        fontSize = fontSize.sp,
-                        lineHeight = lineHeight.sp,
-                        textAlign = textAlignForPrompter(alignment),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else {
-                    val typography = prompterLineTypography(
-                        blockKind = line.blockKind,
-                        fontSize = fontSize,
-                        lineHeight = lineHeight,
-                        richTextEnabled = richTextEnabled
-                    )
-                    Text(
-                        text = line.lyricText.withPrompterStyles(line.spans, textColor),
-                        color = textColor,
-                        fontSize = typography.fontSize.sp,
-                        lineHeight = typography.lineHeight.sp,
-                        fontWeight = typography.fontWeight,
-                        textAlign = textAlignForPrompter(alignment),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = typography.verticalPadding.dp)
-                    )
-                }
-            } else {
-                val typography = prompterLineTypography(
-                    blockKind = line.blockKind,
-                    fontSize = fontSize,
-                    lineHeight = lineHeight,
-                    richTextEnabled = richTextEnabled
-                )
-                val chordFontSize = (typography.fontSize * 0.70f).sp
-                val chordLineHeight = (typography.fontSize * 0.82f).sp
-                val chordBandHeight = with(LocalDensity.current) { chordLineHeight.toDp() }
-                val lineModifier = if (richTextEnabled) {
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = typography.verticalPadding.dp)
-                } else {
-                    Modifier.fillMaxWidth()
-                }
-                FlowRow(
-                    modifier = lineModifier,
-                    horizontalArrangement = horizontalArrangementForPrompter(alignment),
-                    verticalArrangement = Arrangement.Top
-                ) {
-                    line.words.forEach { word ->
-                        Row {
-                            word.runs.forEach { run ->
-                                Column {
-                                    Row(
-                                        modifier = Modifier.height(chordBandHeight),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                        verticalAlignment = Alignment.Bottom
-                                    ) {
-                                        run.chords.forEachIndexed { chordIndex, chord ->
-                                            Text(
-                                                text = chord,
-                                                color = run.chordColors.getOrNull(chordIndex)
-                                                    ?.let { resolvePrompterTextColor(it, textColor) }
-                                                    ?: SplColors.Accent,
-                                                fontSize = chordFontSize,
-                                                lineHeight = chordLineHeight,
-                                                fontWeight = FontWeight.SemiBold,
-                                                maxLines = 1,
-                                                softWrap = false
-                                            )
-                                        }
-                                    }
-                                    if (richTextEnabled) {
-                                        Text(
-                                            text = run.lyricText.withPrompterStyles(run.spans, textColor),
-                                            color = textColor,
-                                            fontSize = typography.fontSize.sp,
-                                            lineHeight = typography.lineHeight.sp,
-                                            fontWeight = typography.fontWeight,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    } else {
-                                        Text(
-                                            text = run.lyricText,
-                                            color = textColor,
-                                            fontSize = fontSize.sp,
-                                            lineHeight = lineHeight.sp,
-                                            maxLines = 1,
-                                            softWrap = false
-                                        )
-                                    }
+            SinglePrompterRenderLine(
+                line = line,
+                textColor = textColor,
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                richTextEnabled = richTextEnabled,
+                alignment = alignment
+            )
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+internal fun SinglePrompterRenderLine(
+    line: PrompterChordRenderLine,
+    textColor: Color,
+    fontSize: Int,
+    lineHeight: Int,
+    richTextEnabled: Boolean,
+    alignment: TextPrompterAlignment,
+    modifier: Modifier = Modifier
+) {
+    val emptyLineHeight = with(LocalDensity.current) { lineHeight.sp.toDp() }
+
+    if (richTextEnabled && line.blockKind == PrompterRichTextBlockKind.DIVIDER) {
+        HorizontalDivider(
+            modifier = modifier.padding(vertical = 8.dp),
+            color = textColor.copy(alpha = 0.35f),
+            thickness = 1.dp
+        )
+    } else if (!line.hasChords) {
+        if (line.lyricText.isEmpty()) {
+            Spacer(modifier.height(emptyLineHeight))
+        } else if (!richTextEnabled) {
+            Text(
+                text = line.lyricText,
+                color = textColor,
+                fontSize = fontSize.sp,
+                lineHeight = lineHeight.sp,
+                textAlign = textAlignForPrompter(alignment),
+                modifier = modifier.fillMaxWidth()
+            )
+        } else {
+            val typography = prompterLineTypography(
+                blockKind = line.blockKind,
+                fontSize = fontSize,
+                lineHeight = lineHeight,
+                richTextEnabled = richTextEnabled
+            )
+            Text(
+                text = line.lyricText.withPrompterStyles(line.spans, textColor),
+                color = textColor,
+                fontSize = typography.fontSize.sp,
+                lineHeight = typography.lineHeight.sp,
+                fontWeight = typography.fontWeight,
+                textAlign = textAlignForPrompter(alignment),
+                modifier = modifier
+                    .fillMaxWidth()
+                    .padding(vertical = typography.verticalPadding.dp)
+            )
+        }
+    } else {
+        val typography = prompterLineTypography(
+            blockKind = line.blockKind,
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            richTextEnabled = richTextEnabled
+        )
+        val chordFontSize = (typography.fontSize * 0.70f).sp
+        val chordLineHeight = (typography.fontSize * 0.82f).sp
+        val chordBandHeight = with(LocalDensity.current) { chordLineHeight.toDp() }
+        val lineModifier = if (richTextEnabled) {
+            modifier
+                .fillMaxWidth()
+                .padding(vertical = typography.verticalPadding.dp)
+        } else {
+            modifier.fillMaxWidth()
+        }
+        FlowRow(
+            modifier = lineModifier,
+            horizontalArrangement = horizontalArrangementForPrompter(alignment),
+            verticalArrangement = Arrangement.Top
+        ) {
+            line.words.forEach { word ->
+                Row {
+                    word.runs.forEach { run ->
+                        Column {
+                            Row(
+                                modifier = Modifier.height(chordBandHeight),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                run.chords.forEachIndexed { chordIndex, chord ->
+                                    Text(
+                                        text = chord,
+                                        color = run.chordColors.getOrNull(chordIndex)
+                                            ?.let { resolvePrompterTextColor(it, textColor) }
+                                            ?: SplColors.Accent,
+                                        fontSize = chordFontSize,
+                                        lineHeight = chordLineHeight,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        softWrap = false
+                                    )
                                 }
+                            }
+                            if (richTextEnabled) {
+                                Text(
+                                    text = run.lyricText.withPrompterStyles(run.spans, textColor),
+                                    color = textColor,
+                                    fontSize = typography.fontSize.sp,
+                                    lineHeight = typography.lineHeight.sp,
+                                    fontWeight = typography.fontWeight,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            } else {
+                                Text(
+                                    text = run.lyricText,
+                                    color = textColor,
+                                    fontSize = fontSize.sp,
+                                    lineHeight = lineHeight.sp,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     }
