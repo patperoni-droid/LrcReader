@@ -213,27 +213,15 @@ internal fun ScrollingTextEditorDialog(
                         if (visibility.showHeader) {
                             Spacer(Modifier.height(6.dp))
                         }
-                        Row(
-                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            paletteChords.forEach { chord ->
-                                TextButton(
-                                    onClick = {
-                                        onContentValueChange(
-                                            editOrInsertPrompterChord(contentValue, chord)
-                                        )
-                                        contentFocusRequester.requestFocus()
-                                    },
-                                    modifier = Modifier.testTag(
-                                        SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord
-                                    ).defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).focusProperties { canFocus = false },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
-                                }
+                        PrompterChordPaletteRow(
+                            chords = paletteChords,
+                            onChordClick = { chord ->
+                                onContentValueChange(
+                                    editOrInsertPrompterChord(contentValue, chord)
+                                )
+                                contentFocusRequester.requestFocus()
                             }
-                        }
+                        )
                     }
 
                     Spacer(Modifier.height(8.dp))
@@ -261,28 +249,19 @@ internal fun ScrollingTextEditorDialog(
                 if (isPhone) {
                     Spacer(Modifier.weight(1f))
                 } else {
-                    Row(
-                        modifier = Modifier.weight(1f).horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        if (paletteInput != null && visibility.showChords) {
-                            paletteChords.forEach { chord ->
-                                TextButton(
-                                    onClick = {
-                                        onContentValueChange(
-                                            editOrInsertPrompterChord(contentValue, chord)
-                                        )
-                                        contentFocusRequester.requestFocus()
-                                    },
-                                    modifier = Modifier.testTag(
-                                        SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord
-                                    ).defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).focusProperties { canFocus = false },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                                ) {
-                                    Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
-                                }
-                            }
-                        }
+                    if (paletteInput != null && visibility.showChords) {
+                        PrompterChordPaletteRow(
+                            chords = paletteChords,
+                            onChordClick = { chord ->
+                                onContentValueChange(
+                                    editOrInsertPrompterChord(contentValue, chord)
+                                )
+                                contentFocusRequester.requestFocus()
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        Spacer(Modifier.weight(1f))
                     }
                 }
                 transposeSemitones?.let { semitones ->
@@ -357,7 +336,7 @@ internal fun ScrollingTextEditorDialog(
 }
 
 @Composable
-private fun PrompterTranspositionControl(
+internal fun PrompterTranspositionControl(
     semitones: Int,
     onSemitonesChange: (Int) -> Unit
 ) {
@@ -418,6 +397,31 @@ private fun PrompterTranspositionControl(
                     Color.White.copy(alpha = 0.38f)
                 }
             )
+        }
+    }
+}
+
+@Composable
+internal fun PrompterChordPaletteRow(
+    chords: List<String>,
+    onChordClick: (String) -> Unit,
+    modifier: Modifier = Modifier.fillMaxWidth()
+) {
+    Row(
+        modifier = modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        chords.forEach { chord ->
+            TextButton(
+                onClick = { onChordClick(chord) },
+                modifier = Modifier
+                    .testTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord)
+                    .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                    .focusProperties { canFocus = false },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+            ) {
+                Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
+            }
         }
     }
 }

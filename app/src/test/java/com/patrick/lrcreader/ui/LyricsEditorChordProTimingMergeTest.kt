@@ -125,4 +125,15 @@ class LyricsEditorChordProTimingMergeTest {
         assertEquals(0L, result.single().timeMs)
         assertEquals("[Couplet] Je pars ce soir", result.single().text)
     }
+
+    @Test
+    fun addingInlineFormattingKeepsExistingTiming() {
+        val result = mergeLyricsWithOldTimings(
+            newLines = listOf("Je **pars** ce *soir*"),
+            oldLines = listOf(LrcLine(timeMs = 8_000L, text = "Je pars ce soir"))
+        )
+
+        assertEquals(8_000L, result.single().timeMs)
+        assertEquals("Je **pars** ce *soir*", result.single().text)
+    }
 }

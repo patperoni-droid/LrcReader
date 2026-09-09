@@ -727,10 +727,23 @@ fun PlayerScreen(
     val audioLyricsDisplaySettingsKey = remember(currentSongId) {
         currentSongId?.let(TextPrompterDisplaySettingsStore::audioLyricsSongKey)
     }
-    val audioLyricsTransposeSemitones = remember(context, audioLyricsDisplaySettingsKey) {
+    var audioLyricsTransposeSemitones by remember(context, audioLyricsDisplaySettingsKey) {
+        mutableIntStateOf(
+            audioLyricsDisplaySettingsKey?.let { key ->
+                TextPrompterDisplaySettingsStore.get(context, key).transposeSemitones
+            } ?: 0
+        )
+    }
+    fun updateAudioLyricsTransposeSemitones(value: Int) {
+        val normalized = stepPrompterTransposition(value, 0)
+        audioLyricsTransposeSemitones = normalized
         audioLyricsDisplaySettingsKey?.let { key ->
-            TextPrompterDisplaySettingsStore.get(context, key).transposeSemitones
-        } ?: 0
+            TextPrompterDisplaySettingsStore.saveTransposeSemitones(
+                context = context,
+                key = key,
+                transposeSemitones = normalized
+            )
+        }
     }
     var selectedViewMode by rememberSaveable(currentTrackUri) {
         mutableStateOf(
@@ -3154,6 +3167,8 @@ fun PlayerScreen(
                 } else {
                     null
                 },
+                lyricsTransposeSemitones = audioLyricsTransposeSemitones,
+                onLyricsTransposeSemitonesChange = ::updateAudioLyricsTransposeSemitones,
                 tabletFocusEditingMode = compactTabletLayout,
                 onTabletFocusModeChange = onTabletFocusModeChange,
                 playbackControlContent = {

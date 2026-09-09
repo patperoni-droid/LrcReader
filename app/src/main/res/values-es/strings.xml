@@ -1277,6 +1277,11 @@ No olvides guardar.</string>
     <string name="prompter_transposition_decrease">Disminuir la transposición</string>
     <string name="prompter_transposition_increase">Aumentar la transposición</string>
     <string name="prompter_transposition_value">Transposición: %1$s</string>
+    <string name="lyrics_editor_show_timings">Mostrar tiempos</string>
+    <string name="lyrics_editor_hide_timings">Ocultar tiempos</string>
+    <string name="lyrics_editor_chord_action">Insertar o editar un acorde ChordPro</string>
+    <string name="lyrics_editor_chord_input_title">Acorde ChordPro</string>
+    <string name="lyrics_editor_chord_input_label">Acorde (p. ej., Am, G7, C/E)</string>
 
     <!-- Open beta welcome -->
     <string name="open_beta_welcome_title">Te damos la bienvenida a MusiMio</string>

@@ -10,6 +10,14 @@ import kotlin.math.min
 internal fun parseTextPrompterChordPaletteInput(raw: String): List<String> =
     parseChordPaletteInput(raw.replace(Regex("""\s+"""), ","))
 
+internal fun extractPrompterChordPaletteFromText(raw: String): List<String> = buildList {
+    parseChordPro(raw).lines.forEach { line ->
+        line.anchors.forEach { anchor ->
+            anchor.symbol.raw.takeIf { it !in this }?.let(::add)
+        }
+    }
+}
+
 internal fun insertChordProAtSelection(
     value: TextFieldValue,
     chord: String
@@ -130,12 +138,8 @@ internal fun applyPrompterColor(
 
 /** Palette action: a caret inside an existing valid chord edits that chord. */
 internal fun editOrInsertPrompterChord(value: TextFieldValue, chord: String): TextFieldValue {
-    val anchor = parseChordPro(value.text).lines.flatMap { it.anchors }.firstOrNull {
-        val start = it.sourceRange.first
-        val end = it.sourceRange.last + 1
-        if (value.selection.collapsed) value.selection.start > start && value.selection.start < end
-        else value.selection.min == start && value.selection.max == end
-    } ?: return insertChordProAtSelection(value, chord)
+    val anchor = selectedPrompterChordAnchor(value)
+        ?: return insertChordProAtSelection(value, chord)
     val tag = "[${chord.trim()}]"
     if (!parseChordPro(tag).hasChords) return value
     val start = anchor.sourceRange.first
@@ -144,6 +148,22 @@ internal fun editOrInsertPrompterChord(value: TextFieldValue, chord: String): Te
         TextRange(start + tag.length)
     )
 }
+
+internal fun selectedPrompterChord(value: TextFieldValue): String? =
+    selectedPrompterChordAnchor(value)?.symbol?.raw
+
+internal fun isValidPrompterChordInput(chord: String): Boolean {
+    val normalized = chord.trim()
+    return normalized.isNotEmpty() && parseChordPro("[$normalized]").hasChords
+}
+
+private fun selectedPrompterChordAnchor(value: TextFieldValue) =
+    parseChordPro(value.text).lines.flatMap { it.anchors }.firstOrNull {
+        val start = it.sourceRange.first
+        val end = it.sourceRange.last + 1
+        if (value.selection.collapsed) value.selection.start > start && value.selection.start < end
+        else value.selection.min == start && value.selection.max == end
+    }
 
 private fun removeMarkupRanges(value: TextFieldValue, ranges: List<IntRange>): TextFieldValue {
     if (ranges.isEmpty()) return value

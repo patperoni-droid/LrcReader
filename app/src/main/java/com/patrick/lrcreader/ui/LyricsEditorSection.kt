@@ -43,6 +43,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -71,12 +73,13 @@ import com.patrick.lrcreader.core.formatCapturedLiveChordLine
 import com.patrick.lrcreader.core.inferChordPaletteFromText
 import com.patrick.lrcreader.core.isLiveCaptureAllowed
 import com.patrick.lrcreader.core.insertChordAtCursor
-import com.patrick.lrcreader.core.parseChordPro
 import com.patrick.lrcreader.core.parseLrc
 import com.patrick.lrcreader.core.parseChordPaletteInput
+import com.patrick.lrcreader.core.preparePrompterText
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.SmpMidiCueBridge
+import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import java.nio.ByteBuffer
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
@@ -269,6 +272,8 @@ fun LyricsEditorSection(
     showChordPalette: Boolean = false,
     saveAndCloseRequestToken: Int = 0,
     chordPaletteStorageKey: String? = null,
+    lyricsTransposeSemitones: Int = 0,
+    onLyricsTransposeSemitonesChange: (Int) -> Unit = {},
     tabletFocusEditingMode: Boolean = false,
     onTabletFocusModeChange: (TabletPlayerFocusMode) -> Unit = {},
     playbackControlContent: @Composable () -> Unit = {},
@@ -282,7 +287,9 @@ fun LyricsEditorSection(
     val lyricsSavedMessage = stringResource(R.string.lyrics_editor_saved_confirmation)
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    val adaptiveTokens = rememberSmpAdaptiveTokens()
     val lazyListState = rememberLazyListState()
+    val rawTextFocusRequester = remember { FocusRequester() }
     var isPersistBusy by remember { mutableStateOf(false) }
     var saveConfirmationRequestToken by remember { mutableIntStateOf(0) }
     var showSaveConfirmation by remember { mutableStateOf(false) }
@@ -413,6 +420,9 @@ fun LyricsEditorSection(
         )
     }
     val hasTimedLines = remember(editingLines) { editingLines.any { it.timeMs > 0L } }
+    val lyricsChordPalette = remember(rawTextFieldValue.text) {
+        extractPrompterChordPaletteFromText(rawTextFieldValue.text)
+    }
 
     fun updatePalette(raw: String, persist: Boolean) {
         paletteInput = raw
@@ -452,6 +462,21 @@ fun LyricsEditorSection(
         onEditingLinesChange(lines)
         if (updateRawDraft) {
             applyLinesToRawDraft(lines)
+        }
+    }
+
+    fun updateRawTextFieldValue(value: TextFieldValue) {
+        if (rawContainsLrcTimestamps(value.text)) {
+            val parsed = parseLrc(value.text).filter { it.text.isNotBlank() }
+            if (parsed.isNotEmpty()) {
+                applyEditingLinesWithUndo(parsed)
+            } else {
+                rawTextFieldValue = value
+                onRawLyricsTextChange(value.text)
+            }
+        } else {
+            rawTextFieldValue = value
+            onRawLyricsTextChange(value.text)
         }
     }
 
@@ -1164,25 +1189,19 @@ fun LyricsEditorSection(
                         }
                     }
 
-                    if (hasTimedLines && !tabletLineEditFocusActive) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(
-                                onClick = { showTimingsInLyricsTab = !showTimingsInLyricsTab }
-                            ) {
-                                Text(
-                                    text = if (showTimingsInLyricsTab) {
-                                        "Masquer les timings"
-                                    } else {
-                                        "Afficher les timings"
-                                    },
-                                    color = Color(0xFF80CBC4),
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
+                    if (!showChordPalette && !tabletLineEditFocusActive) {
+                        AudioLyricsChordProToolbar(
+                            hasTimedLines = hasTimedLines,
+                            showTimings = showTimingsInLyricsTab,
+                            onShowTimingsChange = { showTimingsInLyricsTab = it },
+                            contentValue = rawTextFieldValue,
+                            onContentValueChange = ::updateRawTextFieldValue,
+                            onRequestEditorFocus = { rawTextFocusRequester.requestFocus() },
+                            transposeSemitones = lyricsTransposeSemitones,
+                            onTransposeSemitonesChange = onLyricsTransposeSemitonesChange,
+                            tabletMode = adaptiveTokens.tabletMode,
+                            paletteChords = lyricsChordPalette
+                        )
                     }
 
                     if (showTimingsInLyricsTab) {
@@ -1210,23 +1229,11 @@ fun LyricsEditorSection(
                         ) {
                             OutlinedTextField(
                                 value = rawTextFieldValue,
-                                onValueChange = { value ->
-                                    if (rawContainsLrcTimestamps(value.text)) {
-                                        val parsed = parseLrc(value.text).filter { it.text.isNotBlank() }
-                                        if (parsed.isNotEmpty()) {
-                                            applyEditingLinesWithUndo(parsed)
-                                        } else {
-                                            rawTextFieldValue = value
-                                            onRawLyricsTextChange(value.text)
-                                        }
-                                    } else {
-                                        rawTextFieldValue = value
-                                        onRawLyricsTextChange(value.text)
-                                    }
-                                },
+                                onValueChange = ::updateRawTextFieldValue,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .weight(1f)
+                                    .focusRequester(rawTextFocusRequester)
                                     .onFocusChanged { focusState ->
                                         rawTextFieldFocused = focusState.isFocused
                                     },
@@ -1795,9 +1802,12 @@ internal fun mergeLyricsWithOldTimings(
 
 private fun lyricsTimingMatchKey(text: String): String {
     val trimmedText = text.trim()
-    val chordProDocument = parseChordPro(trimmedText)
-    return if (chordProDocument.hasChords && chordProDocument.lines.size == 1) {
-        chordProDocument.lines.single().lyricText.trim()
+    val preparedDocument = preparePrompterText(trimmedText)
+    return if (
+        preparedDocument.lines.size == 1 &&
+        (preparedDocument.hasChords || preparedDocument.hasFormatting)
+    ) {
+        preparedDocument.lines.single().plainText.trim()
     } else {
         trimmedText
     }
