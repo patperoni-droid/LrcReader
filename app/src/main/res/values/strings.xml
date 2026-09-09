@@ -690,6 +690,8 @@
     <string name="lyrics_editor_color_blue">Bleu</string>
     <string name="lyrics_editor_color_green">Vert</string>
     <string name="lyrics_editor_color_violet">Violet</string>
+    <string name="lyrics_editor_rich_color_action">Couleur du texte sélectionné</string>
+    <string name="lyrics_editor_formatting_action">Mise en forme</string>
     <string name="lyrics_editor_edit">Modifier</string>
     <string name="lyrics_editor_delete">Supprimer</string>
     <string name="lyrics_editor_cancel">Annuler</string>

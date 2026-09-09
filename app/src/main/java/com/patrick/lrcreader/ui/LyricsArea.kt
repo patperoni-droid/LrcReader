@@ -184,13 +184,13 @@ internal fun prepareLyricsRenderItems(
     transposeSemitones: Int
 ): List<LyricsRenderItem> =
     lines.map { line ->
-        val preparedDocument = if ('[' in line.text) {
+        val preparedDocument = if (lyricsLineMayContainPrompterMarkup(line.text)) {
             preparePrompterText(line.text)
         } else {
             null
         }
         val preparedLine = preparedDocument
-            ?.takeIf { it.hasChords }
+            ?.takeIf { it.hasChords || it.hasFormatting }
             ?.lines
             ?.singleOrNull()
         LyricsRenderItem(
@@ -201,6 +201,14 @@ internal fun prepareLyricsRenderItems(
             richTextEnabled = preparedDocument?.hasFormatting == true
         )
     }
+
+internal fun lyricsLineMayContainPrompterMarkup(text: String): Boolean =
+    '[' in text ||
+        '*' in text ||
+        '<' in text ||
+        text.startsWith("# ") ||
+        text.startsWith("## ") ||
+        text.trim() == "---"
 
 internal fun lyricsLineActivity(
     index: Int,

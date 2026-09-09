@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.ui
 
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.PrompterRichTextStyle
+import com.patrick.lrcreader.core.PrompterTextColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -96,6 +98,73 @@ class LyricsAreaChordProIntegrationTest {
     }
 
     @Test
+    fun richColorWithoutChordUsesSharedRenderingAndHidesMarkup() {
+        val item = renderItem("Je pars <c=red>ce soir</c>")
+        val rendered = item.chordProLine!!
+
+        assertEquals("Je pars ce soir", rendered.lyricText)
+        assertFalse(rendered.hasChords)
+        assertTrue(item.richTextEnabled)
+        assertTrue(
+            rendered.spans.any {
+                it.style == PrompterRichTextStyle.ForegroundColor(PrompterTextColor.RED) &&
+                    rendered.lyricText.substring(it.start, it.endExclusive) == "ce soir"
+            }
+        )
+        assertFalse(rendered.lyricText.contains("<c="))
+        assertFalse(rendered.lyricText.contains("</c>"))
+    }
+
+    @Test
+    fun boldAndItalicWithoutChordUseSharedRenderingAndHideMarkers() {
+        val bold = renderItem("Je pars **ce soir**")
+        val italic = renderItem("Je *pars* ce soir")
+
+        assertEquals("Je pars ce soir", bold.chordProLine?.lyricText)
+        assertEquals("Je pars ce soir", italic.chordProLine?.lyricText)
+        assertTrue(bold.chordProLine?.spans?.any { it.style == PrompterRichTextStyle.Bold } == true)
+        assertTrue(italic.chordProLine?.spans?.any { it.style == PrompterRichTextStyle.Italic } == true)
+        assertFalse(bold.chordProLine?.lyricText.orEmpty().contains('*'))
+        assertFalse(italic.chordProLine?.lyricText.orEmpty().contains('*'))
+    }
+
+    @Test
+    fun richColorCombinesWithBoldAndItalicWithoutVisibleTags() {
+        val bold = renderItem("Je <c=blue>**pars**</c>")
+        val italic = renderItem("Je <c=green>*pars*</c>")
+
+        listOf(bold, italic).forEach { item ->
+            assertEquals("Je pars", item.chordProLine?.lyricText)
+            assertFalse(item.chordProLine?.lyricText.orEmpty().contains('<'))
+            assertFalse(item.chordProLine?.lyricText.orEmpty().contains('*'))
+            assertTrue(
+                item.chordProLine?.spans?.any {
+                    it.style is PrompterRichTextStyle.ForegroundColor
+                } == true
+            )
+        }
+        assertTrue(bold.chordProLine?.spans?.any { it.style == PrompterRichTextStyle.Bold } == true)
+        assertTrue(italic.chordProLine?.spans?.any { it.style == PrompterRichTextStyle.Italic } == true)
+    }
+
+    @Test
+    fun chordProCombinesWithRichColorAndBold() {
+        val colored = renderItem("Je [Am]<c=orange>pars</c>")
+        val bold = renderItem("Je [Am]**pars**")
+
+        assertEquals(listOf("Am"), colored.chordProLine?.allChords())
+        assertEquals("Je pars", colored.chordProLine?.visibleLyrics())
+        assertTrue(
+            colored.chordProLine?.spans?.any {
+                it.style == PrompterRichTextStyle.ForegroundColor(PrompterTextColor.ORANGE)
+            } == true
+        )
+        assertEquals(listOf("Am"), bold.chordProLine?.allChords())
+        assertEquals("Je pars", bold.chordProLine?.visibleLyrics())
+        assertTrue(bold.chordProLine?.spans?.any { it.style == PrompterRichTextStyle.Bold } == true)
+    }
+
+    @Test
     fun activeNextAndInactiveStatesRemainIndexBased() {
         assertEquals(
             LyricsLineActivity(isActive = true, isNext = false),
@@ -119,7 +188,11 @@ class LyricsAreaChordProIntegrationTest {
         val lines = listOf(
             LrcLine(timeMs = 1_000L, text = "Même ligne"),
             LrcLine(timeMs = 2_000L, text = "[Am]Même ligne"),
-            LrcLine(timeMs = 3_000L, text = "Même ligne")
+            LrcLine(
+                timeMs = 3_000L,
+                text = "<c=red>Même ligne</c>",
+                colorArgb = 0xFF64B5F6.toInt()
+            )
         )
 
         val items = prepareLyricsRenderItems(lines, transposeSemitones = 0)
@@ -128,6 +201,7 @@ class LyricsAreaChordProIntegrationTest {
         items.forEachIndexed { index, item ->
             assertSame(lines[index], item.line)
             assertEquals(lines[index].timeMs, item.line.timeMs)
+            assertEquals(lines[index].colorArgb, item.line.colorArgb)
         }
     }
 

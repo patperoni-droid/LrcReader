@@ -1202,6 +1202,12 @@ fun LyricsEditorSection(
                             tabletMode = adaptiveTokens.tabletMode,
                             paletteChords = lyricsChordPalette
                         )
+                        if (!showTimingsInLyricsTab) {
+                            AudioLyricsRichTextPreview(
+                                contentValue = rawTextFieldValue,
+                                transposeSemitones = lyricsTransposeSemitones
+                            )
+                        }
                     }
 
                     if (showTimingsInLyricsTab) {

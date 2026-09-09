@@ -564,6 +564,8 @@
     <string name="lyrics_editor_color_blue">Blue</string>
     <string name="lyrics_editor_color_green">Green</string>
     <string name="lyrics_editor_color_violet">Violet</string>
+    <string name="lyrics_editor_rich_color_action">Selected text color</string>
+    <string name="lyrics_editor_formatting_action">Formatting</string>
     <string name="lyrics_editor_edit">Edit</string>
     <string name="lyrics_editor_delete">Delete</string>
     <string name="lyrics_editor_cancel">Cancel</string>

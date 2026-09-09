@@ -5,6 +5,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import com.patrick.lrcreader.core.PrompterTextColor
 import com.patrick.lrcreader.core.parseChordPaletteInput
 import com.patrick.lrcreader.core.parseChordPro
+import com.patrick.lrcreader.core.preparePrompterText
 import kotlin.math.min
 
 internal fun parseTextPrompterChordPaletteInput(raw: String): List<String> =
@@ -82,6 +83,33 @@ internal fun insertPrompterMarkup(
 }
 
 private val prompterColorRegion = Regex("<c=(yellow|orange|red|blue|green|white)>([^\r\n]*?)</c>")
+
+internal fun canEditPrompterColor(value: TextFieldValue): Boolean {
+    if (!value.selection.collapsed) return true
+    return prompterColorRegion.findAll(value.text).any { match ->
+        val content = match.groups[2]!!
+        value.selection.start >= content.range.first &&
+            value.selection.start <= content.range.last + 1
+    }
+}
+
+internal fun selectedPrompterSourceLine(value: TextFieldValue): String {
+    if (value.text.isEmpty()) return ""
+    val offset = value.selection.min.coerceIn(0, value.text.length)
+    val lineStart = value.text.lastIndexOf('\n', offset - 1) + 1
+    val lineEnd = value.text.indexOf('\n', offset).let { if (it < 0) value.text.length else it }
+    return value.text.substring(lineStart, lineEnd).removeSuffix("\r")
+}
+
+internal fun buildAudioLyricsRichPreviewLine(
+    value: TextFieldValue,
+    transposeSemitones: Int
+): PrompterChordRenderLine? {
+    val prepared = preparePrompterText(selectedPrompterSourceLine(value))
+    val line = prepared.lines.singleOrNull() ?: return null
+    if (!line.hasFormatting && !line.hasChords) return null
+    return buildSinglePrompterRenderLine(line, transposeSemitones)
+}
 
 internal fun applyPrompterColor(
     value: TextFieldValue,

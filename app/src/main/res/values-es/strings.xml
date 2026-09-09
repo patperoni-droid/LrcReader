@@ -510,6 +510,8 @@
     <string name="lyrics_editor_color_blue">Azul</string>
     <string name="lyrics_editor_color_green">Verde</string>
     <string name="lyrics_editor_color_violet">Violeta</string>
+    <string name="lyrics_editor_rich_color_action">Color del texto seleccionado</string>
+    <string name="lyrics_editor_formatting_action">Formato</string>
     <string name="lyrics_editor_edit">Editar</string>
     <string name="lyrics_editor_delete">Eliminar</string>
     <string name="lyrics_editor_cancel">Cancelar</string>

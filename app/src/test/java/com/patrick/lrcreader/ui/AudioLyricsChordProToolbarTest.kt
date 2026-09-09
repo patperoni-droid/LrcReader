@@ -36,8 +36,16 @@ class AudioLyricsChordProToolbarTest {
     @Test
     fun essentialPhoneControlsFitTargetWidthsOnOneRow() {
         assertEquals(26, audioLyricsToolbarRemainingWidthDp(360))
-        assertEquals(59, audioLyricsToolbarRemainingWidthDp(393))
-        assertEquals(78, audioLyricsToolbarRemainingWidthDp(412))
+        assertEquals(11, audioLyricsToolbarRemainingWidthDp(393))
+        assertEquals(30, audioLyricsToolbarRemainingWidthDp(412))
+
+        assertTrue(audioLyricsToolbarLayout(360).compactFormatting)
+        assertFalse(audioLyricsToolbarLayout(393).compactFormatting)
+        assertFalse(audioLyricsToolbarLayout(412).compactFormatting)
+        listOf(360, 393, 412).forEach { width ->
+            assertTrue(audioLyricsToolbarLayout(width).paletteDirectlyVisible)
+            assertEquals(1, audioLyricsToolbarLayout(width).rowCount)
+        }
     }
 
     @Test

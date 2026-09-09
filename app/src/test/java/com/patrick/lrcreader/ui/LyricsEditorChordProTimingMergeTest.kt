@@ -136,4 +136,22 @@ class LyricsEditorChordProTimingMergeTest {
         assertEquals(8_000L, result.single().timeMs)
         assertEquals("Je **pars** ce *soir*", result.single().text)
     }
+
+    @Test
+    fun addingRichColorKeepsTimingAndSynchronizedLineColor() {
+        val result = mergeLyricsWithOldTimings(
+            newLines = listOf("Je <c=red>pars</c> ce soir"),
+            oldLines = listOf(
+                LrcLine(
+                    timeMs = 9_000L,
+                    text = "Je pars ce soir",
+                    colorArgb = 0xFF64B5F6.toInt()
+                )
+            )
+        )
+
+        assertEquals(9_000L, result.single().timeMs)
+        assertEquals(0xFF64B5F6.toInt(), result.single().colorArgb)
+        assertEquals("Je <c=red>pars</c> ce soir", result.single().text)
+    }
 }
