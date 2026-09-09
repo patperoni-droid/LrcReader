@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -28,8 +29,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.DisplayPrefs
-import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.core.LrcLine
+import com.patrick.lrcreader.core.TextPrompterAlignment
+import com.patrick.lrcreader.core.preparePrompterText
+import com.patrick.lrcreader.exo.R
 import com.patrick.lrcreader.smp.ArrangementNavigationItem
 import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 
@@ -53,6 +56,9 @@ fun LyricsAreaLazy(
 ) {
     val adaptiveTokens = rememberSmpAdaptiveTokens()
     val lyricSizes = lyricsTextSizes(lyricsTextSize, adaptiveTokens.lyricsFontBoost)
+    val renderItems = remember(parsedLines) {
+        prepareLyricsRenderItems(parsedLines)
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -78,10 +84,15 @@ fun LyricsAreaLazy(
                         bottom = adaptiveTokens.lyricsVerticalContentPadding
                     )
                 ) {
-                    itemsIndexed(parsedLines, key = { idx, _ -> idx }) { index, line ->
-                        val isActiveLine = index == currentLrcIndex
-                        val isNextActiveLine = !readabilityModeEnabled &&
-                            index == currentLrcIndex + 1
+                    itemsIndexed(renderItems, key = { idx, _ -> idx }) { index, renderItem ->
+                        val line = renderItem.line
+                        val activity = lyricsLineActivity(
+                            index = index,
+                            currentLrcIndex = currentLrcIndex,
+                            readabilityModeEnabled = readabilityModeEnabled
+                        )
+                        val isActiveLine = activity.isActive
+                        val isNextActiveLine = activity.isNext
                         val manualColor = line.colorArgb?.let(::Color)
                         val guidedColor = if (guidedReadingColorsEnabled) {
                             Color(if (index % 2 == 0) guidedReadingColorA else guidedReadingColorB)
@@ -121,19 +132,33 @@ fun LyricsAreaLazy(
                                 .clickable { onLineClick(index, line.timeMs) },
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = line.text,
-                                color = animatedColor,
-                                fontWeight = fontWeight,
-                                fontSize = fontSize,
-                                lineHeight = lyricSizes.lineHeightSp.sp,
-                                textAlign = TextAlign.Center,
-                                maxLines = 3,
-                                overflow = TextOverflow.Ellipsis,
-                                style = TextStyle(
-                                    platformStyle = PlatformTextStyle(includeFontPadding = false)
+                            val chordProLine = renderItem.chordProLine
+                            if (chordProLine == null) {
+                                Text(
+                                    text = line.text,
+                                    color = animatedColor,
+                                    fontWeight = fontWeight,
+                                    fontSize = fontSize,
+                                    lineHeight = lyricSizes.lineHeightSp.sp,
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                    style = TextStyle(
+                                        platformStyle = PlatformTextStyle(includeFontPadding = false)
+                                    )
                                 )
-                            )
+                            } else {
+                                SinglePrompterRenderLine(
+                                    line = chordProLine,
+                                    textColor = animatedColor,
+                                    fontSize = fontSize.value.toInt(),
+                                    lineHeight = lyricSizes.lineHeightSp,
+                                    richTextEnabled = renderItem.richTextEnabled,
+                                    alignment = TextPrompterAlignment.CENTER,
+                                    lyricFontWeight = fontWeight,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
                 }
@@ -141,6 +166,46 @@ fun LyricsAreaLazy(
         }
     }
 }
+
+internal data class LyricsRenderItem(
+    val line: LrcLine,
+    val chordProLine: PrompterChordRenderLine?,
+    val richTextEnabled: Boolean
+)
+
+internal data class LyricsLineActivity(
+    val isActive: Boolean,
+    val isNext: Boolean
+)
+
+internal fun prepareLyricsRenderItems(lines: List<LrcLine>): List<LyricsRenderItem> =
+    lines.map { line ->
+        val preparedDocument = if ('[' in line.text) {
+            preparePrompterText(line.text)
+        } else {
+            null
+        }
+        val preparedLine = preparedDocument
+            ?.takeIf { it.hasChords }
+            ?.lines
+            ?.singleOrNull()
+        LyricsRenderItem(
+            line = line,
+            chordProLine = preparedLine?.let {
+                buildSinglePrompterRenderLine(it, transposeSemitones = 0)
+            },
+            richTextEnabled = preparedDocument?.hasFormatting == true
+        )
+    }
+
+internal fun lyricsLineActivity(
+    index: Int,
+    currentLrcIndex: Int,
+    readabilityModeEnabled: Boolean
+): LyricsLineActivity = LyricsLineActivity(
+    isActive = index == currentLrcIndex,
+    isNext = !readabilityModeEnabled && index == currentLrcIndex + 1
+)
 
 @Composable
 internal fun ArrangementNavigationRow(

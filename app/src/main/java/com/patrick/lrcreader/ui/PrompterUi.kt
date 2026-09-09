@@ -380,6 +380,7 @@ internal fun SinglePrompterRenderLine(
     lineHeight: Int,
     richTextEnabled: Boolean,
     alignment: TextPrompterAlignment,
+    lyricFontWeight: FontWeight? = null,
     modifier: Modifier = Modifier
 ) {
     val emptyLineHeight = with(LocalDensity.current) { lineHeight.sp.toDp() }
@@ -399,6 +400,7 @@ internal fun SinglePrompterRenderLine(
                 color = textColor,
                 fontSize = fontSize.sp,
                 lineHeight = lineHeight.sp,
+                fontWeight = lyricFontWeight,
                 textAlign = textAlignForPrompter(alignment),
                 modifier = modifier.fillMaxWidth()
             )
@@ -414,7 +416,7 @@ internal fun SinglePrompterRenderLine(
                 color = textColor,
                 fontSize = typography.fontSize.sp,
                 lineHeight = typography.lineHeight.sp,
-                fontWeight = typography.fontWeight,
+                fontWeight = lyricFontWeight ?: typography.fontWeight,
                 textAlign = textAlignForPrompter(alignment),
                 modifier = modifier
                     .fillMaxWidth()
@@ -472,7 +474,7 @@ internal fun SinglePrompterRenderLine(
                                     color = textColor,
                                     fontSize = typography.fontSize.sp,
                                     lineHeight = typography.lineHeight.sp,
-                                    fontWeight = typography.fontWeight,
+                                    fontWeight = lyricFontWeight ?: typography.fontWeight,
                                     maxLines = 1,
                                     softWrap = false
                                 )
@@ -482,6 +484,7 @@ internal fun SinglePrompterRenderLine(
                                     color = textColor,
                                     fontSize = fontSize.sp,
                                     lineHeight = lineHeight.sp,
+                                    fontWeight = lyricFontWeight,
                                     maxLines = 1,
                                     softWrap = false
                                 )
