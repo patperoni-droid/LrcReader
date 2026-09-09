@@ -179,6 +179,22 @@ internal fun editorRawTextAfterPersistence(
     else -> lyricsDraftRawText
 }
 
+/**
+ * Keeps untimed display-only lines at their source positions while ensuring that the
+ * synchronized subsequence stays ordered for findActiveLrcIndex().
+ */
+internal fun normalizeLyricsLinesForRuntime(lines: List<LrcLine>): List<LrcLine> {
+    val sortedTimedLines = lines
+        .filter { it.timeMs > 0L }
+        .sortedWith(compareBy<LrcLine> { it.timeMs }.thenBy { it.text })
+    if (sortedTimedLines.isEmpty()) return emptyList()
+
+    val timedIterator = sortedTimedLines.iterator()
+    return lines.map { line ->
+        if (line.timeMs > 0L) timedIterator.next() else line
+    }
+}
+
 internal fun editorRawTextForLoad(persistedRawText: String?, fallbackText: String): String =
     persistedRawText ?: fallbackText
 
@@ -1961,15 +1977,14 @@ fun PlayerScreen(
         lines: List<LrcLine>
     ): List<LrcLine> {
         if (lines.isEmpty()) return emptyList()
-        val syncLines = lines.filterIndexed { index, line ->
-            val valid = line.timeMs > 0L
-            if (!valid) {
+        val syncLines = lines.filter { it.timeMs > 0L }
+        lines.forEachIndexed { index, line ->
+            if (line.timeMs <= 0L) {
                 Log.w(
                     LYRICS_STUCK_DIAG_TAG,
-                    "RUNTIME_IGNORE_UNSYNCED source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} index=$index timestampMs=${line.timeMs} text=${line.text.take(160)}"
+                    "RUNTIME_KEEP_UNSYNCED source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} index=$index timestampMs=${line.timeMs} text=${line.text.take(160)}"
                 )
             }
-            valid
         }
         if (syncLines.isEmpty()) {
             Log.w(
@@ -1978,14 +1993,15 @@ fun PlayerScreen(
             )
             return emptyList()
         }
-        val sorted = syncLines.sortedWith(compareBy<LrcLine> { it.timeMs }.thenBy { it.text })
-        if (sorted != syncLines) {
+        val normalized = normalizeLyricsLinesForRuntime(lines)
+        val normalizedSyncLines = normalized.filter { it.timeMs > 0L }
+        if (normalizedSyncLines != syncLines) {
             Log.w(
                 LYRICS_STUCK_DIAG_TAG,
                 "RUNTIME_SORT_APPLIED source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} originalLineCount=${lines.size} syncLineCount=${syncLines.size}"
             )
         }
-        val duplicateCount = sorted.zipWithNext().count { (left, right) ->
+        val duplicateCount = normalizedSyncLines.zipWithNext().count { (left, right) ->
             left.timeMs == right.timeMs
         }
         if (duplicateCount > 0) {
@@ -1997,10 +2013,10 @@ fun PlayerScreen(
         if (syncLines.size != lines.size) {
             Log.w(
                 LYRICS_STUCK_DIAG_TAG,
-                "RUNTIME_FILTER_APPLIED source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} originalLineCount=${lines.size} runtimeLineCount=${sorted.size}"
+                "RUNTIME_KEEP_MIXED_UNSYNCED source=$source songId=${currentSongId ?: currentTrackUri.orEmpty()} originalLineCount=${lines.size} runtimeLineCount=${normalized.size}"
             )
         }
-        return sorted
+        return normalized
     }
 
     fun applyCachedLyrics(trackUriString: String, entry: LyricsCacheEntry) {
