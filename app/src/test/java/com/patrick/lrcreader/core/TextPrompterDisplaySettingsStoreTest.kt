@@ -79,6 +79,49 @@ class TextPrompterDisplaySettingsStoreTest {
     }
 
     @Test
+    fun audioLyricsDefaultToZeroAndUseSongIdNamespace() {
+        val context = contextWithPreferences(mutableMapOf())
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.audioLyricsSongKey("song-a"))
+
+        assertEquals("audio-lyrics:song-a", key.storageKey)
+        assertEquals(0, TextPrompterDisplaySettingsStore.get(context, key).transposeSemitones)
+        assertEquals(null, TextPrompterDisplaySettingsStore.audioLyricsSongKey("   "))
+    }
+
+    @Test
+    fun audioLyricsSongsKeepIndependentValuesAcrossNavigation() {
+        val storedValues = mutableMapOf<String, String>()
+        val context = contextWithPreferences(storedValues)
+        val songA = requireNotNull(TextPrompterDisplaySettingsStore.audioLyricsSongKey("song-a"))
+        val songB = requireNotNull(TextPrompterDisplaySettingsStore.audioLyricsSongKey("song-b"))
+
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, songA, 1)
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, songB, -1)
+
+        assertEquals(1, TextPrompterDisplaySettingsStore.get(context, songA).transposeSemitones)
+        assertEquals(-1, TextPrompterDisplaySettingsStore.get(context, songB).transposeSemitones)
+        assertEquals(1, TextPrompterDisplaySettingsStore.get(context, songA).transposeSemitones)
+    }
+
+    @Test
+    fun audioLyricsTranspositionIsClampedToSupportedLimits() {
+        val storedValues = mutableMapOf<String, String>()
+        val context = contextWithPreferences(storedValues)
+        val upper = requireNotNull(TextPrompterDisplaySettingsStore.audioLyricsSongKey("upper"))
+        val lower = requireNotNull(TextPrompterDisplaySettingsStore.audioLyricsSongKey("lower"))
+
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, upper, 11)
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, lower, -11)
+        assertEquals(11, TextPrompterDisplaySettingsStore.get(context, upper).transposeSemitones)
+        assertEquals(-11, TextPrompterDisplaySettingsStore.get(context, lower).transposeSemitones)
+
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, upper, 12)
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, lower, -12)
+        assertEquals(11, TextPrompterDisplaySettingsStore.get(context, upper).transposeSemitones)
+        assertEquals(-11, TextPrompterDisplaySettingsStore.get(context, lower).transposeSemitones)
+    }
+
+    @Test
     fun invalidAndOutOfRangeValuesLoadSafely() {
         val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("text-1"))
 

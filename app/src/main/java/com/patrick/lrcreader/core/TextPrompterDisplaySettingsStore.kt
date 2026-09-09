@@ -17,6 +17,7 @@ object TextPrompterDisplaySettingsStore {
 
     private const val PREFS_NAME = "text_prompter_display_settings_prefs"
     private const val TEXT_SONG_PREFIX = "text:"
+    private const val AUDIO_LYRICS_PREFIX = "audio-lyrics:"
     private const val LEGACY_NOTE_PREFIX = "note:"
     private const val JSON_KEY_ALIGNMENT = "alignment"
     private const val JSON_KEY_TRANSPOSE_SEMITONES = "transposeSemitones"
@@ -30,6 +31,11 @@ object TextPrompterDisplaySettingsStore {
         textSongId.trim()
             .takeIf { it.isNotEmpty() }
             ?.let { Key(TEXT_SONG_PREFIX + it) }
+
+    fun audioLyricsSongKey(songId: String): Key? =
+        songId.trim()
+            .takeIf { it.isNotEmpty() }
+            ?.let { Key(AUDIO_LYRICS_PREFIX + it) }
 
     fun legacyNoteKey(noteId: Long): Key = Key(LEGACY_NOTE_PREFIX + noteId)
 

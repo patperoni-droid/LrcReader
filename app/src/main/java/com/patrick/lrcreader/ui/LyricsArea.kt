@@ -50,14 +50,15 @@ fun LyricsAreaLazy(
     guidedReadingColorA: Int,
     guidedReadingColorB: Int,
     lyricsTextSize: DisplayPrefs.LyricsTextSize,
+    transposeSemitones: Int,
     onLyricsBoxHeightChange: (Int) -> Unit,
     highlightColor: Color,
     onLineClick: (index: Int, timeMs: Long) -> Unit
 ) {
     val adaptiveTokens = rememberSmpAdaptiveTokens()
     val lyricSizes = lyricsTextSizes(lyricsTextSize, adaptiveTokens.lyricsFontBoost)
-    val renderItems = remember(parsedLines) {
-        prepareLyricsRenderItems(parsedLines)
+    val renderItems = remember(parsedLines, transposeSemitones) {
+        prepareLyricsRenderItems(parsedLines, transposeSemitones)
     }
     Column(
         modifier = modifier
@@ -178,7 +179,10 @@ internal data class LyricsLineActivity(
     val isNext: Boolean
 )
 
-internal fun prepareLyricsRenderItems(lines: List<LrcLine>): List<LyricsRenderItem> =
+internal fun prepareLyricsRenderItems(
+    lines: List<LrcLine>,
+    transposeSemitones: Int
+): List<LyricsRenderItem> =
     lines.map { line ->
         val preparedDocument = if ('[' in line.text) {
             preparePrompterText(line.text)
@@ -192,7 +196,7 @@ internal fun prepareLyricsRenderItems(lines: List<LrcLine>): List<LyricsRenderIt
         LyricsRenderItem(
             line = line,
             chordProLine = preparedLine?.let {
-                buildSinglePrompterRenderLine(it, transposeSemitones = 0)
+                buildSinglePrompterRenderLine(it, transposeSemitones)
             },
             richTextEnabled = preparedDocument?.hasFormatting == true
         )

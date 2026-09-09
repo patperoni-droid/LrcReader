@@ -77,6 +77,7 @@ import com.patrick.lrcreader.core.LyricsViewMode
 import com.patrick.lrcreader.core.MidiCueDispatcher
 import com.patrick.lrcreader.core.TrackLyricsViewPrefs
 import com.patrick.lrcreader.core.TrackTimelineTempoPrefs
+import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
 import com.patrick.lrcreader.core.config.TrackSettingsStore
 import com.patrick.lrcreader.core.light.LightAction
 import com.patrick.lrcreader.core.light.LightCueAutoGenerator
@@ -722,6 +723,14 @@ fun PlayerScreen(
     var isConcertMode by remember { mutableStateOf(DisplayPrefs.isConcertMode(context)) }
     var readabilityModeEnabled by remember {
         mutableStateOf(DisplayPrefs.isLyricsReadabilityMode(context))
+    }
+    val audioLyricsDisplaySettingsKey = remember(currentSongId) {
+        currentSongId?.let(TextPrompterDisplaySettingsStore::audioLyricsSongKey)
+    }
+    val audioLyricsTransposeSemitones = remember(context, audioLyricsDisplaySettingsKey) {
+        audioLyricsDisplaySettingsKey?.let { key ->
+            TextPrompterDisplaySettingsStore.get(context, key).transposeSemitones
+        } ?: 0
     }
     var selectedViewMode by rememberSaveable(currentTrackUri) {
         mutableStateOf(
@@ -3743,6 +3752,7 @@ fun PlayerScreen(
                                     guidedReadingColorA = guidedReadingColorA,
                                     guidedReadingColorB = guidedReadingColorB,
                                     lyricsTextSize = lyricsTextSize,
+                                    transposeSemitones = audioLyricsTransposeSemitones,
                                     onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                     highlightColor = highlightColor,
                                     onLineClick = { index, timeMs ->

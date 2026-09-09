@@ -14,7 +14,7 @@ class LyricsAreaChordProIntegrationTest {
     fun normalLyricsKeepTheSimpleRenderPath() {
         val source = LrcLine(timeMs = 1_000L, text = "Je pars ce soir")
 
-        val item = prepareLyricsRenderItems(listOf(source)).single()
+        val item = prepareLyricsRenderItems(listOf(source), transposeSemitones = 0).single()
 
         assertSame(source, item.line)
         assertNull(item.chordProLine)
@@ -34,6 +34,44 @@ class LyricsAreaChordProIntegrationTest {
 
         assertEquals("Je pars ce soir", item.chordProLine?.visibleLyrics())
         assertEquals(listOf("Am", "F"), item.chordProLine?.allChords())
+    }
+
+    @Test
+    fun supportedTranspositionRangeRebuildsOnlyRenderedChords() {
+        val source = LrcLine(timeMs = 4_200L, text = "Je [C]pars")
+        val expectedChords = listOf(
+            0 to "C",
+            1 to "C#",
+            -1 to "B",
+            11 to "B",
+            -11 to "C#"
+        )
+
+        expectedChords.forEach { (transposeSemitones, expectedChord) ->
+            val item = prepareLyricsRenderItems(
+                lines = listOf(source),
+                transposeSemitones = transposeSemitones
+            ).single()
+
+            assertSame(source, item.line)
+            assertEquals("Je [C]pars", item.line.text)
+            assertEquals(4_200L, item.line.timeMs)
+            assertEquals(listOf(expectedChord), item.chordProLine?.allChords())
+            assertEquals("Je pars", item.chordProLine?.visibleLyrics())
+        }
+    }
+
+    @Test
+    fun transpositionDoesNotMoveNormalLyricsToChordProRendering() {
+        val source = LrcLine(timeMs = 2_500L, text = "Paroles normales")
+
+        val item = prepareLyricsRenderItems(
+            lines = listOf(source),
+            transposeSemitones = 11
+        ).single()
+
+        assertSame(source, item.line)
+        assertNull(item.chordProLine)
     }
 
     @Test
@@ -84,7 +122,7 @@ class LyricsAreaChordProIntegrationTest {
             LrcLine(timeMs = 3_000L, text = "Même ligne")
         )
 
-        val items = prepareLyricsRenderItems(lines)
+        val items = prepareLyricsRenderItems(lines, transposeSemitones = 0)
 
         assertEquals(lines.size, items.size)
         items.forEachIndexed { index, item ->
@@ -104,7 +142,7 @@ class LyricsAreaChordProIntegrationTest {
             LrcLine(timeMs = 3_000L, text = "Fin[C]")
         )
 
-        val items = prepareLyricsRenderItems(lines)
+        val items = prepareLyricsRenderItems(lines, transposeSemitones = 0)
 
         assertEquals(3, items.size)
         assertNull(items[0].chordProLine)
@@ -114,7 +152,10 @@ class LyricsAreaChordProIntegrationTest {
     }
 
     private fun renderItem(text: String): LyricsRenderItem =
-        prepareLyricsRenderItems(listOf(LrcLine(timeMs = 1_000L, text = text))).single()
+        prepareLyricsRenderItems(
+            lines = listOf(LrcLine(timeMs = 1_000L, text = text)),
+            transposeSemitones = 0
+        ).single()
 
     private fun PrompterChordRenderLine.visibleLyrics(): String =
         words.joinToString(separator = "") { it.lyricText }
