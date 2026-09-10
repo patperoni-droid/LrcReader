@@ -127,7 +127,9 @@ fun TextPrompterScreen(
 
     var showEditor by remember(songId) { mutableStateOf(false) }
     var editRevision by remember(songId) { mutableIntStateOf(0) }
-    val songInfo = remember(songId, editRevision) {
+    // The shared Library/Playlist editor can update a text while this reader stays composed.
+    val textSongRepositoryVersion = TextSongRepository.version.intValue
+    val songInfo = remember(songId, editRevision, textSongRepositoryVersion) {
         var result = SongInfo(title = null, content = null)
         try {
             when {
