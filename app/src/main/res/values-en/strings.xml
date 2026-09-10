@@ -541,7 +541,6 @@
     <string name="lyrics_editor_cd_save_lyrics">Save lyrics</string>
     <string name="lyrics_editor_saved_confirmation">Lyrics saved</string>
     <string name="lyrics_editor_input_label">Lyrics (one line per phrase)</string>
-    <string name="chords_palette_input_label">Chord palette (e.g.: Am, D, G, F)</string>
     <string name="prompter_format_action">Format</string>
     <string name="prompter_format_alignment_label">Alignment</string>
     <string name="prompter_alignment_start">Left</string>

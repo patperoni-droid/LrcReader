@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.patrick.lrcreader.core.PlaybackRouter
 import com.patrick.lrcreader.core.PlaylistRepository
-import com.patrick.lrcreader.core.TextPrompterChordPaletteStore
 import com.patrick.lrcreader.core.TextPrompterAlignment
 import com.patrick.lrcreader.core.TextPrompterDisplaySettings
 import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
@@ -67,48 +66,40 @@ class ScrollingTextCreationTest {
             context = context,
             title = "Texte live",
             content = "Contenu live",
-            paletteChords = listOf("Am", "F#m7", "C/E"),
             playlistName = "Set live"
         )
 
         assertNotNull(created)
         assertTrue(PlaylistRepository.getAllSongsRaw("Set live").contains(created!!.uri))
-        val key = requireNotNull(TextPrompterChordPaletteStore.textSongKey(created.id))
-        assertEquals(
-            listOf("Am", "F#m7", "C/E"),
-            TextPrompterChordPaletteStore.get(context, key)
-        )
+        assertTrue(storedPaletteValues.isEmpty())
     }
 
     @Test
-    fun `creation persists complex palette only under real text id`() {
+    fun `creation needs no manual palette state`() {
         assertTrue(storedPaletteValues.isEmpty())
 
         val created = requireNotNull(
             createScrollingText(
                 context = context,
                 title = "Accords",
-                content = "Je voulais te dire",
-                paletteChords = listOf("Dmaj7", "F#m7", "C/E")
+                content = "Je [Dmaj7]voulais [F#m7]te [C/E]dire"
             )
         )
 
-        val key = requireNotNull(TextPrompterChordPaletteStore.textSongKey(created.id))
         assertEquals(
-            listOf("Dmaj7", "F#m7", "C/E"),
-            TextPrompterChordPaletteStore.get(context, key)
+            "Je [Dmaj7]voulais [F#m7]te [C/E]dire",
+            TextSongRepository.get(context, created.id)?.content
         )
-        assertEquals(setOf("text:${created.id}"), storedPaletteValues.keys)
+        assertTrue(storedPaletteValues.isEmpty())
     }
 
     @Test
-    fun `empty palette creates no store entry and preserves manual ChordPro`() {
+    fun `creation preserves manual ChordPro without palette store entry`() {
         val created = requireNotNull(
             createScrollingText(
                 context = context,
                 title = "Saisie manuelle",
-                content = "Je [Am]voulais te dire",
-                paletteChords = emptyList()
+                content = "Je [Am]voulais te dire"
             )
         )
 
@@ -155,34 +146,23 @@ class ScrollingTextCreationTest {
     }
 
     @Test
-    fun `successive creations keep independent palette drafts`() {
+    fun `successive creations keep independent ChordPro content`() {
         val first = requireNotNull(
-            createScrollingText(context, "Premier", "Texte 1", listOf("Am", "F"))
+            createScrollingText(context, "Premier", "[Am]Texte [F]1")
         )
         val second = requireNotNull(
-            createScrollingText(context, "Second", "Texte 2", listOf("C/E"))
+            createScrollingText(context, "Second", "[C/E]Texte 2")
         )
 
-        assertEquals(
-            listOf("Am", "F"),
-            TextPrompterChordPaletteStore.get(
-                context,
-                requireNotNull(TextPrompterChordPaletteStore.textSongKey(first.id))
-            )
-        )
-        assertEquals(
-            listOf("C/E"),
-            TextPrompterChordPaletteStore.get(
-                context,
-                requireNotNull(TextPrompterChordPaletteStore.textSongKey(second.id))
-            )
-        )
+        assertEquals("[Am]Texte [F]1", TextSongRepository.get(context, first.id)?.content)
+        assertEquals("[C/E]Texte 2", TextSongRepository.get(context, second.id)?.content)
+        assertTrue(storedPaletteValues.isEmpty())
     }
 
     @Test
     fun `blank title or content is rejected`() {
-        assertNull(createScrollingText(context, "", "Contenu", listOf("Am")))
-        assertNull(createScrollingText(context, "Titre", "   ", listOf("F")))
+        assertNull(createScrollingText(context, "", "Contenu"))
+        assertNull(createScrollingText(context, "Titre", "   "))
         assertTrue(TextSongRepository.listAll(context).isEmpty())
         assertFalse(PlaylistRepository.getPlaylists().isNotEmpty())
         assertTrue(storedPaletteValues.isEmpty())

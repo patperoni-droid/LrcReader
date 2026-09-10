@@ -74,7 +74,8 @@ internal const val SCROLLING_TEXT_EDITOR_TITLE_FIELD_TAG = "scrolling_text_edito
 internal const val SCROLLING_TEXT_EDITOR_CONTENT_FIELD_TAG = "scrolling_text_editor_content"
 internal const val SCROLLING_TEXT_EDITOR_DISMISS_TAG = "scrolling_text_editor_dismiss"
 internal const val SCROLLING_TEXT_EDITOR_CONFIRM_TAG = "scrolling_text_editor_confirm"
-internal const val SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG = "scrolling_text_editor_palette"
+internal const val SCROLLING_TEXT_EDITOR_EMPTY_CHORD_BUTTON_TAG =
+    "scrolling_text_editor_empty_chord"
 internal const val SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX = "scrolling_text_editor_chord_"
 internal const val SCROLLING_TEXT_EDITOR_FORMAT_BUTTON_TAG = "scrolling_text_editor_format_button"
 internal const val SCROLLING_TEXT_EDITOR_FORMAT_PANEL_TAG = "scrolling_text_editor_format_panel"
@@ -108,9 +109,6 @@ internal fun ScrollingTextEditorDialog(
     onConfirm: () -> Unit,
     alignment: TextPrompterAlignment = TextPrompterAlignment.START,
     onAlignmentChange: (TextPrompterAlignment) -> Unit = {},
-    paletteInput: String? = null,
-    paletteChords: List<String> = emptyList(),
-    onPaletteInputChange: (String) -> Unit = {},
     transposeSemitones: Int? = null,
     onTransposeSemitonesChange: (Int) -> Unit = {}
 ) {
@@ -125,6 +123,17 @@ internal fun ScrollingTextEditorDialog(
     val visibility = scrollingTextEditorVisibility(
         isPhone, isContentFocused, isMarkupPaletteOpen, isFormatPanelOpen
     )
+    val automaticPaletteChords = remember(contentValue.text) {
+        extractPrompterChordPaletteFromText(contentValue.text)
+    }
+    val insertEmptyChord: () -> Unit = {
+        onContentValueChange(insertEmptyChordProAtSelection(contentValue))
+        contentFocusRequester.requestFocus()
+    }
+    val insertPaletteChord: (String) -> Unit = { chord ->
+        onContentValueChange(editOrInsertPrompterChord(contentValue, chord))
+        contentFocusRequester.requestFocus()
+    }
 
     fun collapsePhoneTools() {
         if (isPhone) {
@@ -153,7 +162,6 @@ internal fun ScrollingTextEditorDialog(
         val toggleAlignment: () -> Unit = {
             isFormatPanelOpen = !isFormatPanelOpen
             isMarkupPaletteOpen = false
-            contentFocusRequester.requestFocus()
         }
         val dismissEditor: () -> Unit = {
             focusManager.clearFocus(force = true)
@@ -195,37 +203,18 @@ internal fun ScrollingTextEditorDialog(
                 Spacer(Modifier.height(12.dp))
             }
 
-            if (paletteInput != null && visibility.showChords) {
-                if (visibility.showHeader) {
-                    OutlinedTextField(
-                        value = paletteInput,
-                        onValueChange = onPaletteInputChange,
-                        label = { Text(stringResource(R.string.chords_palette_input_label)) },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag(SCROLLING_TEXT_EDITOR_PALETTE_FIELD_TAG),
-                        singleLine = true
-                    )
-                }
-
-                if (isPhone) {
-                    if (paletteChords.isNotEmpty()) {
-                        if (visibility.showHeader) {
-                            Spacer(Modifier.height(6.dp))
-                        }
-                        PrompterChordPaletteRow(
-                            chords = paletteChords,
-                            onChordClick = { chord ->
-                                onContentValueChange(
-                                    editOrInsertPrompterChord(contentValue, chord)
-                                )
-                                contentFocusRequester.requestFocus()
-                            }
-                        )
-                    }
-
-                    Spacer(Modifier.height(8.dp))
-                }
+            if (
+                isPhone &&
+                visibility.showChords &&
+                !visibility.showMarkupPanel &&
+                !visibility.showAlignmentPanel
+            ) {
+                PrompterAutomaticChordPaletteRow(
+                    chords = automaticPaletteChords,
+                    onInsertEmptyChord = insertEmptyChord,
+                    onChordClick = insertPaletteChord
+                )
+                Spacer(Modifier.height(8.dp))
             }
 
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -249,15 +238,11 @@ internal fun ScrollingTextEditorDialog(
                 if (isPhone) {
                     Spacer(Modifier.weight(1f))
                 } else {
-                    if (paletteInput != null && visibility.showChords) {
-                        PrompterChordPaletteRow(
-                            chords = paletteChords,
-                            onChordClick = { chord ->
-                                onContentValueChange(
-                                    editOrInsertPrompterChord(contentValue, chord)
-                                )
-                                contentFocusRequester.requestFocus()
-                            },
+                    if (visibility.showChords) {
+                        PrompterAutomaticChordPaletteRow(
+                            chords = automaticPaletteChords,
+                            onInsertEmptyChord = insertEmptyChord,
+                            onChordClick = insertPaletteChord,
                             modifier = Modifier.weight(1f)
                         )
                     } else {
@@ -331,6 +316,41 @@ internal fun ScrollingTextEditorDialog(
             )
 
 
+        }
+    }
+}
+
+@Composable
+private fun PrompterAutomaticChordPaletteRow(
+    chords: List<String>,
+    onInsertEmptyChord: () -> Unit,
+    onChordClick: (String) -> Unit,
+    modifier: Modifier = Modifier.fillMaxWidth()
+) {
+    val insertChordDescription = stringResource(R.string.lyrics_editor_chord_action)
+    Row(modifier = modifier) {
+        TextButton(
+            onClick = onInsertEmptyChord,
+            modifier = Modifier
+                .testTag(SCROLLING_TEXT_EDITOR_EMPTY_CHORD_BUTTON_TAG)
+                .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                .focusProperties { canFocus = false }
+                .semantics { contentDescription = insertChordDescription },
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+        ) {
+            Text(
+                text = "[ ]",
+                color = Color(0xFF80CBC4),
+                fontSize = 13.sp
+            )
+        }
+        if (chords.isNotEmpty()) {
+            PrompterChordPaletteRow(
+                chords = chords,
+                onChordClick = onChordClick,
+                showBrackets = false,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }

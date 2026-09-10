@@ -149,6 +149,14 @@ class ChordProPrompterLayoutTest {
     }
 
     @Test
+    fun chordsOnlyLine_keepsEveryChordForReading() {
+        val line = render("[Am] [F] [G]").single()
+
+        assertEquals("  ", line.renderedLyrics())
+        assertEquals(listOf("Am", "F", "G"), line.allChords())
+    }
+
+    @Test
     fun chordAtEnd_createsCompactTerminalAnchor() {
         val line = render("Fin[C]").single()
         val terminalWord = line.words.last()

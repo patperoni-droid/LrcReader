@@ -96,10 +96,39 @@ class ChordProTextEditingTest {
     }
 
     @Test
-    fun paletteInputAcceptsSpacesAndPreservesComplexChordOrder() {
+    fun automaticPaletteKeepsUniqueChordsInFirstAppearanceOrder() {
         assertEquals(
-            listOf("Am", "F#m7", "C/E", "G", "Bb"),
-            parseTextPrompterChordPaletteInput(" Am F#m7 C/E; G\nAm, Bb ")
+            listOf("Am", "G", "F"),
+            extractPrompterChordPaletteFromText("[Am] texte [G]\n[Am] autre ligne\n[F] puis [G]")
         )
+    }
+
+    @Test
+    fun automaticPaletteUpdatesFromCurrentSourceTextWithoutTransposition() {
+        val initial = extractPrompterChordPaletteFromText("[Am] [G] [Am]")
+        val updated = extractPrompterChordPaletteFromText("[Am] [G] [Am] [Dm]")
+
+        assertEquals(listOf("Am", "G"), initial)
+        assertEquals(listOf("Am", "G", "Dm"), updated)
+    }
+
+    @Test
+    fun emptyChordButtonInsertsBracketsAndPlacesCaretInside() {
+        val result = insertEmptyChordProAtSelection(
+            TextFieldValue("Je pars ce soir", selection = TextRange(8))
+        )
+
+        assertEquals("Je pars []ce soir", result.text)
+        assertEquals(TextRange(9), result.selection)
+    }
+
+    @Test
+    fun emptyChordButtonPreservesSelectedLyrics() {
+        val result = insertEmptyChordProAtSelection(
+            TextFieldValue("Je pars ce soir", selection = TextRange(10, 3))
+        )
+
+        assertEquals("Je []pars ce soir", result.text)
+        assertEquals(TextRange(4), result.selection)
     }
 }

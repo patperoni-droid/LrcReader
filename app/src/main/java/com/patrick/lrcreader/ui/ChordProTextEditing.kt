@@ -3,12 +3,8 @@ package com.patrick.lrcreader.ui
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import com.patrick.lrcreader.core.PrompterTextColor
-import com.patrick.lrcreader.core.parseChordPaletteInput
 import com.patrick.lrcreader.core.parseChordPro
 import kotlin.math.min
-
-internal fun parseTextPrompterChordPaletteInput(raw: String): List<String> =
-    parseChordPaletteInput(raw.replace(Regex("""\s+"""), ","))
 
 internal fun extractPrompterChordPaletteFromText(raw: String): List<String> = buildList {
     parseChordPro(raw).lines.forEach { line ->
@@ -16,6 +12,16 @@ internal fun extractPrompterChordPaletteFromText(raw: String): List<String> = bu
             anchor.symbol.raw.takeIf { it !in this }?.let(::add)
         }
     }
+}
+
+internal fun insertEmptyChordProAtSelection(value: TextFieldValue): TextFieldValue {
+    val insertionOffset = value.selection.min.coerceIn(0, value.text.length)
+    return TextFieldValue(
+        text = value.text.substring(0, insertionOffset) +
+            "[]" +
+            value.text.substring(insertionOffset),
+        selection = TextRange(insertionOffset + 1)
+    )
 }
 
 internal fun insertChordProAtSelection(

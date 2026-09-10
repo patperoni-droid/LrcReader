@@ -5,7 +5,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import com.patrick.lrcreader.core.TextPrompterChordPaletteStore
 import com.patrick.lrcreader.core.TextPrompterDisplaySettings
 import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
 import com.patrick.lrcreader.core.TextSongRepository
@@ -24,17 +23,10 @@ internal fun EditScrollingTextDialog(
     val song = remember(textSongId) {
         TextSongRepository.get(context, textSongId)
     } ?: return
-    val paletteKey = TextPrompterChordPaletteStore.textSongKey(textSongId)
     val settingsKey = TextPrompterDisplaySettingsStore.textSongKey(textSongId)
     var title by remember(textSongId) { mutableStateOf(song.title) }
     var contentValue by remember(textSongId) {
         mutableStateOf(TextFieldValue(song.content, TextRange(song.content.length)))
-    }
-    var paletteInput by remember(textSongId) {
-        mutableStateOf(
-            paletteKey?.let { TextPrompterChordPaletteStore.get(context, it) }
-                .orEmpty().joinToString(" ")
-        )
     }
     var alignment by remember(textSongId) {
         mutableStateOf(
@@ -65,11 +57,6 @@ internal fun EditScrollingTextDialog(
                     title = title.trim(),
                     content = contentValue.text.trim()
                 )
-                paletteKey?.let {
-                    TextPrompterChordPaletteStore.save(
-                        context, it, parseTextPrompterChordPaletteInput(paletteInput)
-                    )
-                }
                 settingsKey?.let {
                     TextPrompterDisplaySettingsStore.saveAlignment(
                         context, it, alignment
@@ -77,9 +64,6 @@ internal fun EditScrollingTextDialog(
                 }
                 onSaved()
             }
-        },
-        paletteInput = paletteInput,
-        paletteChords = parseTextPrompterChordPaletteInput(paletteInput),
-        onPaletteInputChange = { paletteInput = it }
+        }
     )
 }

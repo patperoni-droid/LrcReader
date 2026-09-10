@@ -487,7 +487,6 @@
     <string name="lyrics_editor_cd_save_lyrics">Guardar letras</string>
     <string name="lyrics_editor_saved_confirmation">Letras guardadas</string>
     <string name="lyrics_editor_input_label">Letras (una línea por frase)</string>
-    <string name="chords_palette_input_label">Paleta de acordes (ej.: Am, D, G, F)</string>
     <string name="prompter_format_action">Formato</string>
     <string name="prompter_format_alignment_label">Alineación</string>
     <string name="prompter_alignment_start">Izquierda</string>

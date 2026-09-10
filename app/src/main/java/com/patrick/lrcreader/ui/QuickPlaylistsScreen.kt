@@ -120,7 +120,6 @@ import com.patrick.lrcreader.core.setGroupColorArgb
 import com.patrick.lrcreader.core.shouldIncludeCurrentTrackInNewLiveList
 import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.core.TextPrompterAlignment
-import com.patrick.lrcreader.core.TextPrompterChordPaletteStore
 import com.patrick.lrcreader.core.TextPrompterDisplaySettings
 import com.patrick.lrcreader.core.TextPrompterDisplaySettingsStore
 import com.patrick.lrcreader.core.config.PlaylistStateStore
@@ -469,14 +468,12 @@ fun QuickPlaylistsScreen(
     var showCreateTextDialog by remember { mutableStateOf(false) }
     var newTextTitle by remember { mutableStateOf("") }
     var newTextContentValue by remember { mutableStateOf(TextFieldValue()) }
-    var newTextPaletteInput by remember { mutableStateOf("") }
     var newTextAlignment by remember { mutableStateOf(TextPrompterAlignment.START) }
 // ✅ dialog édition titre texte (prompteur)
     var showEditTextDialog by remember { mutableStateOf(false) }
     var editTargetUri by remember { mutableStateOf<String?>(null) }
     var editTextTitle by remember { mutableStateOf("") }
     var editTextContentValue by remember { mutableStateOf(TextFieldValue()) }
-    var editTextPaletteInput by remember { mutableStateOf("") }
     var editTextAlignment by remember { mutableStateOf(TextPrompterAlignment.START) }
     // 🔹 version des notes : incrémentée quand une note change
     var notesVersion by remember { mutableStateOf(0) }
@@ -543,7 +540,6 @@ fun QuickPlaylistsScreen(
         if (openPrompterSignal > 0 && internalSelected != null) {
             newTextTitle = ""
             newTextContentValue = TextFieldValue()
-            newTextPaletteInput = ""
             newTextAlignment = TextPrompterAlignment.START
             showCreateTextDialog = true
             onConsumeOpenPrompterSignal()
@@ -1537,7 +1533,6 @@ fun QuickPlaylistsScreen(
                                 showMenu = false
                                 newTextTitle = ""
                                 newTextContentValue = TextFieldValue()
-                                newTextPaletteInput = ""
                                 newTextAlignment = TextPrompterAlignment.START
                                 showCreateTextDialog = true
                             }
@@ -3304,12 +3299,6 @@ fun QuickPlaylistsScreen(
                                                             text = content,
                                                             selection = TextRange(content.length)
                                                         )
-                                                        editTextPaletteInput =
-                                                            TextPrompterChordPaletteStore.get(
-                                                                context,
-                                                                TextPrompterChordPaletteStore
-                                                                    .legacyNoteKey(numericId)
-                                                            ).joinToString(" ")
                                                         editTextAlignment =
                                                             TextPrompterDisplaySettingsStore.get(
                                                                 context,
@@ -3324,14 +3313,6 @@ fun QuickPlaylistsScreen(
                                                             text = content,
                                                             selection = TextRange(content.length)
                                                         )
-                                                        val paletteKey = TextPrompterChordPaletteStore
-                                                            .textSongKey(idPart)
-                                                        editTextPaletteInput = paletteKey
-                                                            ?.let {
-                                                                TextPrompterChordPaletteStore.get(context, it)
-                                                            }
-                                                            .orEmpty()
-                                                            .joinToString(" ")
                                                         editTextAlignment =
                                                             TextPrompterDisplaySettingsStore
                                                                 .textSongKey(idPart)
@@ -3840,17 +3821,14 @@ fun QuickPlaylistsScreen(
         show = showCreateTextDialog && internalSelected != null,
         title = newTextTitle,
         contentValue = newTextContentValue,
-        paletteInput = newTextPaletteInput,
         onTitleChange = { newTextTitle = it },
         onContentValueChange = { newTextContentValue = it },
-        onPaletteInputChange = { newTextPaletteInput = it },
         alignment = newTextAlignment,
         onAlignmentChange = { newTextAlignment = it },
         onDismiss = {
             showCreateTextDialog = false
             newTextTitle = ""
             newTextContentValue = TextFieldValue()
-            newTextPaletteInput = ""
             newTextAlignment = TextPrompterAlignment.START
         },
         onConfirm = {
@@ -3859,7 +3837,6 @@ fun QuickPlaylistsScreen(
                 context = context,
                 title = newTextTitle,
                 content = newTextContentValue.text,
-                paletteChords = parseTextPrompterChordPaletteInput(newTextPaletteInput),
                 displaySettings = TextPrompterDisplaySettings(newTextAlignment),
                 playlistName = playlist
             ) ?: return@CreateScrollingTextDialog
@@ -3867,7 +3844,6 @@ fun QuickPlaylistsScreen(
             showCreateTextDialog = false
             newTextTitle = ""
             newTextContentValue = TextFieldValue()
-            newTextPaletteInput = ""
             newTextAlignment = TextPrompterAlignment.START
         }
     )
@@ -4031,7 +4007,6 @@ fun QuickPlaylistsScreen(
         onDismiss = {
             showEditTextDialog = false
             editTargetUri = null
-            editTextPaletteInput = ""
             editTextAlignment = TextPrompterAlignment.START
         },
         onConfirm = {
@@ -4054,11 +4029,6 @@ fun QuickPlaylistsScreen(
                             title = title,
                             content = content
                         )
-                        TextPrompterChordPaletteStore.save(
-                            context = context,
-                            key = TextPrompterChordPaletteStore.legacyNoteKey(numericId),
-                            chords = parseTextPrompterChordPaletteInput(editTextPaletteInput)
-                        )
                         TextPrompterDisplaySettingsStore.saveAlignment(
                             context = context,
                             key = TextPrompterDisplaySettingsStore.legacyNoteKey(numericId),
@@ -4074,13 +4044,6 @@ fun QuickPlaylistsScreen(
                             title = title,
                             content = content
                         )
-                        TextPrompterChordPaletteStore.textSongKey(idPart)?.let { paletteKey ->
-                            TextPrompterChordPaletteStore.save(
-                                context = context,
-                                key = paletteKey,
-                                chords = parseTextPrompterChordPaletteInput(editTextPaletteInput)
-                            )
-                        }
                         TextPrompterDisplaySettingsStore.textSongKey(idPart)?.let { settingsKey ->
                             TextPrompterDisplaySettingsStore.saveAlignment(
                                 context = context,
@@ -4096,12 +4059,8 @@ fun QuickPlaylistsScreen(
 
             showEditTextDialog = false
             editTargetUri = null
-            editTextPaletteInput = ""
             editTextAlignment = TextPrompterAlignment.START
-        },
-        paletteInput = editTextPaletteInput,
-        paletteChords = parseTextPrompterChordPaletteInput(editTextPaletteInput),
-        onPaletteInputChange = { editTextPaletteInput = it }
+        }
     )
 
 // ✅ IMPORTANT : cette accolade DOIT fermer QuickPlaylistsScreen()

@@ -100,7 +100,6 @@ import com.patrick.lrcreader.ui.EditScrollingTextDialog
 import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.createScrollingText
 import com.patrick.lrcreader.ui.clearPersistedUris
-import com.patrick.lrcreader.ui.parseTextPrompterChordPaletteInput
 import com.patrick.lrcreader.ui.PlaybackControl
 import com.patrick.lrcreader.ui.TrackGainDrawer
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
@@ -1756,7 +1755,6 @@ fun LibraryScreen(
     var showCreateScrollingTextDialog by remember { mutableStateOf(false) }
     var newScrollingTextTitle by remember { mutableStateOf("") }
     var newScrollingTextContentValue by remember { mutableStateOf(TextFieldValue()) }
-    var newScrollingTextPaletteInput by remember { mutableStateOf("") }
     var newScrollingTextAlignment by remember { mutableStateOf(TextPrompterAlignment.START) }
     var editPrompterId by remember { mutableStateOf<String?>(null) }
 
@@ -3652,7 +3650,6 @@ fun LibraryScreen(
     val openCreateScrollingTextDialog: () -> Unit = {
         newScrollingTextTitle = ""
         newScrollingTextContentValue = TextFieldValue()
-        newScrollingTextPaletteInput = ""
         newScrollingTextAlignment = TextPrompterAlignment.START
         showCreateScrollingTextDialog = true
     }
@@ -5807,17 +5804,14 @@ fun LibraryScreen(
                 show = showCreateScrollingTextDialog,
                 title = newScrollingTextTitle,
                 contentValue = newScrollingTextContentValue,
-                paletteInput = newScrollingTextPaletteInput,
                 onTitleChange = { newScrollingTextTitle = it },
                 onContentValueChange = { newScrollingTextContentValue = it },
-                onPaletteInputChange = { newScrollingTextPaletteInput = it },
                 alignment = newScrollingTextAlignment,
                 onAlignmentChange = { newScrollingTextAlignment = it },
                 onDismiss = {
                     showCreateScrollingTextDialog = false
                     newScrollingTextTitle = ""
                     newScrollingTextContentValue = TextFieldValue()
-                    newScrollingTextPaletteInput = ""
                     newScrollingTextAlignment = TextPrompterAlignment.START
                 },
                 onConfirm = {
@@ -5825,9 +5819,6 @@ fun LibraryScreen(
                         context = context,
                         title = newScrollingTextTitle,
                         content = newScrollingTextContentValue.text,
-                        paletteChords = parseTextPrompterChordPaletteInput(
-                            newScrollingTextPaletteInput
-                        ),
                         displaySettings = TextPrompterDisplaySettings(
                             newScrollingTextAlignment
                         ),
@@ -5837,7 +5828,6 @@ fun LibraryScreen(
                     showCreateScrollingTextDialog = false
                     newScrollingTextTitle = ""
                     newScrollingTextContentValue = TextFieldValue()
-                    newScrollingTextPaletteInput = ""
                     newScrollingTextAlignment = TextPrompterAlignment.START
                 }
             )
