@@ -30,7 +30,6 @@ class LyricsEditorDisposePersistenceTest {
         assertTrue(
             shouldFlushLyricsDraftOnEditorDispose(
                 currentTrackUri = "file:///runtime/tracks/song/audio.mp3",
-                showChordPalette = false,
                 lastPersistedSignature = "old",
                 currentSignature = "new"
             )
@@ -38,23 +37,33 @@ class LyricsEditorDisposePersistenceTest {
     }
 
     @Test
-    fun unchangedLyricsAndChordEditorDoNotTriggerExtraFlush() {
+    fun unchangedLyricsDoNotTriggerExtraFlush() {
         assertFalse(
             shouldFlushLyricsDraftOnEditorDispose(
                 currentTrackUri = "file:///runtime/tracks/song/audio.mp3",
-                showChordPalette = false,
                 lastPersistedSignature = "same",
                 currentSignature = "same"
             )
         )
-        assertFalse(
-            shouldFlushLyricsDraftOnEditorDispose(
-                currentTrackUri = "file:///runtime/tracks/song/audio.mp3",
-                showChordPalette = true,
-                lastPersistedSignature = "old",
-                currentSignature = "new"
-            )
-        )
+    }
+
+    @Test
+    fun editorUsesContiguousLyricsAndSyncTabIndexes() {
+        assertEquals(0, LYRICS_EDITOR_TAB_LYRICS)
+        assertEquals(1, LYRICS_EDITOR_TAB_SYNC)
+        assertEquals(LYRICS_EDITOR_TAB_LYRICS, normalizeLyricsEditorTab(0))
+        assertEquals(LYRICS_EDITOR_TAB_SYNC, normalizeLyricsEditorTab(1))
+    }
+
+    @Test
+    fun legacySyncTabIndexIsRestoredAsCurrentSyncTab() {
+        assertEquals(LYRICS_EDITOR_TAB_SYNC, normalizeLyricsEditorTab(2))
+    }
+
+    @Test
+    fun invalidEditorTabIndexFallsBackToLyrics() {
+        assertEquals(LYRICS_EDITOR_TAB_LYRICS, normalizeLyricsEditorTab(-1))
+        assertEquals(LYRICS_EDITOR_TAB_LYRICS, normalizeLyricsEditorTab(99))
     }
 
     @Test

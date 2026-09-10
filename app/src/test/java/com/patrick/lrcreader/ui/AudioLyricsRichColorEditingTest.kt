@@ -2,12 +2,9 @@ package com.patrick.lrcreader.ui
 
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
-import com.patrick.lrcreader.core.PrompterRichTextStyle
 import com.patrick.lrcreader.core.PrompterTextColor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -100,29 +97,4 @@ class AudioLyricsRichColorEditingTest {
         )
     }
 
-    @Test
-    fun previewUsesCurrentLineAndExistingPrompterRendering() {
-        val value = TextFieldValue(
-            "normal\nJe [Am]<c=red>pars</c> *ce* **soir**",
-            TextRange(20)
-        )
-        val preview = buildAudioLyricsRichPreviewLine(value, transposeSemitones = 2)
-
-        assertNotNull(preview)
-        assertEquals("Je pars ce soir", preview!!.lyricText)
-        assertEquals("Bm", preview.words.flatMap { it.runs }.flatMap { it.chords }.single())
-        assertTrue(preview.spans.any { it.style == PrompterRichTextStyle.Bold })
-        assertTrue(preview.spans.any { it.style == PrompterRichTextStyle.Italic })
-        assertTrue(
-            preview.spans.any {
-                it.style == PrompterRichTextStyle.ForegroundColor(PrompterTextColor.RED)
-            }
-        )
-        assertNull(
-            buildAudioLyricsRichPreviewLine(
-                TextFieldValue("[Couplet] texte", TextRange(3)),
-                transposeSemitones = 0
-            )
-        )
-    }
 }

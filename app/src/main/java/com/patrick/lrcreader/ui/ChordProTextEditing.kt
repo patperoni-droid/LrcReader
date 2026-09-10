@@ -5,7 +5,6 @@ import androidx.compose.ui.text.input.TextFieldValue
 import com.patrick.lrcreader.core.PrompterTextColor
 import com.patrick.lrcreader.core.parseChordPaletteInput
 import com.patrick.lrcreader.core.parseChordPro
-import com.patrick.lrcreader.core.preparePrompterText
 import kotlin.math.min
 
 internal fun parseTextPrompterChordPaletteInput(raw: String): List<String> =
@@ -93,24 +92,6 @@ internal fun canEditPrompterColor(value: TextFieldValue): Boolean {
     }
 }
 
-internal fun selectedPrompterSourceLine(value: TextFieldValue): String {
-    if (value.text.isEmpty()) return ""
-    val offset = value.selection.min.coerceIn(0, value.text.length)
-    val lineStart = value.text.lastIndexOf('\n', offset - 1) + 1
-    val lineEnd = value.text.indexOf('\n', offset).let { if (it < 0) value.text.length else it }
-    return value.text.substring(lineStart, lineEnd).removeSuffix("\r")
-}
-
-internal fun buildAudioLyricsRichPreviewLine(
-    value: TextFieldValue,
-    transposeSemitones: Int
-): PrompterChordRenderLine? {
-    val prepared = preparePrompterText(selectedPrompterSourceLine(value))
-    val line = prepared.lines.singleOrNull() ?: return null
-    if (!line.hasFormatting && !line.hasChords) return null
-    return buildSinglePrompterRenderLine(line, transposeSemitones)
-}
-
 internal fun applyPrompterColor(
     value: TextFieldValue,
     color: PrompterTextColor,
@@ -166,13 +147,15 @@ internal fun applyPrompterColor(
 
 /** Palette action: a caret inside an existing valid chord edits that chord. */
 internal fun editOrInsertPrompterChord(value: TextFieldValue, chord: String): TextFieldValue {
-    val anchor = selectedPrompterChordAnchor(value)
-        ?: return insertChordProAtSelection(value, chord)
-    val tag = "[${chord.trim()}]"
+    val normalizedChord = chord.trim()
+    val tag = "[$normalizedChord]"
     if (!parseChordPro(tag).hasChords) return value
-    val start = anchor.sourceRange.first
+    val replacementRange = selectedPrompterChordAnchor(value)?.sourceRange
+        ?: emptyChordBracketsAtCaret(value)
+        ?: return insertChordProAtSelection(value, normalizedChord)
+    val start = replacementRange.first
     return TextFieldValue(
-        value.text.replaceRange(start, anchor.sourceRange.last + 1, tag),
+        value.text.replaceRange(start, replacementRange.last + 1, tag),
         TextRange(start + tag.length)
     )
 }
@@ -192,6 +175,21 @@ private fun selectedPrompterChordAnchor(value: TextFieldValue) =
         if (value.selection.collapsed) value.selection.start > start && value.selection.start < end
         else value.selection.min == start && value.selection.max == end
     }
+
+private fun emptyChordBracketsAtCaret(value: TextFieldValue): IntRange? {
+    if (!value.selection.collapsed) return null
+    val caret = value.selection.start.coerceIn(0, value.text.length)
+    return if (
+        caret > 0 &&
+        caret < value.text.length &&
+        value.text[caret - 1] == '[' &&
+        value.text[caret] == ']'
+    ) {
+        (caret - 1)..caret
+    } else {
+        null
+    }
+}
 
 private fun removeMarkupRanges(value: TextFieldValue, ranges: List<IntRange>): TextFieldValue {
     if (ranges.isEmpty()) return value

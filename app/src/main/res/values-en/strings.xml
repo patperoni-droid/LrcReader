@@ -441,7 +441,7 @@
     <string name="lyrics_none">No lyrics</string>
     <string name="chords_none">No chords</string>
     <string name="player_view_lyrics">Lyrics</string>
-    <string name="player_view_chords">Chords</string>
+    <string name="player_view_chords">Chord Grid</string>
     <string name="player_chords_file_missing">Chords file not found</string>
 
     <string name="player_cd_prev">Previous</string>
@@ -536,13 +536,11 @@
     <!-- Lyrics editor section -->
     <string name="lyrics_editor_tab_lyrics">Lyrics</string>
     <string name="lyrics_editor_tab_lyrics_short">Lyrics</string>
-    <string name="lyrics_editor_tab_chords_short">Ch.</string>
     <string name="lyrics_editor_tab_sync">Sync</string>
     <string name="lyrics_editor_tab_sync_short">Sync</string>
     <string name="lyrics_editor_cd_save_lyrics">Save lyrics</string>
     <string name="lyrics_editor_saved_confirmation">Lyrics saved</string>
     <string name="lyrics_editor_input_label">Lyrics (one line per phrase)</string>
-    <string name="chords_editor_input_label">Chords (one line per chord)</string>
     <string name="chords_palette_input_label">Chord palette (e.g.: Am, D, G, F)</string>
     <string name="prompter_format_action">Format</string>
     <string name="prompter_format_alignment_label">Alignment</string>
@@ -551,7 +549,6 @@
     <string name="lyrics_editor_cd_sync_play_pause">Sync play/pause</string>
     <string name="lyrics_editor_cd_back_to_start">Back to start</string>
     <string name="lyrics_editor_reset_tags">Reset tags</string>
-    <string name="chords_editor_clear_all">Clear all</string>
     <string name="lyrics_editor_empty_sync_hint">Add lyrics first in the Simple tab.</string>
     <string name="lyrics_editor_tag_button">TAG</string>
     <string name="lyrics_editor_cd_play_from_line">Play from this line</string>
@@ -1290,14 +1287,6 @@ And that’s it!
 
 Don’t forget to save 😉</string>
     <string name="lyrics_editor_hint_do_not_show_again">Do not show again</string>
-    <string name="chords_editor_hint_title">Chord synchronization</string>
-    <string name="chords_editor_hint_message">Start the music, then tap your chords at the right moment to synchronize them.
-
-Don’t forget to save.</string>
-    <string name="chords_editor_hint_do_not_show_again">Do not show again</string>
-    <string name="chords_editor_help_action">Help</string>
-    <string name="chords_editor_help_title">Chord help</string>
-    <string name="chords_editor_help_message">• Tap a chord in the palette to capture it.\n• If the track is stopped, the first tag also starts playback.\n• Tap an existing chord to edit it.\n• Long-press a chord for extra actions when available.\n• Use Save to store your changes.</string>
     <string name="lyrics_editor_unsaved_changes_title">Unsaved changes</string>
     <string name="lyrics_editor_unsaved_changes_message">You have unsaved changes. What do you want to do?</string>
     <string name="lyrics_editor_discard_changes">Discard and close</string>

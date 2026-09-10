@@ -402,7 +402,7 @@
     <string name="lyrics_none">Sin letras</string>
     <string name="chords_none">Sin acordes</string>
     <string name="player_view_lyrics">Letras</string>
-    <string name="player_view_chords">Acordes</string>
+    <string name="player_view_chords">Cuadrícula</string>
     <string name="player_chords_file_missing">Archivo de acordes no encontrado</string>
 
     <string name="player_cd_prev">Anterior</string>
@@ -482,13 +482,11 @@
     <!-- Lyrics editor section -->
     <string name="lyrics_editor_tab_lyrics">Letras</string>
     <string name="lyrics_editor_tab_lyrics_short">Letras</string>
-    <string name="lyrics_editor_tab_chords_short">Acor.</string>
-    <string name="lyrics_editor_tab_sync">Sync</string>
-    <string name="lyrics_editor_tab_sync_short">Sync</string>
+    <string name="lyrics_editor_tab_sync">Sinc.</string>
+    <string name="lyrics_editor_tab_sync_short">Sinc.</string>
     <string name="lyrics_editor_cd_save_lyrics">Guardar letras</string>
     <string name="lyrics_editor_saved_confirmation">Letras guardadas</string>
     <string name="lyrics_editor_input_label">Letras (una línea por frase)</string>
-    <string name="chords_editor_input_label">Acordes (una línea por acorde)</string>
     <string name="chords_palette_input_label">Paleta de acordes (ej.: Am, D, G, F)</string>
     <string name="prompter_format_action">Formato</string>
     <string name="prompter_format_alignment_label">Alineación</string>
@@ -497,7 +495,6 @@
     <string name="lyrics_editor_cd_sync_play_pause">Sync reproducir/pausar</string>
     <string name="lyrics_editor_cd_back_to_start">Volver al inicio</string>
     <string name="lyrics_editor_reset_tags">Restablecer marcas</string>
-    <string name="chords_editor_clear_all">Borrar todo</string>
     <string name="lyrics_editor_empty_sync_hint">Primero agrega letras en la pestaña Simple.</string>
     <string name="lyrics_editor_tag_button">TAG</string>
     <string name="lyrics_editor_cd_play_from_line">Reproducir desde esta línea</string>
@@ -1204,14 +1201,6 @@ Puedes modificar tu texto en cualquier momento.
 
 No olvides guardar 😉</string>
     <string name="lyrics_editor_hint_do_not_show_again">No volver a mostrar</string>
-    <string name="chords_editor_hint_title">Sincronización de acordes</string>
-    <string name="chords_editor_hint_message">Pon la música y toca tus acordes en el momento adecuado para sincronizarlos.
-
-No olvides guardar.</string>
-    <string name="chords_editor_hint_do_not_show_again">No volver a mostrar</string>
-    <string name="chords_editor_help_action">Ayuda</string>
-    <string name="chords_editor_help_title">Ayuda de acordes</string>
-    <string name="chords_editor_help_message">• Toca un acorde de la paleta para capturarlo.\n• Si la pista está detenida, la primera marca también inicia la reproducción.\n• Toca un acorde existente para editarlo.\n• Mantén pulsado un acorde para ver acciones adicionales si están disponibles.\n• Usa Guardar para registrar tus cambios.</string>
     <string name="lyrics_editor_unsaved_changes_title">Cambios no guardados</string>
     <string name="lyrics_editor_unsaved_changes_message">Tienes cambios no guardados. ¿Qué quieres hacer?</string>
     <string name="lyrics_editor_discard_changes">Salir sin guardar</string>

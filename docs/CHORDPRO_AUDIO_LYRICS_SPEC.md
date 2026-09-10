@@ -2,43 +2,58 @@
 
 ## Objectif
 
-Ajouter la prise en charge de ChordPro dans le Lecteur audio > Paroles de MusiMio, en réutilisant autant que possible le moteur et les composants déjà validés dans le Prompteur.
+Ajouter la prise en charge de ChordPro dans le Lecteur audio > Lyrics de MusiMio, en réutilisant autant que possible le moteur et les composants déjà validés dans le Prompteur.
 
-L’objectif est d’obtenir des paroles synchronisées avec la musique pouvant contenir des accords ChordPro, sans casser le fonctionnement actuel du Lecteur audio, de la synchronisation des paroles ni de l’onglet Accords existant.
+L’objectif est d’obtenir un contenu musical textuel synchronisé pouvant réunir paroles, accords ChordPro et formatage riche, sans casser le fonctionnement actuel du Lecteur audio ni la synchronisation.
 
-## Structure actuelle à conserver
+L’architecture cible repose sur :
 
-Dans l’écran d’édition des paroles du Lecteur audio, trois onglets existent actuellement :
+* une seule source éditable de contenu : `Lyrics` ;
+* une seule source de timing : `Sync` ;
+* une vue de lecture dérivée : `Grille`.
 
-* Paroles
-* Accords
-* Synchro
+## Architecture cible des vues
 
-Ces trois onglets doivent être conservés.
+Cette architecture remplace les règles antérieures qui conservaient un éditeur de grille d’accords indépendant.
 
-### Onglet Accords
+### Éditeur : `Lyrics | Sync`
 
-L’onglet Accords conserve son rôle actuel.
+L’éditeur doit proposer deux onglets :
 
-Il sert à saisir et afficher une grille d’accords seule, sans paroles.
+* `Lyrics` pour le contenu musical textuel ;
+* `Sync` pour les timestamps des lignes de ce contenu.
 
-Cette grille peut être synchronisée avec la musique.
+L’ancien onglet d’édition `Grille` / `Accords` est obsolète dans l’architecture cible et doit être supprimé à terme.
 
-Il ne faut pas transformer cet onglet en éditeur ChordPro.
+`Lyrics` est l’unique source éditable. Il peut contenir :
 
-Exemple :
+* des paroles seules ;
+* des paroles accompagnées d’accords ChordPro ;
+* des accords seuls sous forme ChordPro ;
+* du formatage riche.
+
+### Synchronisation : `Sync`
+
+`Sync` reste dédié aux timings. Il doit pouvoir synchroniser chaque ligne de `Lyrics`, quel que soit son contenu.
+
+Une ligne contenant uniquement des accords peut donc recevoir un timestamp comme une ligne de paroles normale :
 
 ```text
-Am    F
-C     G
-Am    F
+[Am] [F] [G]
 ```
 
-Cette fonction reste utile pour les musiciens qui souhaitent uniquement suivre des accords pendant la lecture audio.
+### Lecteur : `Lyrics | Grille`
 
-## ChordPro appartient à l’onglet Paroles
+Le Lecteur conserve deux vues :
 
-La prise en charge de ChordPro doit être ajoutée dans l’onglet Paroles.
+* `Lyrics`, qui affiche le contenu complet avec paroles, accords ChordPro et formatage riche ;
+* `Grille`, qui affiche une projection en lecture seule des accords ChordPro extraits de `Lyrics`.
+
+La vue `Grille` ne constitue pas une seconde source d’accords et ne possède pas de contenu éditable indépendant.
+
+## ChordPro appartient à `Lyrics`
+
+La prise en charge de ChordPro doit être intégrée à `Lyrics`.
 
 Exemple :
 
@@ -47,14 +62,12 @@ Je [Am]pars ce soir
 Sans [F]savoir où je vais
 ```
 
-Dans ce mode :
+Dans ce contenu :
 
-* le texte reste une parole ;
+* le texte source reste dans `Lyrics` ;
 * les accords ChordPro sont intégrés dans le texte ;
 * les accords sont rendus visuellement avec les paroles ;
-* la synchronisation reste celle des paroles existantes.
-
-L’onglet Accords indépendant et le ChordPro dans Paroles doivent être considérés comme deux fonctionnalités différentes et complémentaires.
+* la synchronisation reste celle des lignes `Lyrics` existantes.
 
 ## Ne pas modifier la logique de synchronisation audio
 
@@ -101,39 +114,102 @@ Objectif :
 
 Une correction future du moteur doit pouvoir bénéficier au Prompteur et au Lecteur audio.
 
-## Interface téléphone
+## Palette d’accords automatique dans `Lyrics`
 
-Le téléphone reste prioritaire dans MusiMio.
+La palette d’accords doit être disponible dans `Lyrics` sur téléphone et sur tablette.
 
-La zone disponible pour éditer les paroles est réduite.
+Elle est construite automatiquement à partir des accords ChordPro reconnus dans le contenu du morceau. Elle doit :
 
-Il ne faut donc pas ajouter une nouvelle barre complète qui réduirait fortement la hauteur du champ texte.
+* contenir une seule occurrence de chaque accord unique ;
+* conserver de préférence l’ordre de première apparition ;
+* se mettre à jour lorsqu’un nouvel accord reconnu apparaît dans `Lyrics` ;
+* ne jamais devenir une source de données indépendante.
 
-### Palette d’accords
+### Apparition immédiate dans la palette
 
-Sur téléphone :
+Dès qu’un nouvel accord ChordPro reconnu est saisi ou inséré dans `Lyrics`, il doit apparaître automatiquement dans la palette.
 
-**ne pas afficher la palette complète d’accords.**
+Aucune validation supplémentaire ni action manuelle ne doit être nécessaire.
 
-L’utilisateur peut :
+Exemple :
 
-* saisir manuellement les balises ChordPro ;
-* coller du texte ChordPro ;
-* utiliser les outils d’édition disponibles dans la barre compacte.
+Palette actuelle :
 
-Exemples :
+`Am   G   F`
+
+L’utilisateur saisit pour la première fois :
+
+`[Dm]`
+
+La palette devient immédiatement :
+
+`Am   G   F   Dm`
+
+Si le morceau contient ensuite plusieurs occurrences de `Dm`, l’accord ne doit apparaître qu’une seule fois dans la palette.
+
+L’objectif est que l’utilisateur comprenne naturellement le fonctionnement de la palette en voyant les nouveaux accords y apparaître au fur et à mesure de la saisie.
+
+Exemple : si `Am`, `G`, `F` et `C` apparaissent plusieurs fois, la palette affiche uniquement :
 
 ```text
-[Am]
-[F]
-[G7]
+Am   G   F   C
 ```
 
-La palette d’accords complète est réservée à la tablette dans cette première version.
+Un appui sur un accord doit permettre de l’insérer au curseur ou de remplacer l’accord existant lorsque le curseur se trouve déjà dans une balise d’accord, en réutilisant le comportement validé dans le Prompteur.
+
+### Insertion intelligente depuis la palette
+
+Lorsqu’un utilisateur touche un accord dans la palette, MusiMio doit adapter le comportement à la position du curseur.
+
+#### Cas 1 — Curseur dans du texte normal
+
+Si le curseur est placé dans du texte normal, toucher `Am` dans la palette doit insérer :
+
+`[Am]`
+
+à la position du curseur.
+
+#### Cas 2 — Curseur entre des crochets vides
+
+Si l’utilisateur a déjà saisi :
+
+`[]`
+
+et que le curseur se trouve entre les deux crochets, toucher `Am` doit produire :
+
+`[Am]`
+
+Il ne faut pas produire :
+
+`[[Am]]`
+
+#### Cas 3 — Curseur dans un accord existant
+
+Si le curseur se trouve dans une balise d’accord existante, par exemple :
+
+`[G]`
+
+toucher `Am` dans la palette doit remplacer l’accord existant et produire :
+
+`[Am]`
+
+#### Objectif UX
+
+L’utilisateur ne doit pas avoir à se demander s’il doit saisir lui-même les crochets.
+
+La palette insère automatiquement la syntaxe ChordPro correcte.
+
+Si des crochets vides sont déjà présents, elle doit les réutiliser au lieu d’en ajouter une seconde paire.
+
+Cette logique doit reprendre autant que possible le comportement d’insertion/remplacement déjà validé dans le Prompteur.
+
+Sur téléphone, la palette peut occuper une ligne supplémentaire compacte et horizontalement défilable. Sur tablette, elle suit la même logique et profite simplement de la largeur disponible.
+
+Il ne faut pas maintenir deux moteurs de palette différents selon le type d’appareil.
 
 ## Réutilisation de la ligne « Afficher le timing »
 
-L’écran Paroles possède actuellement une ligne contenant la commande :
+L’écran `Lyrics` possède actuellement une ligne contenant la commande :
 
 **Afficher le timing**
 
@@ -231,21 +307,11 @@ Réutiliser autant que possible le système de persistance déjà validé pour l
 
 La clé doit être liée au morceau concerné et ne doit pas contaminer les autres morceaux.
 
-## Interface tablette
+## Adaptation téléphone et tablette
 
-La tablette dispose de davantage de largeur.
+Le téléphone reste prioritaire dans MusiMio et la zone de texte doit conserver suffisamment de hauteur.
 
-Elle peut donc proposer une interface plus complète.
-
-Sur tablette, il est prévu de pouvoir afficher :
-
-* les commandes de formatage ;
-* la transposition ;
-* la palette d’accords.
-
-La palette peut reprendre celle déjà utilisée dans le Prompteur.
-
-Ne pas créer une nouvelle palette différente sans nécessité.
+La barre d’édition, les commandes de formatage, la transposition et la palette automatique doivent rester compactes. La tablette peut exploiter sa largeur supplémentaire, sans introduire une logique fonctionnelle distincte.
 
 ## Rendu pendant la lecture audio
 
@@ -288,20 +354,41 @@ L’absence de balise ChordPro ne doit provoquer :
 * aucune erreur ;
 * aucune modification des timings.
 
-## Cohabitation avec l’onglet Accords
+## Dérivation de la vue `Grille`
 
-Un morceau peut potentiellement contenir :
+La vue `Grille` extrait automatiquement, ligne par ligne, les accords ChordPro présents dans `Lyrics`.
 
-* des paroles ChordPro dans l’onglet Paroles ;
-* une grille indépendante dans l’onglet Accords.
+Exemple :
 
-Ces deux données doivent pouvoir coexister.
+```text
+[00:12.50]Je [Am]pars ce [F]soir
+```
 
-Ne pas supprimer automatiquement l’une lorsque l’autre existe.
+produit dans `Grille` :
 
-Dans cette première version, il n’est pas nécessaire de fusionner les deux systèmes.
+```text
+12.50 → Am   F
+```
 
-Ils restent indépendants.
+Une ligne ne contenant que des accords reste valide :
+
+```text
+[Am] [F]
+```
+
+et produit une ligne de grille contenant :
+
+```text
+Am   F
+```
+
+La ligne de `Grille` réutilise le timestamp de la ligne `Lyrics` correspondante.
+
+Règle :
+
+**1 ligne Lyrics synchronisée → 1 ligne Grille avec le même timing.**
+
+Les accords d’une même ligne ne reçoivent pas de timestamps individuels. La vue dérivée ne cherche pas à déterminer le moment précis où chaque accord doit être joué à l’intérieur de la ligne.
 
 ## Collage de contenu
 
@@ -368,7 +455,7 @@ Cartographier le Lecteur audio et identifier :
 
 ### Étape 2 — Parsing ChordPro
 
-Connecter le moteur ChordPro déjà existant au contenu de l’onglet Paroles.
+Connecter le moteur ChordPro déjà existant au contenu de l’onglet `Lyrics`.
 
 Le texte brut doit continuer à fonctionner.
 
@@ -393,13 +480,11 @@ Ajouter :
 * commandes de formatage ;
 * contrôle de transposition.
 
-Téléphone :
+Téléphone et tablette :
 
-* pas de palette complète d’accords.
-
-Tablette :
-
-* possibilité d’afficher la palette.
+* afficher la palette automatique des accords réellement utilisés ;
+* conserver une présentation compacte ;
+* permettre un défilement horizontal de la palette si nécessaire.
 
 ### Étape 5 — Transposition et persistance
 
@@ -407,7 +492,13 @@ Réutiliser le moteur de transposition existant.
 
 Ajouter la mémorisation de la transposition par morceau.
 
-### Étape 6 — Validation générale
+### Étape 6 — Source unique et vue `Grille` dérivée
+
+Faire de `Lyrics` l’unique source éditable du contenu musical textuel.
+
+Supprimer à terme l’ancien onglet d’édition `Grille` / `Accords`, puis construire la vue `Grille` du Lecteur à partir des accords ChordPro de `Lyrics`, sans créer de second stockage ni de timings par accord.
+
+### Étape 7 — Validation générale
 
 Tester au minimum :
 
@@ -429,15 +520,16 @@ Tester au minimum :
 
 Même série de tests avec en plus :
 
-* palette d’accords ;
+* palette automatique d’accords ;
 * layout grand écran.
 
 #### Régression
 
 Vérifier :
 
-* onglet Accords ;
-* onglet Synchro ;
+* éditeur limité à `Lyrics | Sync` ;
+* vue `Grille` dérivée ;
+* onglet `Sync` ;
 * anciennes paroles ;
 * playlists ;
 * Define Next ;
@@ -452,27 +544,18 @@ Ne pas ajouter pendant ce chantier :
 * reconnaissance intelligente d’accords copiés depuis Internet ;
 * synchronisation individuelle de chaque accord ;
 * modification automatique du fichier audio selon la transposition ;
-* suppression ou remplacement de l’onglet Accords ;
 * refonte générale du Lecteur audio ;
 * nouvelles fonctions sans rapport direct avec ChordPro.
 
 ## Principe final
 
-MusiMio doit proposer deux usages distincts :
+MusiMio doit appliquer le principe suivant :
 
-### Accords
+* `Lyrics` est l’unique source de vérité pour le contenu musical textuel ;
+* `Sync` est l’unique source de timing pour les lignes ;
+* `Grille` est une vue de lecture seule dérivée automatiquement des accords ChordPro de `Lyrics`.
 
-Grille indépendante synchronisée avec la musique.
-
-Destinée notamment aux musiciens qui souhaitent uniquement suivre leurs accords.
-
-### Paroles ChordPro
-
-Paroles synchronisées contenant directement les accords.
-
-Destinées notamment aux chanteurs, guitaristes et musiciens qui souhaitent suivre texte et harmonie ensemble.
-
-Les deux systèmes doivent coexister sans se remplacer.
+Cette architecture permet les paroles seules, les paroles avec accords, les accords seuls et le formatage riche sans double saisie, divergence de contenu ni duplication des timings.
 
 ## Règle d’architecture principale
 

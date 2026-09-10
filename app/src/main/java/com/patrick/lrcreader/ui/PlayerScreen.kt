@@ -2475,8 +2475,21 @@ fun PlayerScreen(
         )
     }
 
-    // 🔁 reload accords dédiés (BackingTracks/Accords/<base>.lrc)
-    LaunchedEffect(currentTrackUri, resolvedLyricsLrcFileName, selectedViewMode) {
+    val derivedChordLines = remember(parsedLines, audioLyricsTransposeSemitones) {
+        deriveAudioLyricsChordGrid(
+            lyricsLines = parsedLines,
+            transposeSemitones = audioLyricsTransposeSemitones
+        )
+    }
+    val hasDerivedChordGrid = derivedChordLines.isNotEmpty()
+
+    // Legacy fallback: keep loading dedicated chords without making them the new source of truth.
+    LaunchedEffect(
+        currentTrackUri,
+        resolvedLyricsLrcFileName,
+        selectedViewMode,
+        hasDerivedChordGrid
+    ) {
         if (currentTrackUri == null) {
             parsedChordLines = emptyList()
             hasChordsSource = false
@@ -2498,7 +2511,11 @@ fun PlayerScreen(
                 preferredLrcFileName = resolvedLyricsLrcFileName
             )
         }
-        if (raw == null && selectedViewMode == LyricsViewMode.CHORDS) {
+        if (
+            raw == null &&
+            selectedViewMode == LyricsViewMode.CHORDS &&
+            !hasDerivedChordGrid
+        ) {
             val created = withContext(Dispatchers.IO) {
                 ensureAccordsFileExistsForTrack(
                     context = context,
@@ -2531,9 +2548,19 @@ fun PlayerScreen(
         chordsLoading = false
     }
 
-    val activeDisplayLines = if (selectedViewMode == LyricsViewMode.CHORDS) parsedChordLines else parsedLines
+    val resolvedChordGrid = remember(derivedChordLines, parsedChordLines) {
+        resolveAudioLyricsChordGrid(
+            derivedLines = derivedChordLines,
+            legacyLines = parsedChordLines
+        )
+    }
+    val activeDisplayLines = if (selectedViewMode == LyricsViewMode.CHORDS) {
+        resolvedChordGrid.lines
+    } else {
+        parsedLines
+    }
     val hasLyricsMode = hasLyricsSource || parsedLines.isNotEmpty()
-    val hasChordsMode = hasChordsSource || parsedChordLines.isNotEmpty()
+    val hasChordsMode = hasDerivedChordGrid || hasChordsSource || parsedChordLines.isNotEmpty()
     val showViewToggle = currentTrackUri != null
     val canSelectChordsMode = currentTrackUri != null
 
@@ -2546,11 +2573,23 @@ fun PlayerScreen(
         val effectivePos = (
             getPlaybackTimeDomains().assetPositionMs - totalOffsetMs
         ).coerceAtLeast(0L)
-        val idx = findActiveLrcIndex(activeDisplayLines, effectivePos)
-        currentLrcIndex = if (idx >= 0) idx else 0
+        val derivedGridActive = selectedViewMode == LyricsViewMode.CHORDS &&
+            resolvedChordGrid.usesDerivedLyrics
+        val idx = if (derivedGridActive) {
+            findActiveAudioLyricsChordGridIndex(activeDisplayLines, effectivePos)
+        } else {
+            findActiveLrcIndex(activeDisplayLines, effectivePos)
+        }
+        currentLrcIndex = if (idx >= 0 || derivedGridActive) idx else 0
     }
 
-    LaunchedEffect(selectedViewMode, parsedLines, parsedChordLines, userOffsetMs) {
+    LaunchedEffect(
+        selectedViewMode,
+        parsedLines,
+        parsedChordLines,
+        audioLyricsTransposeSemitones,
+        userOffsetMs
+    ) {
         if (selectedViewMode != LyricsViewMode.LYRICS) {
             lastMidiIndex = -1
         }
@@ -2724,8 +2763,17 @@ fun PlayerScreen(
             if (activeDisplayLines.isNotEmpty()) {
                 val totalOffsetMs = lyricsDelayMs + userOffsetMs
                 val posMs = (currentAssetPosition.toLong() - totalOffsetMs).coerceAtLeast(0L)
-                val newIndex = findActiveLrcIndex(activeDisplayLines, posMs)
-                if (newIndex >= 0 && newIndex != currentLrcIndex) {
+                val derivedGridActive = selectedViewMode == LyricsViewMode.CHORDS &&
+                    resolvedChordGrid.usesDerivedLyrics
+                val newIndex = if (derivedGridActive) {
+                    findActiveAudioLyricsChordGridIndex(activeDisplayLines, posMs)
+                } else {
+                    findActiveLrcIndex(activeDisplayLines, posMs)
+                }
+                if (
+                    newIndex != currentLrcIndex &&
+                    (newIndex >= 0 || derivedGridActive)
+                ) {
                     Log.d(
                         LYRICS_STUCK_DIAG_TAG,
                         "ACTIVE_INDEX_CHANGE ${currentLrcIndex} -> $newIndex oldText=${activeDisplayLines.getOrNull(currentLrcIndex)?.text.orEmpty()} newText=${activeDisplayLines.getOrNull(newIndex)?.text.orEmpty()} playerPositionMs=$posMs"
@@ -3073,7 +3121,7 @@ fun PlayerScreen(
                     )
                 },
                 currentEditTab = currentEditTab,
-                onCurrentEditTabChange = { currentEditTab = it },
+                onCurrentEditTabChange = { currentEditTab = normalizeLyricsEditorTab(it) },
 
                 isPlaying = isPlaying,
                 positionMs = assetPositionMs,
@@ -3141,19 +3189,6 @@ fun PlayerScreen(
                 onDeletePersisted = {
                     persistEditorLinesForMode(editingTargetMode, emptyList(), "")
                 },
-                onDraftLinesPrepared = { mode, lines ->
-                    val draftDirty = if (mode == LyricsViewMode.CHORDS) {
-                        chordsDraftDirty || (mode == editingTargetMode && editingLinesDirty)
-                    } else {
-                        lyricsDraftDirty || (mode == editingTargetMode && editingLinesDirty)
-                    }
-                    setSongEditorDraft(
-                        mode = mode,
-                        rawText = rawLyricsText,
-                        lines = lines,
-                        dirty = draftDirty
-                    )
-                },
                 onSaveEditorSession = { activeMode, activeLines, activeRawText, closeAfterSave ->
                     saveSongEditorSession(
                         activeMode = activeMode,
@@ -3162,27 +3197,8 @@ fun PlayerScreen(
                         closeAfterSave = closeAfterSave
                     )
                 },
-                currentContentMode = editingTargetMode,
-                onContentModeChange = { mode ->
-                    loadSongEditorContent(
-                        mode = mode,
-                        initialTab = if (mode == LyricsViewMode.CHORDS) 1 else 0
-                    )
-                },
                 compactEditorTabs = !compactTabletLayout,
-                inputLabelRes = if (editingTargetMode == LyricsViewMode.LYRICS) {
-                    R.string.lyrics_editor_input_label
-                } else {
-                    R.string.chords_editor_input_label
-                },
-                enableCueEditing = editingTargetMode == LyricsViewMode.LYRICS,
-                showChordPalette = editingTargetMode == LyricsViewMode.CHORDS,
                 saveAndCloseRequestToken = saveAndCloseRequestToken,
-                chordPaletteStorageKey = if (editingTargetMode == LyricsViewMode.CHORDS) {
-                    currentSongId
-                } else {
-                    null
-                },
                 lyricsTransposeSemitones = audioLyricsTransposeSemitones,
                 onLyricsTransposeSemitonesChange = ::updateAudioLyricsTransposeSemitones,
                 tabletFocusEditingMode = compactTabletLayout,
@@ -3623,21 +3639,14 @@ fun PlayerScreen(
                                 // Do not resolve the exact SAF lyrics file synchronously here:
                                 // opening the editor must stay on the UI thread and fast.
                                 editingResolvedLrcFileName = resolvedLyricsLrcFileName
-                                val initialMode = if (selectedViewMode == LyricsViewMode.CHORDS) {
-                                    LyricsViewMode.CHORDS
-                                } else {
-                                    LyricsViewMode.LYRICS
-                                }
-                                if (initialMode == LyricsViewMode.LYRICS) {
-                                    Log.d(
-                                        LYRICS_PIPELINE_TRACE_TAG,
-                                        "EDITOR_OPEN songId=${currentSongId ?: currentTrackUri.orEmpty()} source=PlayerScreen.parsedLines lineCount=${parsedLines.size} colorCount=${parsedLines.count { it.colorArgb != null }}"
-                                    )
-                                }
+                                Log.d(
+                                    LYRICS_PIPELINE_TRACE_TAG,
+                                    "EDITOR_OPEN songId=${currentSongId ?: currentTrackUri.orEmpty()} source=PlayerScreen.parsedLines lineCount=${parsedLines.size} colorCount=${parsedLines.count { it.colorArgb != null }}"
+                                )
                                 initializeSongEditorDrafts()
                                 loadSongEditorContent(
-                                    mode = initialMode,
-                                    initialTab = if (initialMode == LyricsViewMode.CHORDS) 1 else 0
+                                    mode = LyricsViewMode.LYRICS,
+                                    initialTab = LYRICS_EDITOR_TAB_LYRICS
                                 )
                                 isEditingLyrics = true
                             },
@@ -3806,14 +3815,12 @@ fun PlayerScreen(
                                     }
                                 )
                             } else {
-                                val safeChordIndex = currentLrcIndex
-                                    .coerceIn(0, (parsedChordLines.size - 1).coerceAtLeast(0))
                                 AccordsArea(
                                     modifier = Modifier.fillMaxSize(),
-                                    parsedLines = parsedChordLines,
+                                    parsedLines = resolvedChordGrid.lines,
                                     currentTrackUri = currentTrackUri,
-                                    loading = chordsLoading,
-                                    currentLrcIndex = safeChordIndex
+                                    loading = chordsLoading && !resolvedChordGrid.usesDerivedLyrics,
+                                    currentLrcIndex = currentLrcIndex
                                 )
                             }
 

@@ -405,6 +405,7 @@ internal fun PrompterTranspositionControl(
 internal fun PrompterChordPaletteRow(
     chords: List<String>,
     onChordClick: (String) -> Unit,
+    showBrackets: Boolean = true,
     modifier: Modifier = Modifier.fillMaxWidth()
 ) {
     Row(
@@ -420,7 +421,11 @@ internal fun PrompterChordPaletteRow(
                     .focusProperties { canFocus = false },
                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
             ) {
-                Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
+                Text(
+                    if (showBrackets) "[$chord]" else chord,
+                    color = Color(0xFF80CBC4),
+                    fontSize = 13.sp
+                )
             }
         }
     }

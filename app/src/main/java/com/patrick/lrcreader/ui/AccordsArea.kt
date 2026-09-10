@@ -88,9 +88,10 @@ fun AccordsArea(
             return
         }
 
-        val safeIndex = currentLrcIndex.coerceIn(0, parsedLines.lastIndex)
+        val safeIndex = currentLrcIndex.takeIf { it in parsedLines.indices } ?: -1
         val window = remember(parsedLines, safeIndex) {
-            buildChordsWindow(parsedLines, safeIndex, nextCount = 3)
+            safeIndex.takeIf { it >= 0 }
+                ?.let { buildChordsWindow(parsedLines, it, nextCount = 3) }
         }
 
         when (displayMode) {
@@ -102,7 +103,7 @@ fun AccordsArea(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    window.previous?.let { prev ->
+                    window?.previous?.let { prev ->
                         Text(
                             text = formatChord(prev.text),
                             fontFamily = ChordFont,
@@ -113,20 +114,23 @@ fun AccordsArea(
                         Spacer(Modifier.height(20.dp))
                     }
 
-                    Text(
-                        text = formatChord(window.current?.text.orEmpty()),
-                        fontFamily = ChordFont,
-                        color = Color.White,
-                        fontSize = 86.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 90.sp
-                    )
+                    window?.current?.let { current ->
+                        Text(
+                            text = formatChord(current.text),
+                            fontFamily = ChordFont,
+                            color = Color.White,
+                            fontSize = 86.sp,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 90.sp
+                        )
 
-                    Spacer(Modifier.height(24.dp))
+                        Spacer(Modifier.height(24.dp))
+                    }
 
                     val nextSizes = listOf(42.sp, 36.sp, 32.sp)
-                    window.next.forEachIndexed { i, line ->
+                    val upcomingLines = window?.next ?: parsedLines.take(3)
+                    upcomingLines.forEachIndexed { i, line ->
                         Text(
                             text = formatChord(line.text),
                             fontFamily = ChordFont,

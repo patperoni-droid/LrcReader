@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.media.MediaMetadataRetriever
 import android.net.Uri
-import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -19,8 +18,6 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -52,29 +49,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.lifecycleScope
-import com.patrick.lrcreader.core.ChordPaletteStore
 import com.patrick.lrcreader.core.CueMidiStore
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.LrcCleaner
 import com.patrick.lrcreader.core.LrcLine
 import com.patrick.lrcreader.core.LyricsViewMode
-import com.patrick.lrcreader.core.appendCapturedChordLineSorted
-import com.patrick.lrcreader.core.captureLiveChord
-import com.patrick.lrcreader.core.clearAllChordsKeepingPaletteAndLyrics
-import com.patrick.lrcreader.core.formatCapturedLiveChordLine
-import com.patrick.lrcreader.core.inferChordPaletteFromText
-import com.patrick.lrcreader.core.isLiveCaptureAllowed
-import com.patrick.lrcreader.core.insertChordAtCursor
 import com.patrick.lrcreader.core.parseLrc
-import com.patrick.lrcreader.core.parseChordPaletteInput
 import com.patrick.lrcreader.core.preparePrompterText
 import com.patrick.lrcreader.exo.BuildConfig
 import com.patrick.lrcreader.exo.R
@@ -94,12 +80,6 @@ import kotlinx.coroutines.yield
 private val INLINE_LRC_TIME_TAG_REGEX =
     Regex("""\[(\d{1,2}):(\d{1,2})(?:\.(\d{1,3}))?]""")
 
-private val CHORD_KEYBOARD_OPTIONS = KeyboardOptions(
-    capitalization = KeyboardCapitalization.None,
-    autoCorrectEnabled = false,
-    keyboardType = KeyboardType.Ascii
-)
-
 @OptIn(ExperimentalFoundationApi::class)
 private val preserveLyricsEditorViewportOnFocus = object : BringIntoViewSpec {
     // CoreTextField requests the stale selection before the tap updates the cursor position.
@@ -112,13 +92,20 @@ private val preserveLyricsEditorViewportOnFocus = object : BringIntoViewSpec {
 
 internal fun shouldFlushLyricsDraftOnEditorDispose(
     currentTrackUri: String?,
-    showChordPalette: Boolean,
     lastPersistedSignature: String?,
     currentSignature: String
-): Boolean = !showChordPalette &&
-    !currentTrackUri.isNullOrBlank() &&
+): Boolean = !currentTrackUri.isNullOrBlank() &&
     lastPersistedSignature != null &&
     lastPersistedSignature != currentSignature
+
+internal const val LYRICS_EDITOR_TAB_LYRICS = 0
+internal const val LYRICS_EDITOR_TAB_SYNC = 1
+
+internal fun normalizeLyricsEditorTab(tabIndex: Int): Int = when (tabIndex) {
+    LYRICS_EDITOR_TAB_LYRICS -> LYRICS_EDITOR_TAB_LYRICS
+    LYRICS_EDITOR_TAB_SYNC, 2 -> LYRICS_EDITOR_TAB_SYNC
+    else -> LYRICS_EDITOR_TAB_LYRICS
+}
 
 internal suspend fun persistManualLyricsSave(
     persist: suspend () -> Boolean,
@@ -178,7 +165,6 @@ private tailrec fun Context.findComponentActivity(): ComponentActivity? = when (
     else -> null
 }
 private val LRC_TIMESTAMP_HINT_REGEX = Regex("""\[\d{1,2}:\d{2}""")
-private const val FIRST_CHORD_TIME_MS = 10L
 private const val LYRICS_PLAYER_SYNC_DIAG_TAG = "LYRICS_PLAYER_SYNC_DIAG"
 private const val LYRICS_PERSIST_DIAG_TAG = "LYRICS_PERSIST_DIAG"
 private const val LYRICS_PIPELINE_TRACE_TAG = "LYRICS_PIPELINE_TRACE"
@@ -219,7 +205,7 @@ private object LyricsEditorHintPrefs {
 // ─────────────────────────────
 //  ÉDITEUR DE PAROLES
 // ─────────────────────────────
-@OptIn(ExperimentalFoundationApi::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun LyricsEditorSection(
     highlightColor: Color,
@@ -248,7 +234,6 @@ fun LyricsEditorSection(
     onPersistSucceeded: (List<LrcLine>) -> Unit,
     onPersistLines: suspend (List<LrcLine>, String) -> Boolean,
     onDeletePersisted: suspend () -> Boolean,
-    onDraftLinesPrepared: (LyricsViewMode, List<LrcLine>) -> Unit = { _, _ -> },
     onSaveEditorSession: suspend (LyricsViewMode, List<LrcLine>, String, Boolean) -> Boolean = { _, lines, rawText, closeAfterSave ->
         val persisted = if (lines.isEmpty()) {
             onDeletePersisted()
@@ -264,14 +249,8 @@ fun LyricsEditorSection(
         }
         persisted
     },
-    currentContentMode: LyricsViewMode = LyricsViewMode.LYRICS,
-    onContentModeChange: (LyricsViewMode) -> Unit = {},
     compactEditorTabs: Boolean = false,
-    inputLabelRes: Int = R.string.lyrics_editor_input_label,
-    enableCueEditing: Boolean = true,
-    showChordPalette: Boolean = false,
     saveAndCloseRequestToken: Int = 0,
-    chordPaletteStorageKey: String? = null,
     lyricsTransposeSemitones: Int = 0,
     onLyricsTransposeSemitonesChange: (Int) -> Unit = {},
     tabletFocusEditingMode: Boolean = false,
@@ -294,7 +273,7 @@ fun LyricsEditorSection(
     var saveConfirmationRequestToken by remember { mutableIntStateOf(0) }
     var showSaveConfirmation by remember { mutableStateOf(false) }
     var showTimingsInLyricsTab by remember(currentTrackUri) { mutableStateOf(false) }
-    var rawTextFieldValue by remember(currentTrackUri, showChordPalette) {
+    var rawTextFieldValue by remember(currentTrackUri) {
         mutableStateOf(
             TextFieldValue(
                 text = rawLyricsText,
@@ -302,19 +281,14 @@ fun LyricsEditorSection(
             )
         )
     }
-    var paletteInput by remember(chordPaletteStorageKey) { mutableStateOf("") }
-    var paletteChords by remember(chordPaletteStorageKey) { mutableStateOf<List<String>>(emptyList()) }
-    var lastLiveCaptureClickElapsedMs by remember { mutableStateOf<Long?>(null) }
-    var pendingCapturedLine by remember { mutableStateOf<LrcLine?>(null) }
-    var highlightedCapturedIndex by remember { mutableStateOf<Int?>(null) }
-
     var rawTextFieldFocused by remember { mutableStateOf(false) }
     var lineMenuIndex by remember { mutableStateOf<Int?>(null) }
     var lineMenuText by remember { mutableStateOf("") }
     var lineMenuColorArgb by remember { mutableStateOf<Int?>(null) }
     val keyboardVisible = WindowInsets.ime.getBottom(density) > 0
+    val activeEditTab = normalizeLyricsEditorTab(currentEditTab)
     val tabletLineEditFocusActive = tabletFocusEditingMode &&
-        currentEditTab != 2 &&
+        activeEditTab != LYRICS_EDITOR_TAB_SYNC &&
         rawTextFieldFocused &&
         keyboardVisible
     var selectedSyncLineIndices by remember(currentTrackUri) { mutableStateOf<Set<Int>>(emptySet()) }
@@ -322,9 +296,7 @@ fun LyricsEditorSection(
     var showEditorHintDialog by remember { mutableStateOf(false) }
     var editorHintDoNotShowAgain by remember { mutableStateOf(false) }
     var hasShownEditorHintThisSession by remember { mutableStateOf(false) }
-    var showChordHelpDialog by remember { mutableStateOf(false) }
-    var lastAutoSavedLyricsSignature by remember(currentTrackUri, showChordPalette) { mutableStateOf<String?>(null) }
-    val displayedPalette = paletteChords
+    var lastAutoSavedLyricsSignature by remember(currentTrackUri) { mutableStateOf<String?>(null) }
     LaunchedEffect(saveConfirmationRequestToken) {
         if (saveConfirmationRequestToken == 0) return@LaunchedEffect
         showTemporaryLyricsSaveConfirmation { isVisible ->
@@ -343,30 +315,13 @@ fun LyricsEditorSection(
     DisposableEffect(Unit) {
         onDispose { onTabletFocusModeChange(TabletPlayerFocusMode.NONE) }
     }
-    val editorHintTitleRes = if (showChordPalette) {
-        R.string.chords_editor_hint_title
-    } else {
-        R.string.lyrics_editor_hint_title
-    }
-    val editorHintMessageRes = if (showChordPalette) {
-        R.string.chords_editor_hint_message
-    } else {
-        R.string.lyrics_editor_hint_message
-    }
-    val editorHintDoNotShowAgainRes = if (showChordPalette) {
-        R.string.chords_editor_hint_do_not_show_again
-    } else {
-        R.string.lyrics_editor_hint_do_not_show_again
-    }
+    val editorHintTitleRes = R.string.lyrics_editor_hint_title
+    val editorHintMessageRes = R.string.lyrics_editor_hint_message
+    val editorHintDoNotShowAgainRes = R.string.lyrics_editor_hint_do_not_show_again
     val lyricsTabLabelRes = if (compactEditorTabs) {
         R.string.lyrics_editor_tab_lyrics_short
     } else {
         R.string.lyrics_editor_tab_lyrics
-    }
-    val chordsTabLabelRes = if (compactEditorTabs) {
-        R.string.lyrics_editor_tab_chords_short
-    } else {
-        R.string.player_view_chords
     }
     val syncTabLabelRes = if (compactEditorTabs) {
         R.string.lyrics_editor_tab_sync_short
@@ -374,9 +329,12 @@ fun LyricsEditorSection(
         R.string.lyrics_editor_tab_sync
     }
 
-    LaunchedEffect(currentEditTab) {
+    LaunchedEffect(currentEditTab, activeEditTab) {
+        if (currentEditTab != activeEditTab) {
+            onCurrentEditTabChange(activeEditTab)
+        }
         if (
-            currentEditTab == 2 &&
+            activeEditTab == LYRICS_EDITOR_TAB_SYNC &&
             !hasShownEditorHintThisSession &&
             !LyricsEditorHintPrefs.isDismissed(context)
         ) {
@@ -422,19 +380,6 @@ fun LyricsEditorSection(
     val hasTimedLines = remember(editingLines) { editingLines.any { it.timeMs > 0L } }
     val lyricsChordPalette = remember(rawTextFieldValue.text) {
         extractPrompterChordPaletteFromText(rawTextFieldValue.text)
-    }
-
-    fun updatePalette(raw: String, persist: Boolean) {
-        paletteInput = raw
-        paletteChords = parseChordPaletteInput(raw)
-        val key = chordPaletteStorageKey
-        if (showChordPalette && persist && !key.isNullOrBlank()) {
-            if (raw.isBlank()) {
-                ChordPaletteStore.clear(context, key)
-            } else {
-                ChordPaletteStore.saveRaw(context, key, raw)
-            }
-        }
     }
 
     fun applyLinesToRawDraft(lines: List<LrcLine>) {
@@ -510,8 +455,8 @@ fun LyricsEditorSection(
         }
         if (simpleLines.isEmpty()) return emptyList()
 
-        return when (currentEditTab) {
-            0, 1 -> {
+        return when (activeEditTab) {
+            LYRICS_EDITOR_TAB_LYRICS -> {
                 if (rawHasTimestamps) {
                     parsedRawLines
                 } else if (editingLines.isEmpty()) {
@@ -528,134 +473,15 @@ fun LyricsEditorSection(
     }
 
     fun switchEditTab(targetTab: Int) {
-        if (targetTab == currentEditTab) return
+        val normalizedTarget = normalizeLyricsEditorTab(targetTab)
+        if (normalizedTarget == activeEditTab) return
 
-        if (targetTab == 2) {
+        if (normalizedTarget == LYRICS_EDITOR_TAB_SYNC) {
             val normalizedLines = buildLinesFromRawDraft()
             applyEditingLinesWithUndo(normalizedLines, updateRawDraft = false)
         }
 
-        onCurrentEditTabChange(targetTab)
-    }
-
-    fun switchContentTab(targetTab: Int, targetMode: LyricsViewMode) {
-        if (targetMode == currentContentMode) {
-            switchEditTab(targetTab)
-            return
-        }
-        val finalLines = buildPersistableLinesForCurrentDraft()
-        onDraftLinesPrepared(currentContentMode, finalLines)
-        previousEditingLines = null
-        onContentModeChange(targetMode)
-        onCurrentEditTabChange(targetTab)
-    }
-
-    fun insertChordFromPalette(chord: String) {
-        val insertion = insertChordAtCursor(
-            text = rawTextFieldValue.text,
-            selectionStart = rawTextFieldValue.selection.start,
-            selectionEnd = rawTextFieldValue.selection.end,
-            chord = chord
-        )
-        rawTextFieldValue = TextFieldValue(
-            text = insertion.text,
-            selection = TextRange(insertion.cursor)
-        )
-        onRawLyricsTextChange(insertion.text)
-    }
-
-    fun handlePaletteChordClick(chord: String) {
-        if (showChordPalette && currentEditTab == 2) {
-            if (!isPlaying) {
-                val firstChordLine = captureLiveChord(
-                    chord = chord,
-                    playerPositionMs = FIRST_CHORD_TIME_MS,
-                    compensationMs = 0L
-                )
-                val existingStartIndex = editingLines.indexOfFirst { it.timeMs in 0L..FIRST_CHORD_TIME_MS }
-                val updated = if (existingStartIndex >= 0) {
-                    editingLines.toMutableList().apply {
-                        this[existingStartIndex] = firstChordLine
-                    }
-                } else {
-                    appendCapturedChordLineSorted(
-                        current = editingLines,
-                        newLine = firstChordLine
-                    )
-                }
-                applyEditingLinesWithUndo(updated)
-                pendingCapturedLine = firstChordLine
-                runCatching { seekToMs(0L) }
-                if (durationMs > 0) {
-                    onIsPlayingChange(true)
-                    runCatching { FillerSoundManager.fadeOutAndStop(200) }
-                }
-                scope.launch {
-                    yield()
-                    if (onPersistLines(updated, rawTextFieldValue.text)) {
-                        onPersistSucceeded(updated)
-                    }
-                }
-                return
-            }
-
-            val nowElapsed = SystemClock.elapsedRealtime()
-            if (!isLiveCaptureAllowed(nowElapsed, lastLiveCaptureClickElapsedMs)) {
-                return
-            }
-            lastLiveCaptureClickElapsedMs = nowElapsed
-
-            val captured = captureLiveChord(
-                chord = chord,
-                playerPositionMs = positionMs.toLong()
-            )
-            val updated = appendCapturedChordLineSorted(
-                current = editingLines,
-                newLine = captured
-            )
-            applyEditingLinesWithUndo(updated)
-            scope.launch {
-                // Let Compose render the new tag first, then persist.
-                yield()
-                if (onPersistLines(updated, rawTextFieldValue.text)) {
-                    onPersistSucceeded(updated)
-                }
-            }
-            pendingCapturedLine = captured
-
-            if (BuildConfig.DEBUG) {
-                Log.d(
-                    "CHORDS_LIVE_CAPTURE",
-                    "captured=${formatCapturedLiveChordLine(captured)} size=${updated.size}"
-                )
-            }
-            return
-        }
-        insertChordFromPalette(chord)
-    }
-
-    LaunchedEffect(showChordPalette, currentEditTab, pendingCapturedLine, editingLines.size) {
-        val pending = pendingCapturedLine ?: return@LaunchedEffect
-        if (!showChordPalette || currentEditTab != 2) return@LaunchedEffect
-        val targetIndex = editingLines.indexOfLast { it.timeMs == pending.timeMs && it.text == pending.text }
-        if (targetIndex < 0) return@LaunchedEffect
-
-        val viewport = lazyListState.layoutInfo.viewportEndOffset - lazyListState.layoutInfo.viewportStartOffset
-        val comfortableOffset = if (viewport > 0) -viewport / 4 else 0
-        runCatching {
-            lazyListState.animateScrollToItem(
-                index = targetIndex,
-                scrollOffset = comfortableOffset
-            )
-        }
-        highlightedCapturedIndex = targetIndex
-        pendingCapturedLine = null
-    }
-
-    LaunchedEffect(highlightedCapturedIndex) {
-        if (highlightedCapturedIndex == null) return@LaunchedEffect
-        delay(900L)
-        highlightedCapturedIndex = null
+        onCurrentEditTabChange(normalizedTarget)
     }
 
     LaunchedEffect(editingLines.size) {
@@ -735,79 +561,28 @@ fun LyricsEditorSection(
         selectedSyncLineIndices = emptySet()
     }
 
-    @Composable
-    fun ChordPaletteChipsRow() {
-        if (!showChordPalette || displayedPalette.isEmpty()) return
-        FlowRow(
-            modifier = Modifier
-                .fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            displayedPalette.forEach { chord ->
-                TextButton(
-                    onClick = { handlePaletteChordClick(chord) },
-                    modifier = Modifier.defaultMinSize(minWidth = 0.dp, minHeight = 34.dp),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text("[$chord]", color = Color(0xFF80CBC4), fontSize = 13.sp)
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(showChordPalette, chordPaletteStorageKey) {
-        if (!showChordPalette) return@LaunchedEffect
-        val key = chordPaletteStorageKey
-        if (key.isNullOrBlank()) return@LaunchedEffect
-        val saved = ChordPaletteStore.loadRaw(context, key)
-        if (saved.isNotBlank()) {
-            updatePalette(saved, persist = false)
-            return@LaunchedEffect
-        }
-        val inferred = inferChordPaletteFromText(rawLyricsText)
-        if (inferred.isNotEmpty()) {
-            updatePalette(inferred.joinToString(", "), persist = true)
-            return@LaunchedEffect
-        }
-        updatePalette("", persist = false)
-    }
-
     suspend fun persistCurrentDraft(closeAfterSave: Boolean): Boolean {
         val finalLines = buildPersistableLinesForCurrentDraft()
         val finalRawText = rawTextFieldValue.text
-        if (!showChordPalette) {
-            Log.d(
-                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
-                "EDITOR_EXIT_FLUSH_START"
-            )
-            Log.d(
-                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
-                "AUTOSAVE_REQUEST reason=manual_or_exit"
-            )
-            Log.d(
-                LYRICS_PIPELINE_TRACE_TAG,
-                "SAVE_REQUEST songId=${currentSongId ?: currentTrackUri.orEmpty()} reason=manual_or_exit lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
-            )
-            Log.d(
-                LYRICS_PLAYER_SYNC_DIAG_TAG,
-                "FORCE_SAVE_BEFORE_EXIT_EDITOR songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
-            )
-        }
+        Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_START")
+        Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "AUTOSAVE_REQUEST reason=manual_or_exit")
+        Log.d(
+            LYRICS_PIPELINE_TRACE_TAG,
+            "SAVE_REQUEST songId=${currentSongId ?: currentTrackUri.orEmpty()} reason=manual_or_exit lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
+        )
+        Log.d(
+            LYRICS_PLAYER_SYNC_DIAG_TAG,
+            "FORCE_SAVE_BEFORE_EXIT_EDITOR songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
+        )
         while (isPersistBusy) {
-            if (!showChordPalette) {
-                Log.d(
-                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
-                    "AUTOSAVE_CONCURRENT_BLOCKED"
-                )
-            }
+            Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "AUTOSAVE_CONCURRENT_BLOCKED")
             delay(100L)
         }
         isPersistBusy = true
         try {
             if (finalLines.isEmpty()) {
                 val saved = onSaveEditorSession(
-                    currentContentMode,
+                    LyricsViewMode.LYRICS,
                     finalLines,
                     finalRawText,
                     closeAfterSave
@@ -817,52 +592,44 @@ fun LyricsEditorSection(
                 if (finalRawText.isEmpty()) {
                     rawTextFieldValue = TextFieldValue("", TextRange(0))
                 }
-                if (!showChordPalette) {
-                    Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_OK")
-                }
+                Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_OK")
                 return true
             }
 
             Log.d("LrcDebug", "EDITOR_SAVE currentTrackUri=$currentTrackUri lines=${finalLines.size}")
-            if (!showChordPalette) {
-                Log.d(
-                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
-                    "AUTOSAVE_START pendingChangeCount=${finalLines.size}"
-                )
-                Log.d(
-                    LYRICS_PLAYER_SYNC_DIAG_TAG,
-                    "AUTOSAVE_START reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
-                )
-            }
+            Log.d(
+                LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                "AUTOSAVE_START pendingChangeCount=${finalLines.size}"
+            )
+            Log.d(
+                LYRICS_PLAYER_SYNC_DIAG_TAG,
+                "AUTOSAVE_START reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size}"
+            )
 
             val persisted = onSaveEditorSession(
-                currentContentMode,
+                LyricsViewMode.LYRICS,
                 finalLines,
                 finalRawText,
                 closeAfterSave
             )
             if (!persisted) {
-                if (!showChordPalette) {
-                    Log.e(
-                        LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
-                        "AUTOSAVE_WRITE_FAIL exception=onPersistLines_false"
-                    )
-                    Log.e(
-                        LYRICS_PLAYER_SYNC_DIAG_TAG,
-                        "AUTOSAVE_FAIL error=onPersistLines_false reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()}"
-                    )
-                }
+                Log.e(
+                    LYRICS_AUTOSAVE_CRASH_DIAG_TAG,
+                    "AUTOSAVE_WRITE_FAIL exception=onPersistLines_false"
+                )
+                Log.e(
+                    LYRICS_PLAYER_SYNC_DIAG_TAG,
+                    "AUTOSAVE_FAIL error=onPersistLines_false reason=manual_or_exit songId=${currentSongId ?: currentTrackUri.orEmpty()}"
+                )
                 return false
             }
 
             previousEditingLines = null
-            if (!showChordPalette) {
-                Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_OK")
-                Log.d(
-                    LYRICS_PLAYER_SYNC_DIAG_TAG,
-                    "AUTOSAVE_SUCCESS songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
-                )
-            }
+            Log.d(LYRICS_AUTOSAVE_CRASH_DIAG_TAG, "EDITOR_EXIT_FLUSH_OK")
+            Log.d(
+                LYRICS_PLAYER_SYNC_DIAG_TAG,
+                "AUTOSAVE_SUCCESS songId=${currentSongId ?: currentTrackUri.orEmpty()} lineCount=${finalLines.size} colorCount=${finalLines.count { it.colorArgb != null }}"
+            )
         } finally {
             isPersistBusy = false
         }
@@ -882,12 +649,11 @@ fun LyricsEditorSection(
     }
 
     val autoSaveLyricsLines = remember(
-        showChordPalette,
         rawTextFieldValue.text,
         editingLines,
-        currentEditTab
+        activeEditTab
     ) {
-        if (showChordPalette) emptyList() else buildPersistableLinesForCurrentDraft()
+        buildPersistableLinesForCurrentDraft()
     }
     val autoSaveLyricsSignature = remember(autoSaveLyricsLines, rawTextFieldValue.text) {
         lyricsPersistenceSignature(rawTextFieldValue.text, autoSaveLyricsLines)
@@ -895,7 +661,6 @@ fun LyricsEditorSection(
     val flushOnDisposeRequired by rememberUpdatedState(
         shouldFlushLyricsDraftOnEditorDispose(
             currentTrackUri = currentTrackUri,
-            showChordPalette = showChordPalette,
             lastPersistedSignature = lastAutoSavedLyricsSignature,
             currentSignature = autoSaveLyricsSignature
         )
@@ -905,8 +670,8 @@ fun LyricsEditorSection(
     })
     val editorActivity = remember(context) { context.findComponentActivity() }
 
-    DisposableEffect(editorActivity, currentTrackUri, showChordPalette) {
-        val activeFlushHandle = if (!showChordPalette && !currentTrackUri.isNullOrBlank()) {
+    DisposableEffect(editorActivity, currentTrackUri) {
+        val activeFlushHandle = if (!currentTrackUri.isNullOrBlank()) {
             LyricsEditorPersistenceBarrier.registerActive {
                 if (flushOnDisposeRequired) persistLatestDraftOnDispose() else true
             }
@@ -925,8 +690,8 @@ fun LyricsEditorSection(
         }
     }
 
-    LaunchedEffect(currentTrackUri, showChordPalette, autoSaveLyricsSignature) {
-        if (showChordPalette || currentTrackUri.isNullOrBlank()) return@LaunchedEffect
+    LaunchedEffect(currentTrackUri, autoSaveLyricsSignature) {
+        if (currentTrackUri.isNullOrBlank()) return@LaunchedEffect
 
         if (lastAutoSavedLyricsSignature == null) {
             lastAutoSavedLyricsSignature = autoSaveLyricsSignature
@@ -1025,72 +790,45 @@ fun LyricsEditorSection(
                 .fillMaxSize()
                 .padding(horizontal = 16.dp, vertical = 6.dp)
         ) {
-        if (showEditorHintDialog || showChordHelpDialog) {
-            val isManualChordHelp = showChordHelpDialog && showChordPalette
+        if (showEditorHintDialog) {
             AlertDialog(
-                onDismissRequest = {
-                    showEditorHintDialog = false
-                    showChordHelpDialog = false
-                },
+                onDismissRequest = { showEditorHintDialog = false },
                 title = {
                     Text(
-                        text = stringResource(
-                            if (isManualChordHelp) {
-                                R.string.chords_editor_help_title
-                            } else {
-                                editorHintTitleRes
-                            }
-                        ),
+                        text = stringResource(editorHintTitleRes),
                         color = Color.White
                     )
                 },
                 text = {
                     Column {
                         Text(
-                            text = stringResource(
-                                if (isManualChordHelp) {
-                                    R.string.chords_editor_help_message
-                                } else {
-                                    editorHintMessageRes
-                                }
-                            ),
+                            text = stringResource(editorHintMessageRes),
                             color = Color(0xFFB0BEC5)
                         )
-                        if (!isManualChordHelp) {
-                            Spacer(Modifier.height(12.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = editorHintDoNotShowAgain,
-                                    onCheckedChange = { editorHintDoNotShowAgain = it }
-                                )
-                                Text(
-                                    text = stringResource(editorHintDoNotShowAgainRes),
-                                    color = Color.White
-                                )
-                            }
+                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = editorHintDoNotShowAgain,
+                                onCheckedChange = { editorHintDoNotShowAgain = it }
+                            )
+                            Text(
+                                text = stringResource(editorHintDoNotShowAgainRes),
+                                color = Color.White
+                            )
                         }
                     }
                 },
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            if (!isManualChordHelp && editorHintDoNotShowAgain) {
+                            if (editorHintDoNotShowAgain) {
                                 LyricsEditorHintPrefs.setDismissed(context, true)
                             }
                             showEditorHintDialog = false
-                            showChordHelpDialog = false
                         }
                     ) {
                         Text(
-                            text = stringResource(
-                                if (isManualChordHelp) {
-                                    R.string.common_close
-                                } else {
-                                    R.string.common_ok
-                                }
-                            ),
+                            text = stringResource(R.string.common_ok),
                             color = Color(0xFF80CBC4)
                         )
                     }
@@ -1106,36 +844,19 @@ fun LyricsEditorSection(
             ) {
                 Box(modifier = Modifier.weight(1f)) {
                     TabRow(
-                        selectedTabIndex = currentEditTab,
+                        selectedTabIndex = activeEditTab,
                         containerColor = Color.Transparent,
                         contentColor = highlightColor
                     ) {
                         Tab(
-                            selected = currentEditTab == 0,
-                            onClick = { switchContentTab(0, LyricsViewMode.LYRICS) },
+                            selected = activeEditTab == LYRICS_EDITOR_TAB_LYRICS,
+                            onClick = { switchEditTab(LYRICS_EDITOR_TAB_LYRICS) },
                             text = { Text(stringResource(lyricsTabLabelRes)) }
                         )
                         Tab(
-                            selected = currentEditTab == 1,
-                            onClick = { switchContentTab(1, LyricsViewMode.CHORDS) },
-                            text = { Text(stringResource(chordsTabLabelRes)) }
-                        )
-                        Tab(
-                            selected = currentEditTab == 2,
-                            onClick = { switchEditTab(2) },
+                            selected = activeEditTab == LYRICS_EDITOR_TAB_SYNC,
+                            onClick = { switchEditTab(LYRICS_EDITOR_TAB_SYNC) },
                             text = { Text(stringResource(syncTabLabelRes)) }
-                        )
-                    }
-                }
-
-                if (showChordPalette && currentEditTab == 2) {
-                    TextButton(
-                        onClick = { showChordHelpDialog = true }
-                    ) {
-                        Text(
-                            text = stringResource(R.string.chords_editor_help_action),
-                            color = Color(0xFF90A4AE),
-                            fontSize = 12.sp
                         )
                     }
                 }
@@ -1158,38 +879,15 @@ fun LyricsEditorSection(
             Spacer(Modifier.height(8.dp))
         }
 
-        when (currentEditTab) {
-            0, 1 -> {
+        when (activeEditTab) {
+            LYRICS_EDITOR_TAB_LYRICS -> {
                 // Onglet SIMPLE
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    if (showChordPalette) {
-                        OutlinedTextField(
-                            value = paletteInput,
-                            onValueChange = { updatePalette(it, persist = true) },
-                            modifier = Modifier.fillMaxWidth(),
-                            label = { Text(stringResource(R.string.chords_palette_input_label), color = Color.LightGray) },
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                color = Color.White,
-                                fontSize = 14.sp
-                            ),
-                            keyboardOptions = CHORD_KEYBOARD_OPTIONS,
-                            singleLine = false
-                        )
-
-                        if (displayedPalette.isNotEmpty()) {
-                            Spacer(Modifier.height(8.dp))
-                            ChordPaletteChipsRow()
-                            Spacer(Modifier.height(8.dp))
-                        } else {
-                            Spacer(Modifier.height(8.dp))
-                        }
-                    }
-
-                    if (!showChordPalette && !tabletLineEditFocusActive) {
+                    if (!tabletLineEditFocusActive) {
                         AudioLyricsChordProToolbar(
                             hasTimedLines = hasTimedLines,
                             showTimings = showTimingsInLyricsTab,
@@ -1198,16 +896,25 @@ fun LyricsEditorSection(
                             onContentValueChange = ::updateRawTextFieldValue,
                             onRequestEditorFocus = { rawTextFocusRequester.requestFocus() },
                             transposeSemitones = lyricsTransposeSemitones,
-                            onTransposeSemitonesChange = onLyricsTransposeSemitonesChange,
-                            tabletMode = adaptiveTokens.tabletMode,
+                            onTransposeSemitonesChange = onLyricsTransposeSemitonesChange
+                        )
+                    }
+                    if (shouldShowAudioLyricsChordPalette(
+                            showTimings = showTimingsInLyricsTab,
                             paletteChords = lyricsChordPalette
                         )
-                        if (!showTimingsInLyricsTab) {
-                            AudioLyricsRichTextPreview(
-                                contentValue = rawTextFieldValue,
-                                transposeSemitones = lyricsTransposeSemitones
-                            )
-                        }
+                    ) {
+                        PrompterChordPaletteRow(
+                            chords = lyricsChordPalette,
+                            onChordClick = { chord ->
+                                updateRawTextFieldValue(
+                                    editOrInsertPrompterChord(rawTextFieldValue, chord)
+                                )
+                                rawTextFocusRequester.requestFocus()
+                            },
+                            showBrackets = false,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
 
                     if (showTimingsInLyricsTab) {
@@ -1224,7 +931,7 @@ fun LyricsEditorSection(
                             ),
                             label = {
                                 Text(
-                                    stringResource(inputLabelRes),
+                                    stringResource(R.string.lyrics_editor_input_label),
                                     color = Color.LightGray
                                 )
                             }
@@ -1249,33 +956,24 @@ fun LyricsEditorSection(
                                 ),
                                 label = {
                                     Text(
-                                        stringResource(inputLabelRes),
+                                        stringResource(R.string.lyrics_editor_input_label),
                                         color = Color.LightGray
                                     )
                                 },
-                                keyboardOptions = if (showChordPalette) {
-                                    CHORD_KEYBOARD_OPTIONS
-                                } else {
-                                    KeyboardOptions.Default
-                                }
+                                keyboardOptions = KeyboardOptions.Default
                             )
                         }
                     }
                 }
             }
 
-            2 -> {
+            LYRICS_EDITOR_TAB_SYNC -> {
                 // Onglet SYNCHRO
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    if (showChordPalette && displayedPalette.isNotEmpty()) {
-                        ChordPaletteChipsRow()
-                        Spacer(Modifier.height(8.dp))
-                    }
-
                     // Reset TAGs
                     Row(
                         modifier = Modifier
@@ -1313,34 +1011,15 @@ fun LyricsEditorSection(
                         }
                         TextButton(
                             onClick = {
-                                if (showChordPalette) {
-                                    val cleared = clearAllChordsKeepingPaletteAndLyrics(
-                                        palette = displayedPalette,
-                                        lyrics = editingLines
-                                    ).clearedChordLines
-                                    applyEditingLinesWithUndo(cleared, updateRawDraft = false)
-                                    selectedSyncLineIndices = emptySet()
-                                    scope.launch {
-                                        yield()
-                                        if (onPersistLines(cleared, rawTextFieldValue.text)) {
-                                            onPersistSucceeded(cleared)
-                                        }
-                                    }
-                                } else {
-                                    applyEditingLinesWithUndo(
-                                        editingLines.map { it.copy(timeMs = 0L) },
-                                        updateRawDraft = false
-                                    )
-                                    selectedSyncLineIndices = emptySet()
-                                }
+                                applyEditingLinesWithUndo(
+                                    editingLines.map { it.copy(timeMs = 0L) },
+                                    updateRawDraft = false
+                                )
+                                selectedSyncLineIndices = emptySet()
                             }
                         ) {
                             Text(
-                                text = if (showChordPalette) {
-                                    stringResource(R.string.chords_editor_clear_all)
-                                } else {
-                                    stringResource(R.string.lyrics_editor_reset_tags)
-                                },
+                                text = stringResource(R.string.lyrics_editor_reset_tags),
                                 color = Color(0xFFFF8A80),
                                 fontSize = 11.sp
                             )
@@ -1374,8 +1053,7 @@ fun LyricsEditorSection(
                                     if (line.timeMs > 0) formatLrcTime(line.timeMs) else "--:--.--"
                                 val isSelected = index in selectedSyncLineIndices
 
-                                val hasCueForThisLine =
-                                    enableCueEditing && cuesForTrack.any { it.lineIndex == index }
+                                val hasCueForThisLine = cuesForTrack.any { it.lineIndex == index }
 
                                 Row(
                                     modifier = Modifier
@@ -1434,7 +1112,6 @@ fun LyricsEditorSection(
                                             text = line.text,
                                             color = when {
                                                 isSelected -> Color(0xFF80CBC4)
-                                                index == highlightedCapturedIndex -> Color(0xFFFFF176)
                                                 else -> line.colorArgb?.let(::Color) ?: Color.White
                                             },
                                             fontSize = 16.sp,
@@ -1513,11 +1190,7 @@ fun LyricsEditorSection(
                                         .padding(18.dp)
                                 ) {
                                     Text(
-                                        text = if (showChordPalette) {
-                                            "Modifier l’accord"
-                                        } else {
-                                            stringResource(R.string.lyrics_editor_line_dialog_title, idx + 1)
-                                        },
+                                        text = stringResource(R.string.lyrics_editor_line_dialog_title, idx + 1),
                                         color = Color.White,
                                         fontSize = 18.sp
                                     )
@@ -1529,67 +1202,55 @@ fun LyricsEditorSection(
                                             .fillMaxWidth()
                                             .heightIn(min = 116.dp),
                                         label = {
-                                            Text(
-                                                if (showChordPalette) {
-                                                    "Saisir un accord (ex: Am, F#maj7, Am/G)"
-                                                } else {
-                                                    stringResource(R.string.lyrics_editor_line_text_label)
-                                                }
-                                            )
+                                            Text(stringResource(R.string.lyrics_editor_line_text_label))
                                         },
-                                        keyboardOptions = if (showChordPalette) {
-                                            CHORD_KEYBOARD_OPTIONS
-                                        } else {
-                                            KeyboardOptions.Default
-                                        },
+                                        keyboardOptions = KeyboardOptions.Default,
                                         singleLine = false,
                                         textStyle = androidx.compose.ui.text.TextStyle(
                                             color = Color.White,
                                             fontSize = 18.sp
                                         )
                                     )
-                                    if (!showChordPalette) {
-                                        Spacer(Modifier.height(18.dp))
-                                        Text(
-                                            text = stringResource(R.string.lyrics_editor_color_section),
-                                            color = Color.White,
-                                            fontSize = 14.sp
-                                        )
-                                        Spacer(Modifier.height(10.dp))
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            colorOptions.forEach { (colorArgb, label) ->
-                                                val isSelected = lineMenuColorArgb == colorArgb
-                                                TextButton(
-                                                    onClick = { lineMenuColorArgb = colorArgb },
-                                                    modifier = Modifier.size(42.dp),
-                                                    contentPadding = PaddingValues(0.dp)
+                                    Spacer(Modifier.height(18.dp))
+                                    Text(
+                                        text = stringResource(R.string.lyrics_editor_color_section),
+                                        color = Color.White,
+                                        fontSize = 14.sp
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        colorOptions.forEach { (colorArgb, label) ->
+                                            val isSelected = lineMenuColorArgb == colorArgb
+                                            TextButton(
+                                                onClick = { lineMenuColorArgb = colorArgb },
+                                                modifier = Modifier.size(42.dp),
+                                                contentPadding = PaddingValues(0.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(34.dp)
+                                                        .background(
+                                                            color = colorArgb?.let(::Color) ?: Color.Transparent,
+                                                            shape = androidx.compose.foundation.shape.CircleShape
+                                                        )
+                                                        .border(
+                                                            width = if (isSelected) 3.dp else 1.dp,
+                                                            color = if (isSelected) Color(0xFF80CBC4) else Color(0xFF607D8B),
+                                                            shape = androidx.compose.foundation.shape.CircleShape
+                                                        ),
+                                                    contentAlignment = Alignment.Center
                                                 ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(34.dp)
-                                                            .background(
-                                                                color = colorArgb?.let(::Color) ?: Color.Transparent,
-                                                                shape = androidx.compose.foundation.shape.CircleShape
-                                                            )
-                                                            .border(
-                                                                width = if (isSelected) 3.dp else 1.dp,
-                                                                color = if (isSelected) Color(0xFF80CBC4) else Color(0xFF607D8B),
-                                                                shape = androidx.compose.foundation.shape.CircleShape
-                                                            ),
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        if (isSelected) {
-                                                            Icon(
-                                                                imageVector = Icons.Filled.Check,
-                                                                contentDescription = label,
-                                                                tint = if (colorArgb == null) Color(0xFF80CBC4) else Color.Black,
-                                                                modifier = Modifier.size(18.dp)
-                                                            )
-                                                        }
+                                                    if (isSelected) {
+                                                        Icon(
+                                                            imageVector = Icons.Filled.Check,
+                                                            contentDescription = label,
+                                                            tint = if (colorArgb == null) Color(0xFF80CBC4) else Color.Black,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
                                                     }
                                                 }
                                             }
@@ -1659,7 +1320,7 @@ fun LyricsEditorSection(
                                                         )
                                                         list[idx] = list[idx].copy(
                                                             text = lineMenuText.trim(),
-                                                            colorArgb = if (showChordPalette) list[idx].colorArgb else lineMenuColorArgb
+                                                            colorArgb = lineMenuColorArgb
                                                         )
                                                         applyEditingLinesWithUndo(list)
                                                     } else if (BuildConfig.DEBUG) {

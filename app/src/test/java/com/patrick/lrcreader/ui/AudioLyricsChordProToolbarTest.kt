@@ -18,19 +18,10 @@ class AudioLyricsChordProToolbarTest {
     }
 
     @Test
-    fun fullChordPaletteIsTabletOnly() {
-        assertFalse(
-            audioLyricsChordProToolbarVisibility(
-                hasTimedLines = true,
-                tabletMode = false
-            ).showFullChordPalette
-        )
-        assertTrue(
-            audioLyricsChordProToolbarVisibility(
-                hasTimedLines = true,
-                tabletMode = true
-            ).showFullChordPalette
-        )
+    fun automaticChordPaletteIsAvailableWheneverLyricsAreEditable() {
+        assertTrue(shouldShowAudioLyricsChordPalette(false, listOf("Am")))
+        assertFalse(shouldShowAudioLyricsChordPalette(false, emptyList()))
+        assertFalse(shouldShowAudioLyricsChordPalette(true, listOf("Am")))
     }
 
     @Test
@@ -50,8 +41,8 @@ class AudioLyricsChordProToolbarTest {
 
     @Test
     fun timingIconAvailabilityStillDependsOnTimedLyrics() {
-        assertTrue(audioLyricsChordProToolbarVisibility(true, false).showTimingControl)
-        assertFalse(audioLyricsChordProToolbarVisibility(false, false).showTimingControl)
+        assertTrue(audioLyricsChordProToolbarVisibility(true).showTimingControl)
+        assertFalse(audioLyricsChordProToolbarVisibility(false).showTimingControl)
     }
 
     @Test
@@ -62,6 +53,15 @@ class AudioLyricsChordProToolbarTest {
                 "[Couplet] Je [Am]pars [F]ce soir\n[G7]Encore [Am]"
             )
         )
+    }
+
+    @Test
+    fun paletteKeepsFirstAppearanceOrderAndUpdatesFromCurrentText() {
+        val initial = extractPrompterChordPaletteFromText("[Am] [G] [Am] [F] [G]")
+        val updated = extractPrompterChordPaletteFromText("[Am] [G] [Am] [F] [G] [Dm]")
+
+        assertEquals(listOf("Am", "G", "F"), initial)
+        assertEquals(listOf("Am", "G", "F", "Dm"), updated)
     }
 
     @Test
@@ -97,6 +97,17 @@ class AudioLyricsChordProToolbarTest {
         assertEquals("Je [G]pars", edited.text)
         assertTrue(isValidPrompterChordInput("C/E"))
         assertFalse(isValidPrompterChordInput("Couplet"))
+    }
+
+    @Test
+    fun paletteChordFillsExistingEmptyBrackets() {
+        val result = editOrInsertPrompterChord(
+            TextFieldValue("Je [] pars", TextRange(4)),
+            "Am"
+        )
+
+        assertEquals("Je [Am] pars", result.text)
+        assertEquals(TextRange(7), result.selection)
     }
 
     @Test

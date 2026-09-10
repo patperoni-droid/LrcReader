@@ -18,7 +18,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,12 +37,10 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.patrick.lrcreader.core.PrompterTextColor
-import com.patrick.lrcreader.core.TextPrompterAlignment
 import com.patrick.lrcreader.exo.R
 
 internal data class AudioLyricsChordProToolbarVisibility(
-    val showTimingControl: Boolean,
-    val showFullChordPalette: Boolean
+    val showTimingControl: Boolean
 )
 
 internal data class AudioLyricsToolbarLayout(
@@ -75,12 +72,15 @@ internal fun audioLyricsToolbarRemainingWidthDp(screenWidthDp: Int): Int {
 }
 
 internal fun audioLyricsChordProToolbarVisibility(
-    hasTimedLines: Boolean,
-    tabletMode: Boolean
+    hasTimedLines: Boolean
 ): AudioLyricsChordProToolbarVisibility = AudioLyricsChordProToolbarVisibility(
-    showTimingControl = hasTimedLines,
-    showFullChordPalette = tabletMode
+    showTimingControl = hasTimedLines
 )
+
+internal fun shouldShowAudioLyricsChordPalette(
+    showTimings: Boolean,
+    paletteChords: List<String>
+): Boolean = !showTimings && paletteChords.isNotEmpty()
 
 internal fun toggleAudioLyricsTiming(current: Boolean, hasTimedLines: Boolean): Boolean =
     if (hasTimedLines) !current else current
@@ -94,11 +94,9 @@ internal fun AudioLyricsChordProToolbar(
     onContentValueChange: (TextFieldValue) -> Unit,
     onRequestEditorFocus: () -> Unit,
     transposeSemitones: Int,
-    onTransposeSemitonesChange: (Int) -> Unit,
-    tabletMode: Boolean,
-    paletteChords: List<String>
+    onTransposeSemitonesChange: (Int) -> Unit
 ) {
-    val visibility = audioLyricsChordProToolbarVisibility(hasTimedLines, tabletMode)
+    val visibility = audioLyricsChordProToolbarVisibility(hasTimedLines)
     val boldPlaceholder = stringResource(R.string.prompter_markup_bold)
     val italicPlaceholder = stringResource(R.string.prompter_markup_italic)
     val chordActionDescription = stringResource(R.string.lyrics_editor_chord_action)
@@ -252,17 +250,7 @@ internal fun AudioLyricsChordProToolbar(
                 )
             }
 
-            if (visibility.showFullChordPalette) {
-                PrompterChordPaletteRow(
-                    chords = paletteChords,
-                    onChordClick = { chord ->
-                        applyEditingTransform { editOrInsertPrompterChord(it, chord) }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                Spacer(Modifier.weight(1f))
-            }
+            Spacer(Modifier.weight(1f))
 
             PrompterTranspositionControl(
                 semitones = transposeSemitones,
@@ -388,32 +376,6 @@ internal fun AudioLyricsChordProToolbar(
                     Text(stringResource(R.string.common_cancel))
                 }
             }
-        )
-    }
-}
-
-@Composable
-internal fun AudioLyricsRichTextPreview(
-    contentValue: TextFieldValue,
-    transposeSemitones: Int,
-    modifier: Modifier = Modifier
-) {
-    val renderLine = remember(contentValue.text, contentValue.selection, transposeSemitones) {
-        buildAudioLyricsRichPreviewLine(contentValue, transposeSemitones)
-    } ?: return
-
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = Color.White.copy(alpha = 0.06f)
-    ) {
-        SinglePrompterRenderLine(
-            line = renderLine,
-            textColor = Color.White,
-            fontSize = 15,
-            lineHeight = 20,
-            richTextEnabled = true,
-            alignment = TextPrompterAlignment.START,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
         )
     }
 }
