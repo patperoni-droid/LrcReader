@@ -434,6 +434,12 @@
     <string name="chords_none">Aucun accord</string>
     <string name="player_view_lyrics">Lyrics</string>
     <string name="player_view_chords">Grille</string>
+    <string name="lyrics_live_grid">Grid</string>
+    <string name="lyrics_live_chords">Chords</string>
+    <string name="lyrics_live_sync_pitch">Sync Pitch</string>
+    <string name="lyrics_live_minus">−</string>
+    <string name="lyrics_live_plus">+</string>
+    <string name="lyrics_live_reset_chords">Remettre la transposition des accords à zéro</string>
     <string name="player_chords_file_missing">Fichier Accords non trouvé</string>
 
     <string name="player_cd_prev">Précédent</string>

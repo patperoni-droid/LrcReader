@@ -442,6 +442,12 @@
     <string name="chords_none">No chords</string>
     <string name="player_view_lyrics">Lyrics</string>
     <string name="player_view_chords">Chord Grid</string>
+    <string name="lyrics_live_grid">Grid</string>
+    <string name="lyrics_live_chords">Chords</string>
+    <string name="lyrics_live_sync_pitch">Sync Pitch</string>
+    <string name="lyrics_live_minus">−</string>
+    <string name="lyrics_live_plus">+</string>
+    <string name="lyrics_live_reset_chords">Reset chord transposition</string>
     <string name="player_chords_file_missing">Chords file not found</string>
 
     <string name="player_cd_prev">Previous</string>

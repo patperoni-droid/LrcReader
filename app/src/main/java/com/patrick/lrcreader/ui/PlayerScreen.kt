@@ -14,7 +14,7 @@ import com.patrick.lrcreader.core.readSyltAsLrcFromUri
 import com.patrick.lrcreader.core.readUsltFromUri
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.clickable
 import com.patrick.lrcreader.core.notes.LiveNote
 import com.patrick.lrcreader.core.notes.LiveNoteManager
 import com.patrick.lrcreader.core.PlayerBusController
@@ -320,7 +320,7 @@ fun PlayerScreen(
     val cardHorizontalPadding = if (compactTabletLayout) 10.dp else 16.dp
     val cardVerticalPadding = if (compactTabletLayout) 4.dp else 10.dp
     val headerSpacerHeight = if (compactTabletLayout) 4.dp else 8.dp
-    val viewSelectorHeight = if (compactTabletLayout) 32.dp else 38.dp
+    val viewSelectorHeight = 48.dp
     val lyricsTopSpacerHeight = if (compactTabletLayout) 2.dp else 8.dp
     val nextTrackTopPadding = if (compactTabletLayout) 2.dp else 4.dp
     val nextTrackFontSize = if (compactTabletLayout) 10.sp else 11.sp
@@ -3681,17 +3681,7 @@ fun PlayerScreen(
                                 waveformSongId?.takeIf { it.isNotBlank() }?.let(onOpenWaveform)
                             },
                             showAutoReturnButton = showAutoReturnButton,
-                            lyricsModeControls = {
-                                if (compactTabletLayout && showViewToggle) {
-                                    CompactLyricsModeControls(
-                                        selectedMode = selectedViewMode,
-                                        hasLyrics = true,
-                                        hasChords = true,
-                                        chordsBlocked = EditionConfig.isLite,
-                                        onSelectMode = ::selectLyricsViewMode
-                                    )
-                                }
-                            },
+                            lyricsModeControls = {},
                             showLiveGainControls = showLiveGainControls && !compactTabletLayout,
                             liveGainDb = currentTrackGainDb,
                             liveGainEnabled = liveGainControlsEnabled,
@@ -3723,55 +3713,46 @@ fun PlayerScreen(
                             )
                         }
 
-                        if (!compactTabletLayout) {
+                        if (showViewToggle) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(viewSelectorHeight),
                                 contentAlignment = Alignment.TopCenter
                             ) {
-                                if (showViewToggle) {
-                                    LyricsViewSelector(
-                                        selectedMode = selectedViewMode,
-                                        hasLyrics = true,
-                                        hasChords = true,
-                                        chordsBlocked = EditionConfig.isLite,
-                                        onSelectMode = ::selectLyricsViewMode
-                                    )
-                                }
-
-                                midiMonitorEvent?.let { sent ->
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(top = 6.dp, end = 10.dp)
-                                            .background(
-                                                Color.White,
-                                                RectangleShape
-                                            )
-                                            .border(
-                                                1.dp,
-                                                Color.Black.copy(alpha = 0.12f),
-                                                RectangleShape
-                                            )
-                                            .padding(horizontal = 10.dp, vertical = 3.dp)
-                                    ) {
-                                        Text(
-                                            text = sent.program.toString(),
-                                            color = Color.Black,
-                                            fontSize = 12.sp
-                                        )
-                                    }
-                                }
+                                LiveLyricsChordToolbar(
+                                    selectedMode = selectedViewMode,
+                                    chordsBlocked = EditionConfig.isLite,
+                                    onSelectMode = ::selectLyricsViewMode,
+                                    transposeSemitones = audioLyricsTransposeSemitones,
+                                    onTransposeSemitonesChange = ::updateAudioLyricsTransposeSemitones,
+                                    syncPitchToChords = syncPitchToChords,
+                                    onSyncPitchToChordsChange = ::updateSyncPitchToChords,
+                                    accent = highlightColor
+                                )
                             }
                         }
-                        if (showViewToggle) {
-                            Box(Modifier.fillMaxWidth().padding(end = 8.dp)) {
-                                FilterChip(
-                                    selected = syncPitchToChords,
-                                    onClick = { updateSyncPitchToChords(!syncPitchToChords) },
-                                    label = { Text(stringResource(R.string.track_mix_sync_pitch_chords), fontSize = 11.sp) },
-                                    modifier = Modifier.align(Alignment.CenterEnd)
+
+                        if (showViewToggle && !compactTabletLayout) midiMonitorEvent?.let { sent ->
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.End)
+                                    .padding(top = 6.dp, end = 10.dp)
+                                    .background(
+                                        Color.White,
+                                        RectangleShape
+                                    )
+                                    .border(
+                                        1.dp,
+                                        Color.Black.copy(alpha = 0.12f),
+                                        RectangleShape
+                                    )
+                                    .padding(horizontal = 10.dp, vertical = 3.dp)
+                            ) {
+                                Text(
+                                    text = sent.program.toString(),
+                                    color = Color.Black,
+                                    fontSize = 12.sp
                                 )
                             }
                         }
@@ -4180,111 +4161,102 @@ private fun HqOffBanner() {
 }
 
 @Composable
-private fun LyricsViewSelector(
+private fun LiveLyricsChordToolbar(
     selectedMode: LyricsViewMode,
-    hasLyrics: Boolean,
-    hasChords: Boolean,
-    chordsBlocked: Boolean = false,
-    onSelectMode: (LyricsViewMode) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 6.dp),
-        horizontalArrangement = Arrangement.Center
-    ) {
-        if (hasLyrics) {
-            FilterChip(
-                selected = selectedMode == LyricsViewMode.LYRICS,
-                onClick = { onSelectMode(LyricsViewMode.LYRICS) },
-                label = { Text(stringResource(R.string.player_view_lyrics)) }
-            )
-        }
-        if (hasLyrics && hasChords) {
-            Spacer(Modifier.width(10.dp))
-        }
-        if (hasChords) {
-            FilterChip(
-                selected = selectedMode == LyricsViewMode.CHORDS,
-                onClick = { onSelectMode(LyricsViewMode.CHORDS) },
-                label = {
-                    Text(
-                        stringResource(R.string.player_view_chords),
-                        color = if (chordsBlocked) {
-                            Color.White.copy(alpha = 0.55f)
-                        } else {
-                            Color.Unspecified
-                        }
-                    )
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun RowScope.CompactLyricsModeControls(
-    selectedMode: LyricsViewMode,
-    hasLyrics: Boolean,
-    hasChords: Boolean,
     chordsBlocked: Boolean,
-    onSelectMode: (LyricsViewMode) -> Unit
+    onSelectMode: (LyricsViewMode) -> Unit,
+    transposeSemitones: Int,
+    onTransposeSemitonesChange: (Int) -> Unit,
+    syncPitchToChords: Boolean,
+    onSyncPitchToChordsChange: (Boolean) -> Unit,
+    accent: Color
 ) {
-    if (hasLyrics) {
-        CompactLyricsModeButton(
-            selected = selectedMode == LyricsViewMode.LYRICS,
-            symbol = "🎤",
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        LiveToolbarButton(
             label = stringResource(R.string.player_view_lyrics),
+            selected = selectedMode == LyricsViewMode.LYRICS,
+            accent = accent,
+            weight = 1.6f,
             onClick = { onSelectMode(LyricsViewMode.LYRICS) }
         )
-    }
-    if (hasChords) {
-        CompactLyricsModeButton(
+        LiveToolbarButton(
+            label = stringResource(R.string.lyrics_live_grid),
             selected = selectedMode == LyricsViewMode.CHORDS,
-            enabled = !chordsBlocked,
-            symbol = "🎸",
-            label = stringResource(R.string.player_view_chords),
+            accent = accent,
+            weight = 1.25f,
+            dimmed = chordsBlocked,
             onClick = { onSelectMode(LyricsViewMode.CHORDS) }
+        )
+        Text(
+            stringResource(R.string.lyrics_live_chords),
+            color = Color.White,
+            fontSize = 10.sp,
+            maxLines = 1,
+            modifier = Modifier.weight(1.45f)
+        )
+        LiveToolbarButton(
+            label = stringResource(R.string.lyrics_live_minus),
+            accent = accent,
+            weight = 1f,
+            enabled = transposeSemitones > PROMPTER_TRANSPOSE_MIN,
+            onClickLabel = stringResource(R.string.prompter_transposition_decrease),
+            onClick = { onTransposeSemitonesChange(stepPrompterTransposition(transposeSemitones, -1)) }
+        )
+        LiveToolbarButton(
+            label = formatPrompterTransposition(transposeSemitones),
+            accent = accent,
+            weight = 1f,
+            onClickLabel = stringResource(R.string.lyrics_live_reset_chords),
+            onClick = { onTransposeSemitonesChange(0) }
+        )
+        LiveToolbarButton(
+            label = stringResource(R.string.lyrics_live_plus),
+            accent = accent,
+            weight = 1f,
+            enabled = transposeSemitones < PROMPTER_TRANSPOSE_MAX,
+            onClickLabel = stringResource(R.string.prompter_transposition_increase),
+            onClick = { onTransposeSemitonesChange(stepPrompterTransposition(transposeSemitones, 1)) }
+        )
+        LiveToolbarButton(
+            label = stringResource(R.string.lyrics_live_sync_pitch),
+            selected = syncPitchToChords,
+            accent = accent,
+            weight = 2.25f,
+            onClick = { onSyncPitchToChordsChange(!syncPitchToChords) }
         )
     }
 }
 
 @Composable
-private fun CompactLyricsModeButton(
-    selected: Boolean,
-    symbol: String,
+private fun RowScope.LiveToolbarButton(
     label: String,
+    accent: Color,
+    weight: Float,
+    selected: Boolean = false,
     enabled: Boolean = true,
+    dimmed: Boolean = false,
+    onClickLabel: String? = null,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(9.dp)
-    val activeColor = Color(0xFFFFC107)
-    val textColor = when {
-        !enabled -> Color.White.copy(alpha = 0.30f)
-        selected -> activeColor
-        else -> Color(0xFFECEFF1)
-    }
-    TextButton(
-        onClick = onClick,
-        enabled = enabled,
+    Box(
         modifier = Modifier
-            .height(34.dp)
-            .widthIn(min = 82.dp)
+            .weight(weight)
+            .height(48.dp)
             .background(
-                color = if (selected) activeColor.copy(alpha = 0.24f) else Color.Transparent,
-                shape = shape
+                if (selected) accent.copy(alpha = 0.25f) else Color.Transparent,
+                RoundedCornerShape(8.dp)
             )
-            .border(
-                width = 1.dp,
-                color = if (selected) activeColor.copy(alpha = 0.86f) else Color.White.copy(alpha = 0.20f),
-                shape = shape
-            ),
-        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp)
+            .clickable(enabled = enabled, onClickLabel = onClickLabel, onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
         Text(
-            text = "$symbol $label",
-            color = textColor,
-            fontSize = 12.sp,
+            label,
+            color = when {
+                !enabled -> Color.White.copy(alpha = 0.38f)
+                dimmed -> Color.White.copy(alpha = 0.55f)
+                else -> Color.White
+            },
+            fontSize = 10.sp,
             maxLines = 1
         )
     }
