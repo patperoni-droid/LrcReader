@@ -329,25 +329,7 @@ fun TrackMixScreen(
                         }
                     }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(stringResource(R.string.track_mix_vu), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
-                        Spacer(Modifier.height(10.dp))
-
-                        val vu01 = ((displayGainDb - minDb).toFloat() / (maxDb - minDb))
-                            .coerceIn(0f, 1f)
-
-                        VuMeter(
-                            value01 = vu01,
-                            warnFrom01 = 0.83f,
-                            base = Color(0xFF2F3137),
-                            ok = Color(0xFF4CAF50),
-                            warn = amber,
-                            clip = Color(0xFFE53935)
-                        )
-
-                        Spacer(Modifier.height(8.dp))
-                        Spacer(Modifier.height(12.dp))
-                    }
+                    Spacer(Modifier.width(46.dp))
                 }
             }
 
@@ -403,63 +385,6 @@ private fun PlateCard(
             )
     ) {
         content()
-    }
-}
-
-@Composable
-private fun VuMeter(
-    value01: Float,
-    warnFrom01: Float,
-    base: Color,
-    ok: Color,
-    warn: Color,
-    clip: Color
-) {
-    Canvas(
-        modifier = Modifier
-            .width(46.dp)
-            .height(220.dp)
-    ) {
-        val w = size.width
-        val h = size.height
-        val pad = w * 0.18f
-
-        drawRoundRect(
-            color = base,
-            topLeft = Offset(pad, 0f),
-            size = Size(w - 2 * pad, h),
-            cornerRadius = CornerRadius((w - 2 * pad) / 2f)
-        )
-
-        val v = value01.coerceIn(0f, 1f)
-        val fillH = h * v
-        val top = h - fillH
-
-        val col = when {
-            v >= 0.95f -> clip
-            v >= warnFrom01 -> warn
-            else -> ok
-        }
-
-        drawRoundRect(
-            color = col,
-            topLeft = Offset(pad, top),
-            size = Size(w - 2 * pad, fillH),
-            cornerRadius = CornerRadius((w - 2 * pad) / 2f)
-        )
-
-        val tickX0 = pad * 0.55f
-        val tickX1 = w - tickX0
-        for (i in 1..9) {
-            val y = h * (i / 10f)
-            val alpha = if (i == 8 || i == 9) 0.7f else 0.35f
-            drawLine(
-                color = Color.White.copy(alpha = alpha),
-                start = Offset(tickX0, h - y),
-                end = Offset(tickX1, h - y),
-                strokeWidth = 1f
-            )
-        }
     }
 }
 
