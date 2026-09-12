@@ -267,7 +267,7 @@ fun TrackMixScreen(
                             Text(stringResource(R.string.track_mix_reset_speed), color = Color(0xFF80CBC4), fontSize = 11.sp)
                         }
                     }
-
+                    FiveBandEqPrototype(Modifier.weight(1f).padding(start = 2.dp))
                 }
             }
 
@@ -276,6 +276,54 @@ fun TrackMixScreen(
             playbackControlContent()
         }
 
+    }
+}
+
+@Composable
+private fun FiveBandEqPrototype(modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            stringResource(R.string.track_mix_eq_title),
+            color = Color(0xFFB7C0C7),
+            fontSize = 11.sp,
+            letterSpacing = 2.sp
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth()) {
+            listOf(
+                R.string.track_mix_eq_60,
+                R.string.track_mix_eq_250,
+                R.string.track_mix_eq_1k,
+                R.string.track_mix_eq_4k,
+                R.string.track_mix_eq_12k
+            ).forEach { frequency ->
+                EqBandPrototype(stringResource(frequency), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun EqBandPrototype(frequency: String, modifier: Modifier = Modifier) {
+    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Canvas(Modifier.fillMaxWidth().height(128.dp)) {
+            val trackWidth = size.width * 0.24f
+            drawRoundRect(
+                color = Color(0xFF34373D),
+                topLeft = Offset((size.width - trackWidth) / 2f, 0f),
+                size = Size(trackWidth, size.height),
+                cornerRadius = CornerRadius(trackWidth / 2f)
+            )
+            val thumbWidth = size.width * 0.72f
+            drawRoundRect(
+                color = Color(0xFFECECEC),
+                topLeft = Offset((size.width - thumbWidth) / 2f, size.height / 2f - 4.dp.toPx()),
+                size = Size(thumbWidth, 8.dp.toPx()),
+                cornerRadius = CornerRadius(3.dp.toPx())
+            )
+        }
+        Spacer(Modifier.height(5.dp))
+        Text(frequency, color = Color(0xFFB7C0C7), fontSize = 9.sp, maxLines = 1)
     }
 }
 

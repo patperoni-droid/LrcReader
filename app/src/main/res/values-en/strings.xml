@@ -1271,6 +1271,12 @@
     <string name="track_mix_speed">SPEED</string>
     <string name="track_mix_reset_speed">Reset 1.00x</string>
     <string name="track_mix_equalizer">EQUALIZER</string>
+    <string name="track_mix_eq_title">EQ</string>
+    <string name="track_mix_eq_60">60</string>
+    <string name="track_mix_eq_250">250</string>
+    <string name="track_mix_eq_1k">1k</string>
+    <string name="track_mix_eq_4k">4k</string>
+    <string name="track_mix_eq_12k">12k</string>
     <string name="track_mix_three_bands">3 BANDS</string>
     <string name="track_mix_drag_hint">drag ↑↓</string>
     <string name="track_mix_eq_low">LOW</string>
