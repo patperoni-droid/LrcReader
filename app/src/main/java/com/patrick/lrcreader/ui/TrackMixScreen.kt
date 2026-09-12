@@ -258,78 +258,84 @@ fun TrackMixScreen(
                         )
                     }
 
-                    Column(
-                        modifier = Modifier.padding(horizontal = 10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.Top
                     ) {
-                        Text(stringResource(R.string.track_mix_speed), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
-                        Spacer(Modifier.height(6.dp))
+                        Column(
+                            modifier = Modifier.width(96.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(stringResource(R.string.track_mix_speed), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
+                            Spacer(Modifier.height(6.dp))
 
-                        AnalogKnob(
-                            value01 = tempo01,
-                            accent = Color(0xFF80CBC4),
-                            label = String.format("x%.2f", tempoPending),
-                            onChange = { v ->
-                                tempo01 = v
-                                val newTempo = (minTempo + v * (maxTempo - minTempo))
-                                    .coerceIn(minTempo, maxTempo)
-                                scheduleTempoApply(newTempo)
-                            },
-                            onCommit = { v ->
+                            AnalogKnob(
+                                value01 = tempo01,
+                                accent = Color(0xFF80CBC4),
+                                label = String.format("x%.2f", tempoPending),
+                                onChange = { v ->
+                                    tempo01 = v
+                                    val newTempo = (minTempo + v * (maxTempo - minTempo))
+                                        .coerceIn(minTempo, maxTempo)
+                                    scheduleTempoApply(newTempo)
+                                },
+                                onCommit = { v ->
+                                    tempoApplyJob?.cancel()
+                                    val finalTempo = (minTempo + v * (maxTempo - minTempo))
+                                        .coerceIn(minTempo, maxTempo)
+                                    tempoPending = finalTempo
+                                    onTempoChange(finalTempo)
+                                }
+                            )
+
+                            TextButton(onClick = {
                                 tempoApplyJob?.cancel()
-                                val finalTempo = (minTempo + v * (maxTempo - minTempo))
-                                    .coerceIn(minTempo, maxTempo)
-                                tempoPending = finalTempo
-                                onTempoChange(finalTempo)
+                                tempoPending = 1f
+                                onTempoChange(1f)
+                                tempo01 = ((1f - minTempo) / (maxTempo - minTempo)).coerceIn(0f, 1f)
+                            }) {
+                                Text(stringResource(R.string.track_mix_reset_speed), color = Color(0xFF80CBC4), fontSize = 11.sp)
                             }
-                        )
-
-                        TextButton(onClick = {
-                            tempoApplyJob?.cancel()
-                            tempoPending = 1f
-                            onTempoChange(1f)
-                            tempo01 = ((1f - minTempo) / (maxTempo - minTempo)).coerceIn(0f, 1f)
-                        }) {
-                            Text(stringResource(R.string.track_mix_reset_speed), color = Color(0xFF80CBC4), fontSize = 11.sp)
                         }
 
-                        Spacer(Modifier.height(10.dp))
+                        Column(
+                            modifier = Modifier.width(96.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(stringResource(R.string.track_mix_pitch), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
+                            Spacer(Modifier.height(6.dp))
 
-                        Text(stringResource(R.string.track_mix_pitch), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
-                        Spacer(Modifier.height(6.dp))
+                            AnalogKnob(
+                                value01 = pitch01,
+                                accent = Color(0xFFCE93D8),
+                                label = "${if (pitchPending >= 0) "+$pitchPending" else pitchPending} st",
+                                onChange = { v ->
+                                    pitch01 = v
+                                    val semi = (minSemi + v * (maxSemi - minSemi))
+                                        .roundToInt()
+                                        .coerceIn(minSemi, maxSemi)
+                                    schedulePitchApply(semi)
+                                },
+                                onCommit = { v ->
+                                    pitchApplyJob?.cancel()
+                                    val finalSemi = (minSemi + v * (maxSemi - minSemi))
+                                        .roundToInt()
+                                        .coerceIn(minSemi, maxSemi)
+                                    pitchPending = finalSemi
+                                    onPitchSemiChange(finalSemi)
+                                }
+                            )
 
-                        AnalogKnob(
-                            value01 = pitch01,
-                            accent = Color(0xFFCE93D8),
-                            label = "${if (pitchPending >= 0) "+$pitchPending" else pitchPending} st",
-                            onChange = { v ->
-                                pitch01 = v
-                                val semi = (minSemi + v * (maxSemi - minSemi))
-                                    .roundToInt()
-                                    .coerceIn(minSemi, maxSemi)
-                                schedulePitchApply(semi)
-                            },
-                            onCommit = { v ->
+                            TextButton(onClick = {
                                 pitchApplyJob?.cancel()
-                                val finalSemi = (minSemi + v * (maxSemi - minSemi))
-                                    .roundToInt()
-                                    .coerceIn(minSemi, maxSemi)
-                                pitchPending = finalSemi
-                                onPitchSemiChange(finalSemi)
+                                pitchPending = 0
+                                onPitchSemiChange(0)
+                                pitch01 = ((0 - minSemi).toFloat() / (maxSemi - minSemi)).coerceIn(0f, 1f)
+                            }) {
+                                Text(stringResource(R.string.track_mix_reset_pitch), color = Color(0xFFCE93D8), fontSize = 11.sp)
                             }
-                        )
-
-                        TextButton(onClick = {
-                            pitchApplyJob?.cancel()
-                            pitchPending = 0
-                            onPitchSemiChange(0)
-                            pitch01 = ((0 - minSemi).toFloat() / (maxSemi - minSemi)).coerceIn(0f, 1f)
-                        }) {
-                            Text(stringResource(R.string.track_mix_reset_pitch), color = Color(0xFFCE93D8), fontSize = 11.sp)
                         }
                     }
-
-                    Spacer(Modifier.width(46.dp))
                 }
             }
 
