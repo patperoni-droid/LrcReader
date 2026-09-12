@@ -4177,48 +4177,61 @@ private fun LiveLyricsChordToolbar(
             label = stringResource(R.string.player_view_lyrics),
             selected = selectedMode == LyricsViewMode.LYRICS,
             accent = accent,
-            weight = 1.6f,
+            weight = 1.35f,
             onClick = { onSelectMode(LyricsViewMode.LYRICS) }
         )
         LiveToolbarButton(
             label = stringResource(R.string.lyrics_live_grid),
             selected = selectedMode == LyricsViewMode.CHORDS,
             accent = accent,
-            weight = 1.25f,
+            weight = 1.05f,
             dimmed = chordsBlocked,
             onClick = { onSelectMode(LyricsViewMode.CHORDS) }
         )
-        Text(
-            stringResource(R.string.lyrics_live_chords),
-            color = Color.White,
-            fontSize = 10.sp,
-            maxLines = 1,
-            modifier = Modifier.weight(1.45f)
-        )
-        LiveToolbarButton(
-            label = stringResource(R.string.lyrics_live_minus),
-            accent = accent,
-            weight = 1f,
-            enabled = chordControlsEnabled && transposeSemitones > PROMPTER_TRANSPOSE_MIN,
-            onClickLabel = stringResource(R.string.prompter_transposition_decrease),
-            onClick = { onTransposeAction(stepPrompterTransposition(transposeSemitones, -1), false) }
-        )
-        LiveToolbarButton(
-            label = formatPrompterTransposition(transposeSemitones),
-            accent = accent,
-            weight = 1f,
-            enabled = chordControlsEnabled,
-            onClickLabel = stringResource(R.string.lyrics_live_reset_chords),
-            onClick = { onTransposeAction(0, true) }
-        )
-        LiveToolbarButton(
-            label = stringResource(R.string.lyrics_live_plus),
-            accent = accent,
-            weight = 1f,
-            enabled = chordControlsEnabled && transposeSemitones < PROMPTER_TRANSPOSE_MAX,
-            onClickLabel = stringResource(R.string.prompter_transposition_increase),
-            onClick = { onTransposeAction(stepPrompterTransposition(transposeSemitones, 1), false) }
-        )
+        Row(
+            modifier = Modifier
+                .weight(5.25f)
+                .height(48.dp)
+                .background(Color.White.copy(alpha = 0.07f), RoundedCornerShape(8.dp))
+                .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(8.dp)),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.weight(1.6f), contentAlignment = Alignment.Center) {
+                Text(
+                    stringResource(R.string.lyrics_live_chords),
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    maxLines = 1
+                )
+            }
+            LiveToolbarButton(
+                label = stringResource(R.string.lyrics_live_minus),
+                accent = accent,
+                weight = 1.2f,
+                fontSizeSp = 18,
+                enabled = chordControlsEnabled && transposeSemitones > PROMPTER_TRANSPOSE_MIN,
+                onClickLabel = stringResource(R.string.prompter_transposition_decrease),
+                onClick = { onTransposeAction(stepPrompterTransposition(transposeSemitones, -1), false) }
+            )
+            LiveToolbarButton(
+                label = formatPrompterTransposition(transposeSemitones),
+                accent = accent,
+                weight = 1.2f,
+                fontSizeSp = 13,
+                enabled = chordControlsEnabled,
+                onClickLabel = stringResource(R.string.lyrics_live_reset_chords),
+                onClick = { onTransposeAction(0, true) }
+            )
+            LiveToolbarButton(
+                label = stringResource(R.string.lyrics_live_plus),
+                accent = accent,
+                weight = 1.2f,
+                fontSizeSp = 18,
+                enabled = chordControlsEnabled && transposeSemitones < PROMPTER_TRANSPOSE_MAX,
+                onClickLabel = stringResource(R.string.prompter_transposition_increase),
+                onClick = { onTransposeAction(stepPrompterTransposition(transposeSemitones, 1), false) }
+            )
+        }
         LiveToolbarButton(
             label = stringResource(R.string.lyrics_live_sync_pitch),
             selected = syncPitchToChords,
@@ -4234,6 +4247,7 @@ private fun RowScope.LiveToolbarButton(
     label: String,
     accent: Color,
     weight: Float,
+    fontSizeSp: Int = 12,
     selected: Boolean = false,
     enabled: Boolean = true,
     dimmed: Boolean = false,
@@ -4248,6 +4262,11 @@ private fun RowScope.LiveToolbarButton(
                 if (selected) accent.copy(alpha = 0.25f) else Color.Transparent,
                 RoundedCornerShape(8.dp)
             )
+            .border(
+                1.dp,
+                if (selected) accent.copy(alpha = 0.85f) else Color.Transparent,
+                RoundedCornerShape(8.dp)
+            )
             .clickable(enabled = enabled, onClickLabel = onClickLabel, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -4258,7 +4277,7 @@ private fun RowScope.LiveToolbarButton(
                 dimmed -> Color.White.copy(alpha = 0.55f)
                 else -> Color.White
             },
-            fontSize = 10.sp,
+            fontSize = fontSizeSp.sp,
             maxLines = 1
         )
     }

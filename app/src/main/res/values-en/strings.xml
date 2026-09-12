@@ -443,7 +443,7 @@
     <string name="player_view_lyrics">Lyrics</string>
     <string name="player_view_chords">Chord Grid</string>
     <string name="lyrics_live_grid">Grid</string>
-    <string name="lyrics_live_chords">Chords</string>
+    <string name="lyrics_live_chords">Transpo</string>
     <string name="lyrics_live_sync_pitch">Sync Pitch</string>
     <string name="lyrics_live_minus">−</string>
     <string name="lyrics_live_plus">+</string>
