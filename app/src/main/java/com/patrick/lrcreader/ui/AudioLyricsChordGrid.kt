@@ -5,8 +5,37 @@ import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseChordPro
 import com.patrick.lrcreader.core.transposeChord
 
-internal fun displayedChordTransposition(manual: Int, pitch: Int, syncPitchToChords: Boolean): Int =
-    manual + if (syncPitchToChords) pitch else 0
+internal fun displayedChordTransposition(
+    manual: Int,
+    pitch: Int,
+    syncPitchToChords: Boolean,
+    compensation: Int = 0
+): Int = manual + if (syncPitchToChords) pitch - compensation else 0
+
+internal data class LiveChordPitchChange(
+    val manual: Int,
+    val pitch: Int,
+    val compensation: Int
+)
+
+internal fun planLiveChordPitchChange(
+    manual: Int,
+    pitch: Int,
+    compensation: Int,
+    requestedManual: Int,
+    reset: Boolean,
+    syncPitchToChords: Boolean
+): LiveChordPitchChange {
+    val nextManual = stepPrompterTransposition(requestedManual, 0)
+    if (!syncPitchToChords) return LiveChordPitchChange(nextManual, pitch, compensation)
+    if (reset) return LiveChordPitchChange(0, 0, 0)
+    val nextPitch = (pitch + nextManual - manual).coerceIn(-6, 6)
+    return LiveChordPitchChange(
+        nextManual,
+        nextPitch,
+        (compensation + nextPitch - pitch) % 12
+    )
+}
 
 internal data class AudioLyricsChordGrid(
     val lines: List<LrcLine>,

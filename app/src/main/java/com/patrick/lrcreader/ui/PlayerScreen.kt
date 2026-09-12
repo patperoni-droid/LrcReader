@@ -750,6 +750,13 @@ fun PlayerScreen(
             } ?: 0
         )
     }
+    var syncPitchCompensation by remember(context, audioLyricsDisplaySettingsKey) {
+        mutableIntStateOf(
+            audioLyricsDisplaySettingsKey?.let { key ->
+                TextPrompterDisplaySettingsStore.get(context, key).syncPitchCompensation
+            } ?: 0
+        )
+    }
     var syncPitchToChords by remember(context) {
         mutableStateOf(DisplayPrefs.isSyncPitchToChordsEnabled(context))
     }
@@ -760,7 +767,8 @@ fun PlayerScreen(
     val displayedAudioLyricsTransposeSemitones = displayedChordTransposition(
         audioLyricsTransposeSemitones,
         if (EditionConfig.isLite) liteTrackMixPitchSemi else pitchSemi,
-        syncPitchToChords
+        syncPitchToChords,
+        syncPitchCompensation
     )
     fun updateAudioLyricsTransposeSemitones(value: Int) {
         val normalized = stepPrompterTransposition(value, 0)
@@ -771,6 +779,34 @@ fun PlayerScreen(
                 key = key,
                 transposeSemitones = normalized
             )
+        }
+    }
+    fun applyLiveChordAction(value: Int, reset: Boolean) {
+        if (syncPitchToChords && !isHqAvailable) return
+        val currentPitch = if (EditionConfig.isLite) liteTrackMixPitchSemi else pitchSemi
+        val change = planLiveChordPitchChange(
+            manual = audioLyricsTransposeSemitones,
+            pitch = currentPitch,
+            compensation = syncPitchCompensation,
+            requestedManual = value,
+            reset = reset,
+            syncPitchToChords = syncPitchToChords
+        )
+        updateAudioLyricsTransposeSemitones(change.manual)
+        if (syncPitchToChords) {
+            syncPitchCompensation = change.compensation
+            audioLyricsDisplaySettingsKey?.let { key ->
+                TextPrompterDisplaySettingsStore.saveSyncPitchCompensation(context, key, change.compensation)
+            }
+            if (change.pitch != currentPitch) {
+                if (EditionConfig.isLite) {
+                    liteTrackMixModified = true
+                    liteTrackMixPitchSemi = change.pitch
+                    applyLiteTrackMixToPlayer(liteTrackMixTempo, change.pitch)
+                } else {
+                    onPitchSemiChange(change.pitch)
+                }
+            }
         }
     }
     var selectedViewMode by rememberSaveable(currentTrackUri) {
@@ -3725,9 +3761,10 @@ fun PlayerScreen(
                                     chordsBlocked = EditionConfig.isLite,
                                     onSelectMode = ::selectLyricsViewMode,
                                     transposeSemitones = audioLyricsTransposeSemitones,
-                                    onTransposeSemitonesChange = ::updateAudioLyricsTransposeSemitones,
+                                    onTransposeAction = ::applyLiveChordAction,
                                     syncPitchToChords = syncPitchToChords,
                                     onSyncPitchToChordsChange = ::updateSyncPitchToChords,
+                                    chordControlsEnabled = !syncPitchToChords || isHqAvailable,
                                     accent = highlightColor
                                 )
                             }
@@ -4166,9 +4203,10 @@ private fun LiveLyricsChordToolbar(
     chordsBlocked: Boolean,
     onSelectMode: (LyricsViewMode) -> Unit,
     transposeSemitones: Int,
-    onTransposeSemitonesChange: (Int) -> Unit,
+    onTransposeAction: (Int, Boolean) -> Unit,
     syncPitchToChords: Boolean,
     onSyncPitchToChordsChange: (Boolean) -> Unit,
+    chordControlsEnabled: Boolean,
     accent: Color
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -4198,24 +4236,25 @@ private fun LiveLyricsChordToolbar(
             label = stringResource(R.string.lyrics_live_minus),
             accent = accent,
             weight = 1f,
-            enabled = transposeSemitones > PROMPTER_TRANSPOSE_MIN,
+            enabled = chordControlsEnabled && transposeSemitones > PROMPTER_TRANSPOSE_MIN,
             onClickLabel = stringResource(R.string.prompter_transposition_decrease),
-            onClick = { onTransposeSemitonesChange(stepPrompterTransposition(transposeSemitones, -1)) }
+            onClick = { onTransposeAction(stepPrompterTransposition(transposeSemitones, -1), false) }
         )
         LiveToolbarButton(
             label = formatPrompterTransposition(transposeSemitones),
             accent = accent,
             weight = 1f,
+            enabled = chordControlsEnabled,
             onClickLabel = stringResource(R.string.lyrics_live_reset_chords),
-            onClick = { onTransposeSemitonesChange(0) }
+            onClick = { onTransposeAction(0, true) }
         )
         LiveToolbarButton(
             label = stringResource(R.string.lyrics_live_plus),
             accent = accent,
             weight = 1f,
-            enabled = transposeSemitones < PROMPTER_TRANSPOSE_MAX,
+            enabled = chordControlsEnabled && transposeSemitones < PROMPTER_TRANSPOSE_MAX,
             onClickLabel = stringResource(R.string.prompter_transposition_increase),
-            onClick = { onTransposeSemitonesChange(stepPrompterTransposition(transposeSemitones, 1)) }
+            onClick = { onTransposeAction(stepPrompterTransposition(transposeSemitones, 1), false) }
         )
         LiveToolbarButton(
             label = stringResource(R.string.lyrics_live_sync_pitch),

@@ -10,7 +10,8 @@ enum class TextPrompterAlignment {
 
 data class TextPrompterDisplaySettings(
     val alignment: TextPrompterAlignment = TextPrompterAlignment.START,
-    val transposeSemitones: Int = 0
+    val transposeSemitones: Int = 0,
+    val syncPitchCompensation: Int = 0
 )
 
 object TextPrompterDisplaySettingsStore {
@@ -21,6 +22,7 @@ object TextPrompterDisplaySettingsStore {
     private const val LEGACY_NOTE_PREFIX = "note:"
     private const val JSON_KEY_ALIGNMENT = "alignment"
     private const val JSON_KEY_TRANSPOSE_SEMITONES = "transposeSemitones"
+    private const val JSON_KEY_SYNC_PITCH_COMPENSATION = "syncPitchCompensation"
     private const val MIN_TRANSPOSE_SEMITONES = -11
     private const val MAX_TRANSPOSE_SEMITONES = 11
 
@@ -47,7 +49,8 @@ object TextPrompterDisplaySettingsStore {
 
     fun save(context: Context, key: Key, settings: TextPrompterDisplaySettings) {
         val normalized = settings.copy(
-            transposeSemitones = normalizeTransposeSemitones(settings.transposeSemitones)
+            transposeSemitones = normalizeTransposeSemitones(settings.transposeSemitones),
+            syncPitchCompensation = settings.syncPitchCompensation % 12
         )
         if (normalized == TextPrompterDisplaySettings()) {
             delete(context, key)
@@ -57,6 +60,7 @@ object TextPrompterDisplaySettingsStore {
         val encoded = JSONObject()
             .put(JSON_KEY_ALIGNMENT, normalized.alignment.name)
             .put(JSON_KEY_TRANSPOSE_SEMITONES, normalized.transposeSemitones)
+            .put(JSON_KEY_SYNC_PITCH_COMPENSATION, normalized.syncPitchCompensation)
             .toString()
         preferences(context).edit()
             .putString(key.storageKey, encoded)
@@ -73,6 +77,10 @@ object TextPrompterDisplaySettingsStore {
             key,
             get(context, key).copy(transposeSemitones = transposeSemitones)
         )
+    }
+
+    fun saveSyncPitchCompensation(context: Context, key: Key, compensation: Int) {
+        save(context, key, get(context, key).copy(syncPitchCompensation = compensation))
     }
 
     fun delete(context: Context, key: Key) {
@@ -99,7 +107,8 @@ object TextPrompterDisplaySettingsStore {
                 ?: TextPrompterAlignment.START,
             transposeSemitones = normalizeTransposeSemitones(
                 json.optInt(JSON_KEY_TRANSPOSE_SEMITONES, 0)
-            )
+            ),
+            syncPitchCompensation = json.optInt(JSON_KEY_SYNC_PITCH_COMPENSATION, 0) % 12
         )
     }.getOrDefault(TextPrompterDisplaySettings())
 

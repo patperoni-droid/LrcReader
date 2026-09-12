@@ -13,6 +13,19 @@ import org.mockito.Mockito
 class TextPrompterDisplaySettingsStoreTest {
 
     @Test
+    fun pitchCompensationSurvivesReloadWithoutChangingManualTransposition() {
+        val storedValues = mutableMapOf<String, String>()
+        val context = contextWithPreferences(storedValues)
+        val key = requireNotNull(TextPrompterDisplaySettingsStore.audioLyricsSongKey("song-1"))
+        TextPrompterDisplaySettingsStore.saveTransposeSemitones(context, key, 3)
+        TextPrompterDisplaySettingsStore.saveSyncPitchCompensation(context, key, 2)
+
+        val restored = TextPrompterDisplaySettingsStore.get(contextWithPreferences(storedValues), key)
+        assertEquals(3, restored.transposeSemitones)
+        assertEquals(2, restored.syncPitchCompensation)
+    }
+
+    @Test
     fun missingSettingsUseStartAlignment() {
         val context = contextWithPreferences(mutableMapOf())
         val key = requireNotNull(TextPrompterDisplaySettingsStore.textSongKey("missing"))
