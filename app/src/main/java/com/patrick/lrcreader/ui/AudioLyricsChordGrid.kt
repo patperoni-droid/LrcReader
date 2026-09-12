@@ -5,6 +5,9 @@ import com.patrick.lrcreader.core.findActiveLrcIndex
 import com.patrick.lrcreader.core.parseChordPro
 import com.patrick.lrcreader.core.transposeChord
 
+internal fun displayedChordTransposition(manual: Int, pitch: Int, syncPitchToChords: Boolean): Int =
+    manual + if (syncPitchToChords) pitch else 0
+
 internal data class AudioLyricsChordGrid(
     val lines: List<LrcLine>,
     val usesDerivedLyrics: Boolean

@@ -750,6 +750,18 @@ fun PlayerScreen(
             } ?: 0
         )
     }
+    var syncPitchToChords by remember(context) {
+        mutableStateOf(DisplayPrefs.isSyncPitchToChordsEnabled(context))
+    }
+    fun updateSyncPitchToChords(enabled: Boolean) {
+        syncPitchToChords = enabled
+        DisplayPrefs.setSyncPitchToChordsEnabled(context, enabled)
+    }
+    val displayedAudioLyricsTransposeSemitones = displayedChordTransposition(
+        audioLyricsTransposeSemitones,
+        if (EditionConfig.isLite) liteTrackMixPitchSemi else pitchSemi,
+        syncPitchToChords
+    )
     fun updateAudioLyricsTransposeSemitones(value: Int) {
         val normalized = stepPrompterTransposition(value, 0)
         audioLyricsTransposeSemitones = normalized
@@ -2475,10 +2487,10 @@ fun PlayerScreen(
         )
     }
 
-    val derivedChordLines = remember(parsedLines, audioLyricsTransposeSemitones) {
+    val derivedChordLines = remember(parsedLines, displayedAudioLyricsTransposeSemitones) {
         deriveAudioLyricsChordGrid(
             lyricsLines = parsedLines,
-            transposeSemitones = audioLyricsTransposeSemitones
+            transposeSemitones = displayedAudioLyricsTransposeSemitones
         )
     }
     val hasDerivedChordGrid = derivedChordLines.isNotEmpty()
@@ -3753,6 +3765,16 @@ fun PlayerScreen(
                                 }
                             }
                         }
+                        if (showViewToggle) {
+                            Box(Modifier.fillMaxWidth().padding(end = 8.dp)) {
+                                FilterChip(
+                                    selected = syncPitchToChords,
+                                    onClick = { updateSyncPitchToChords(!syncPitchToChords) },
+                                    label = { Text(stringResource(R.string.track_mix_sync_pitch_chords), fontSize = 11.sp) },
+                                    modifier = Modifier.align(Alignment.CenterEnd)
+                                )
+                            }
+                        }
 
                         Spacer(Modifier.height(lyricsTopSpacerHeight))
 
@@ -3792,7 +3814,7 @@ fun PlayerScreen(
                                     guidedReadingColorA = guidedReadingColorA,
                                     guidedReadingColorB = guidedReadingColorB,
                                     lyricsTextSize = lyricsTextSize,
-                                    transposeSemitones = audioLyricsTransposeSemitones,
+                                    transposeSemitones = displayedAudioLyricsTransposeSemitones,
                                     onLyricsBoxHeightChange = { lyricsBoxHeightPx = it },
                                     highlightColor = highlightColor,
                                     onLineClick = { index, timeMs ->
@@ -3981,6 +4003,8 @@ fun PlayerScreen(
                         }
                     },
                     pitchSemi = if (EditionConfig.isLite) liteTrackMixPitchSemi else pitchSemi,
+                    syncPitchToChords = syncPitchToChords,
+                    onSyncPitchToChordsChange = ::updateSyncPitchToChords,
                     onPitchSemiChange = { newSemi ->
                         if (!isHqAvailable) {
                             val now = android.os.SystemClock.elapsedRealtime()

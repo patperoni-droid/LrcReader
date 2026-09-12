@@ -9,6 +9,7 @@ object DisplayPrefs {
     private const val PREFS_NAME = "display_prefs"
     private const val KEY_CONCERT_MODE = "concert_mode" // true = mode concert (dégradé), false = tout uniforme
     private const val KEY_LYRICS_READABILITY_MODE = "lyrics_readability_mode"
+    private const val KEY_SYNC_PITCH_TO_CHORDS = "sync_pitch_to_chords"
     private const val KEY_GUIDED_READING_COLORS_ENABLED = "guided_reading_colors_enabled"
     private const val KEY_GUIDED_READING_COLOR_A = "guided_reading_color_a"
     private const val KEY_GUIDED_READING_COLOR_B = "guided_reading_color_b"
@@ -51,6 +52,13 @@ object DisplayPrefs {
         prefs(ctx).edit {
             putBoolean(KEY_LYRICS_READABILITY_MODE, value)
         }
+    }
+
+    fun isSyncPitchToChordsEnabled(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(KEY_SYNC_PITCH_TO_CHORDS, false)
+
+    fun setSyncPitchToChordsEnabled(ctx: Context, value: Boolean) {
+        prefs(ctx).edit { putBoolean(KEY_SYNC_PITCH_TO_CHORDS, value) }
     }
 
     fun isGuidedReadingColorsEnabled(ctx: Context): Boolean {

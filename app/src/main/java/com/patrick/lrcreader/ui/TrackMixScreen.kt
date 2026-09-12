@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -57,6 +58,8 @@ fun TrackMixScreen(
 
     pitchSemi: Int,
     onPitchSemiChange: (Int) -> Unit,
+    syncPitchToChords: Boolean = false,
+    onSyncPitchToChordsChange: (Boolean) -> Unit = {},
 
     currentTrackUri: String?,
     showLyricsReturnButton: Boolean = false,
@@ -258,6 +261,7 @@ fun TrackMixScreen(
                         )
                     }
 
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.Top
@@ -335,6 +339,12 @@ fun TrackMixScreen(
                                 Text(stringResource(R.string.track_mix_reset_pitch), color = Color(0xFFCE93D8), fontSize = 11.sp)
                             }
                         }
+                    }
+                    FilterChip(
+                        selected = syncPitchToChords,
+                        onClick = { onSyncPitchToChordsChange(!syncPitchToChords) },
+                        label = { Text(stringResource(R.string.track_mix_sync_pitch_chords), fontSize = 11.sp) }
+                    )
                     }
                 }
             }
