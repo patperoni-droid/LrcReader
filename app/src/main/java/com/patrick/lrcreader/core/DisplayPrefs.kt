@@ -57,6 +57,9 @@ object DisplayPrefs {
     fun isSyncPitchToChordsEnabled(ctx: Context): Boolean =
         prefs(ctx).getBoolean(KEY_SYNC_PITCH_TO_CHORDS, false)
 
+    fun runtimePitchSemi(storedPitchSemi: Int, syncPitchToChords: Boolean): Int =
+        if (syncPitchToChords) storedPitchSemi else 0
+
     fun setSyncPitchToChordsEnabled(ctx: Context, value: Boolean) {
         prefs(ctx).edit { putBoolean(KEY_SYNC_PITCH_TO_CHORDS, value) }
     }

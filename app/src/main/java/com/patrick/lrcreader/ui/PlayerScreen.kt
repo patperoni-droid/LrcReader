@@ -750,26 +750,22 @@ fun PlayerScreen(
             } ?: 0
         )
     }
-    var syncPitchCompensation by remember(context, audioLyricsDisplaySettingsKey) {
-        mutableIntStateOf(
-            audioLyricsDisplaySettingsKey?.let { key ->
-                TextPrompterDisplaySettingsStore.get(context, key).syncPitchCompensation
-            } ?: 0
-        )
-    }
     var syncPitchToChords by remember(context) {
         mutableStateOf(DisplayPrefs.isSyncPitchToChordsEnabled(context))
     }
     fun updateSyncPitchToChords(enabled: Boolean) {
         syncPitchToChords = enabled
         DisplayPrefs.setSyncPitchToChordsEnabled(context, enabled)
+        if (!enabled) {
+            if (EditionConfig.isLite) {
+                liteTrackMixPitchSemi = 0
+                applyLiteTrackMixToPlayer(liteTrackMixTempo, 0)
+            } else if (pitchSemi != 0) {
+                onPitchSemiChange(0)
+            }
+        }
     }
-    val displayedAudioLyricsTransposeSemitones = displayedChordTransposition(
-        audioLyricsTransposeSemitones,
-        if (EditionConfig.isLite) liteTrackMixPitchSemi else pitchSemi,
-        syncPitchToChords,
-        syncPitchCompensation
-    )
+    val displayedAudioLyricsTransposeSemitones = audioLyricsTransposeSemitones
     fun updateAudioLyricsTransposeSemitones(value: Int) {
         val normalized = stepPrompterTransposition(value, 0)
         audioLyricsTransposeSemitones = normalized
@@ -787,25 +783,18 @@ fun PlayerScreen(
         val change = planLiveChordPitchChange(
             manual = audioLyricsTransposeSemitones,
             pitch = currentPitch,
-            compensation = syncPitchCompensation,
             requestedManual = value,
             reset = reset,
             syncPitchToChords = syncPitchToChords
         )
         updateAudioLyricsTransposeSemitones(change.manual)
-        if (syncPitchToChords) {
-            syncPitchCompensation = change.compensation
-            audioLyricsDisplaySettingsKey?.let { key ->
-                TextPrompterDisplaySettingsStore.saveSyncPitchCompensation(context, key, change.compensation)
-            }
-            if (change.pitch != currentPitch) {
-                if (EditionConfig.isLite) {
-                    liteTrackMixModified = true
-                    liteTrackMixPitchSemi = change.pitch
-                    applyLiteTrackMixToPlayer(liteTrackMixTempo, change.pitch)
-                } else {
-                    onPitchSemiChange(change.pitch)
-                }
+        if (change.pitch != currentPitch) {
+            if (EditionConfig.isLite) {
+                liteTrackMixModified = true
+                liteTrackMixPitchSemi = change.pitch
+                applyLiteTrackMixToPlayer(liteTrackMixTempo, change.pitch)
+            } else {
+                onPitchSemiChange(change.pitch)
             }
         }
     }
@@ -4018,32 +4007,6 @@ fun PlayerScreen(
                             )
                         } else {
                             onTempoChange(newTempo)
-                        }
-                    },
-                    pitchSemi = if (EditionConfig.isLite) liteTrackMixPitchSemi else pitchSemi,
-                    syncPitchToChords = syncPitchToChords,
-                    onSyncPitchToChordsChange = ::updateSyncPitchToChords,
-                    onPitchSemiChange = { newSemi ->
-                        if (!isHqAvailable) {
-                            val now = android.os.SystemClock.elapsedRealtime()
-                            if (now - hqToastShownAtMs > 1200L) {
-                                Toast.makeText(context, sHqUnavailable, Toast.LENGTH_SHORT).show()
-                                hqToastShownAtMs = now
-                            }
-                            return@TrackMixScreen
-                        }
-                        if (EditionConfig.isLite) {
-                            val clamped = newSemi.coerceIn(-6, 6)
-                            if (liteTrackMixPitchSemi != clamped) {
-                                liteTrackMixModified = true
-                            }
-                            liteTrackMixPitchSemi = clamped
-                            applyLiteTrackMixToPlayer(
-                                speed = liteTrackMixTempo,
-                                pitchSemi = liteTrackMixPitchSemi
-                            )
-                        } else {
-                            onPitchSemiChange(newSemi)
                         }
                     },
                     currentTrackUri = currentTrackUri,

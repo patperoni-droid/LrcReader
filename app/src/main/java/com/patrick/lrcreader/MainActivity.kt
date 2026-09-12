@@ -3118,13 +3118,19 @@ class MainActivity : AppCompatActivity() {
                                 gainDb = clampTrackDb(profile.volumeDb ?: DEFAULT_TRACK_GAIN_DB),
                                 volumeSource = SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL,
                                 tempo = profile.tempo ?: 1f,
-                                pitchSemi = profile.pitchSemi ?: 0
+                                pitchSemi = com.patrick.lrcreader.core.DisplayPrefs.runtimePitchSemi(
+                                    profile.pitchSemi ?: 0,
+                                    com.patrick.lrcreader.core.DisplayPrefs.isSyncPitchToChordsEnabled(ctx)
+                                )
                             )
                         } ?: LoadedTrackMixSettings(
                                 gainDb = clampTrackDb(TrackVolumePrefs.getDb(ctx, uriString) ?: DEFAULT_TRACK_GAIN_DB),
                                 volumeSource = TrackVolumePrefs.getSource(ctx, uriString),
                                 tempo = TrackTempoPrefs.getTempo(ctx, uriString) ?: 1f,
-                                pitchSemi = TrackPitchPrefs.getSemi(ctx, uriString) ?: 0
+                                pitchSemi = com.patrick.lrcreader.core.DisplayPrefs.runtimePitchSemi(
+                                    TrackPitchPrefs.getSemi(ctx, uriString) ?: 0,
+                                    com.patrick.lrcreader.core.DisplayPrefs.isSyncPitchToChordsEnabled(ctx)
+                                )
                             )
                     }
                     currentTrackGainDb = loadedTrackMixSettings.gainDb
@@ -3824,7 +3830,10 @@ class MainActivity : AppCompatActivity() {
                                     gainDb = clampTrackDb(TrackVolumePrefs.getDb(ctx, resolvedPlayableUri) ?: DEFAULT_TRACK_GAIN_DB),
                                     volumeSource = TrackVolumePrefs.getSource(ctx, resolvedPlayableUri),
                                     tempo = TrackTempoPrefs.getTempo(ctx, resolvedPlayableUri) ?: 1f,
-                                    pitchSemi = TrackPitchPrefs.getSemi(ctx, resolvedPlayableUri) ?: 0
+                                    pitchSemi = com.patrick.lrcreader.core.DisplayPrefs.runtimePitchSemi(
+                                        TrackPitchPrefs.getSemi(ctx, resolvedPlayableUri) ?: 0,
+                                        com.patrick.lrcreader.core.DisplayPrefs.isSyncPitchToChordsEnabled(ctx)
+                                    )
                                 )
                             }
                             val forceSequentialForPitchSpeed = shouldUseSequentialTransition(
@@ -4399,7 +4408,10 @@ class MainActivity : AppCompatActivity() {
                         currentTrackVolumeSource = TrackVolumePrefs.getSource(ctx, lastUri)
 
                         currentTrackTempo = TrackTempoPrefs.getTempo(ctx, lastUri) ?: 1f
-                        currentTrackPitchSemi = TrackPitchPrefs.getSemi(ctx, lastUri) ?: 0
+                        currentTrackPitchSemi = com.patrick.lrcreader.core.DisplayPrefs.runtimePitchSemi(
+                            TrackPitchPrefs.getSemi(ctx, lastUri) ?: 0,
+                            com.patrick.lrcreader.core.DisplayPrefs.isSyncPitchToChordsEnabled(ctx)
+                        )
                     }
 
                     sessionRestored = true

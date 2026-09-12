@@ -1270,9 +1270,6 @@
     <string name="track_mix_anti_clip">ANTI-CLIP</string>
     <string name="track_mix_speed">SPEED</string>
     <string name="track_mix_reset_speed">Reset 1.00x</string>
-    <string name="track_mix_pitch">PITCH</string>
-    <string name="track_mix_sync_pitch_chords">Pitch ↔ Chords</string>
-    <string name="track_mix_reset_pitch">Reset 0</string>
     <string name="track_mix_equalizer">EQUALIZER</string>
     <string name="track_mix_three_bands">3 BANDS</string>
     <string name="track_mix_drag_hint">drag ↑↓</string>
