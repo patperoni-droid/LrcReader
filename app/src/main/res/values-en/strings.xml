@@ -1267,7 +1267,6 @@
     <string name="track_mix_pitch">PITCH</string>
     <string name="track_mix_reset_pitch">Reset 0</string>
     <string name="track_mix_vu">VU</string>
-    <string name="track_mix_keep_it_clean">KEEP IT CLEAN</string>
     <string name="track_mix_equalizer">EQUALIZER</string>
     <string name="track_mix_three_bands">3 BANDS</string>
     <string name="track_mix_drag_hint">drag ↑↓</string>

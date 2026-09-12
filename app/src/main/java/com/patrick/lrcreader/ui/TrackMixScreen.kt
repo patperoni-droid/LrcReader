@@ -346,7 +346,7 @@ fun TrackMixScreen(
                         )
 
                         Spacer(Modifier.height(8.dp))
-                        Text(stringResource(R.string.track_mix_keep_it_clean), color = Color(0xFF8FA0AA), fontSize = 10.sp)
+                        Spacer(Modifier.height(12.dp))
                     }
                 }
             }
