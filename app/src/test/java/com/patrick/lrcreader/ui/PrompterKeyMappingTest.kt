@@ -18,12 +18,16 @@ class PrompterKeyMappingTest {
     }
 
     @Test
-    fun mapPrompterKey_returnsNullForUnsupportedNavigationAndToggleKeys() {
+    fun mapPrompterKey_mapsPageAndVerticalNavigationKeys() {
+        assertEquals(PrompterAction.NEXT, mapPrompterKey(KeyEvent.KEYCODE_PAGE_DOWN))
+        assertEquals(PrompterAction.PREV, mapPrompterKey(KeyEvent.KEYCODE_PAGE_UP))
+        assertEquals(PrompterAction.NEXT, mapPrompterKey(KeyEvent.KEYCODE_DPAD_DOWN))
+        assertEquals(PrompterAction.PREV, mapPrompterKey(KeyEvent.KEYCODE_DPAD_UP))
+    }
+
+    @Test
+    fun mapPrompterKey_returnsNullForUnsupportedToggleKeys() {
         val keys = listOf(
-            KeyEvent.KEYCODE_PAGE_DOWN,
-            KeyEvent.KEYCODE_PAGE_UP,
-            KeyEvent.KEYCODE_DPAD_DOWN,
-            KeyEvent.KEYCODE_DPAD_UP,
             KeyEvent.KEYCODE_SPACE,
             KeyEvent.KEYCODE_ENTER,
             KeyEvent.KEYCODE_NUMPAD_ENTER
@@ -32,6 +36,18 @@ class PrompterKeyMappingTest {
         keys.forEach { keyCode ->
             assertNull(mapPrompterKey(keyCode))
         }
+    }
+
+    @Test
+    fun viewportTarget_usesVisibleHeightWithFifteenPercentOverlap() {
+        assertEquals(1_050, prompterViewportTarget(200, 2_000, 1_000, direction = 1))
+        assertEquals(0, prompterViewportTarget(200, 2_000, 1_000, direction = -1))
+    }
+
+    @Test
+    fun viewportTarget_clampsAtTextBounds() {
+        assertEquals(2_000, prompterViewportTarget(1_800, 2_000, 1_000, direction = 1))
+        assertEquals(0, prompterViewportTarget(50, 2_000, 1_000, direction = -1))
     }
 
     @Test

@@ -39,6 +39,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -74,13 +75,35 @@ enum class PrompterAction {
 }
 
 internal fun mapPrompterKey(nativeKeyCode: Int): PrompterAction? = when (nativeKeyCode) {
-    AndroidKeyEvent.KEYCODE_DPAD_RIGHT -> PrompterAction.NEXT
+    AndroidKeyEvent.KEYCODE_DPAD_RIGHT,
+    AndroidKeyEvent.KEYCODE_DPAD_DOWN,
+    AndroidKeyEvent.KEYCODE_PAGE_DOWN -> PrompterAction.NEXT
 
-    AndroidKeyEvent.KEYCODE_DPAD_LEFT -> PrompterAction.PREV
+    AndroidKeyEvent.KEYCODE_DPAD_LEFT,
+    AndroidKeyEvent.KEYCODE_DPAD_UP,
+    AndroidKeyEvent.KEYCODE_PAGE_UP -> PrompterAction.PREV
 
     AndroidKeyEvent.KEYCODE_MOVE_HOME -> PrompterAction.HOME
     AndroidKeyEvent.KEYCODE_MOVE_END -> PrompterAction.END
     else -> null
+}
+
+internal const val PROMPTER_VIEWPORT_OVERLAP_FRACTION = 0.15f
+
+internal fun prompterViewportTarget(
+    currentScrollPx: Int,
+    maxScrollPx: Int,
+    viewportHeightPx: Int,
+    direction: Int,
+    overlapFraction: Float = PROMPTER_VIEWPORT_OVERLAP_FRACTION
+): Int {
+    if (maxScrollPx <= 0 || viewportHeightPx <= 0 || direction == 0) {
+        return currentScrollPx.coerceIn(0, maxScrollPx.coerceAtLeast(0))
+    }
+    val overlap = overlapFraction.coerceIn(0f, 0.95f)
+    val stepPx = (viewportHeightPx * (1f - overlap)).toInt().coerceAtLeast(1)
+    return (currentScrollPx + if (direction < 0) -stepPx else stepPx)
+        .coerceIn(0, maxScrollPx)
 }
 
 internal fun mapPrompterKey(event: KeyEvent): PrompterAction? =
@@ -239,36 +262,42 @@ fun TextPrompterScreen(
     val hostView = LocalView.current
 
     var isPlaying by remember { mutableStateOf(false) }
+    var viewportHeightPx by remember { mutableIntStateOf(0) }
+    var manualScrollRevision by remember { mutableIntStateOf(0) }
     var prompterRootHasFocus by remember { mutableStateOf(false) }
     var isSpeedSliderOpen by remember { mutableStateOf(false) }
     val minSpeed = 0.10f
     val maxSpeed = 1.40f // + rapide possible → marge en haut
 
-    fun scrollByStep(direction: Int) {
+    fun scrollManuallyTo(targetProvider: () -> Int) {
         scope.launch {
-            val step = (scrollState.maxValue * 0.08f).toInt().coerceAtLeast(80)
-            val target = when {
-                direction < 0 -> (scrollState.value - step).coerceAtLeast(0)
-                else -> (scrollState.value + step).coerceAtMost(scrollState.maxValue)
-            }
+            val target = targetProvider().coerceIn(0, scrollState.maxValue)
             scrollState.animateScrollTo(target)
+            manualScrollRevision++
+        }
+    }
+
+    fun scrollByViewport(direction: Int) {
+        scrollManuallyTo {
+            prompterViewportTarget(
+                currentScrollPx = scrollState.value,
+                maxScrollPx = scrollState.maxValue,
+                viewportHeightPx = viewportHeightPx,
+                direction = direction
+            )
         }
     }
 
     val onTogglePlayPause: () -> Unit = { isPlaying = !isPlaying }
-    val onPrevStep: () -> Unit = { scrollByStep(direction = -1) }
-    val onNextStep: () -> Unit = { scrollByStep(direction = 1) }
-    val onJumpToStart: () -> Unit = {
-        scope.launch { scrollState.animateScrollTo(0) }
-    }
-    val onJumpToEnd: () -> Unit = {
-        scope.launch { scrollState.animateScrollTo(scrollState.maxValue) }
-    }
+    val previousViewport: () -> Unit = { scrollByViewport(direction = -1) }
+    val nextViewport: () -> Unit = { scrollByViewport(direction = 1) }
+    val onJumpToStart: () -> Unit = { scrollManuallyTo { 0 } }
+    val onJumpToEnd: () -> Unit = { scrollManuallyTo { scrollState.maxValue } }
 
     fun dispatchPrompterAction(action: PrompterAction) {
         when (action) {
-            PrompterAction.NEXT -> onNextStep()
-            PrompterAction.PREV -> onPrevStep()
+            PrompterAction.NEXT -> nextViewport()
+            PrompterAction.PREV -> previousViewport()
             PrompterAction.TOGGLE -> onTogglePlayPause()
             PrompterAction.HOME -> onJumpToStart()
             PrompterAction.END -> onJumpToEnd()
@@ -292,12 +321,20 @@ fun TextPrompterScreen(
         val expo = t * t * t   // ✅ cubic = ÉNORMÉMENT plus de marge en bas
         return min + expo * (max - min)
     }
+    val currentMaxScrollPx = scrollState.maxValue
     // ✅ Auto scroll
-    LaunchedEffect(songId, isPlaying, speedSlider) {
+    LaunchedEffect(
+        songId,
+        isPlaying,
+        speedSlider,
+        manualScrollRevision,
+        viewportHeightPx,
+        currentMaxScrollPx
+    ) {
         if (!isPlaying) return@LaunchedEffect
         delay(50)
 
-        val max = scrollState.maxValue
+        val max = currentMaxScrollPx
         if (max <= 0) return@LaunchedEffect
 
 // vitesse issue du slider (ta fonction existante)
@@ -308,7 +345,8 @@ fun TextPrompterScreen(
         val pxPerSec = basePxPerSec * clampedSpeed
 
 // durée = distance / vitesse
-        val duration = ((max / pxPerSec) * 1000f)
+        val remainingPx = (max - scrollState.value).coerceAtLeast(0)
+        val duration = ((remainingPx / pxPerSec) * 1000f)
             .toInt()
             .coerceAtLeast(500)
 
@@ -376,7 +414,6 @@ fun TextPrompterScreen(
             modifier = modifier
                 .fillMaxSize()
                 .focusRequester(focusRequester)
-                .focusable()
                 .onFocusChanged { prompterRootHasFocus = it.hasFocus }
                 .onPreviewKeyEvent { event ->
                     val decision = resolvePrompterKeyHandling(
@@ -391,6 +428,7 @@ fun TextPrompterScreen(
                     decision.actionToDispatch?.let(::dispatchPrompterAction)
                     true
                 }
+                .focusable()
         ) {
 
             // 1) TEXTE plein écran
@@ -408,6 +446,7 @@ fun TextPrompterScreen(
                 bottomOffsetFraction = 0.30f,
                 modifier = Modifier
                     .fillMaxSize()
+                    .onSizeChanged { viewportHeightPx = it.height }
                     .zIndex(0f)
             )
 
@@ -520,8 +559,8 @@ fun TextPrompterScreen(
             PrompterTransportBarAudioLike(
                 isPlaying = isPlaying,
                 onPlayPause = onTogglePlayPause,
-                onPrev = onPrevStep,
-                onNext = onNextStep,
+                onPrev = previousViewport,
+                onNext = nextViewport,
                 onReturnToStart = onJumpToStart,
                 showReturnToStart = tabletSplitLayout,
                 modifier = Modifier

@@ -13,8 +13,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
@@ -43,7 +43,7 @@ fun PrompterTransportBarAudioLike(
     ) {
         IconButton(onClick = onPrev) {
             Icon(
-                imageVector = Icons.Filled.SkipPrevious,
+                imageVector = Icons.Filled.KeyboardArrowUp,
                 contentDescription = stringResource(R.string.player_cd_prev),
                 tint = Color.White,
                 modifier = Modifier.size(48.dp)
@@ -61,7 +61,7 @@ fun PrompterTransportBarAudioLike(
 
         IconButton(onClick = onNext) {
             Icon(
-                imageVector = Icons.Filled.SkipNext,
+                imageVector = Icons.Filled.KeyboardArrowDown,
                 contentDescription = stringResource(R.string.player_cd_next),
                 tint = Color.White,
                 modifier = Modifier.size(48.dp)
