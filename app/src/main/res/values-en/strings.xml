@@ -141,7 +141,6 @@
     <string name="filler_default_music_name">Music</string>
 
     <string name="filler_bus_title">BACKGROUND BUS</string>
-    <string name="filler_local_controller_title">Background sound player</string>
     <string name="filler_main_playback_controller_title">Main playback</string>
 
     <string name="filler_enable">Enable background sound</string>
@@ -163,10 +162,8 @@
     <string name="filler_library_missing">⚠️ Go to Library → “Choose Music folder” (once).</string>
 
     <string name="filler_quick_ambiences">Quick ambiences</string>
-    <string name="filler_source_title">Background sound source</string>
     <string name="filler_source_assets">Default ambience</string>
     <string name="filler_source_default_title">Default ambience</string>
-    <string name="filler_source_default_subtitle">2 pads included in the app</string>
     <string name="filler_source_custom_folder">Custom folder</string>
     <string name="filler_source_custom_subtitle">Use the audio files from a folder</string>
     <string name="filler_choose_custom_folder">Choose a folder</string>
@@ -1365,6 +1362,10 @@ Don’t forget to save 😉</string>
     <string name="lyrics_editor_chord_action">Insert or edit a ChordPro chord</string>
     <string name="lyrics_editor_chord_input_title">ChordPro chord</string>
     <string name="lyrics_editor_chord_input_label">Chord (e.g. Am, G7, C/E)</string>
+    <string name="prompter_chord_edit_title">Edit chord</string>
+    <string name="prompter_chord_replace_title">Replace chord</string>
+    <string name="prompter_chord_replace_confirmation">Replace every occurrence of %1$s with %2$s in this song?</string>
+    <string name="prompter_chord_replace_action">Replace</string>
 
     <!-- Open beta welcome -->
     <string name="open_beta_welcome_title">Welcome to MusiMio</string>

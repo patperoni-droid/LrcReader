@@ -1,8 +1,8 @@
-# SMP ARCHITECTURE — Stage Music Player
+# SMP ARCHITECTURE — MusiMio (modèle SMP)
 
 CRITICAL — MUST BE UNDERSTOOD BEFORE ANY STRUCTURAL CHANGE
 
-This document defines the core architecture of Stage Music Player.
+This document defines the core SMP architecture used by MusiMio.
 All features must comply with this model.
 
 ⸻
@@ -100,6 +100,10 @@ Playback must ALWAYS use:
 - ExoPlayer as the timing reference
 
 👉 The timeline system depends on this stability
+
+Current Player details: synchronized ChordPro content is edited in `Lyrics`; `Grid` is a read-only chord view derived from it, with legacy chords as fallback. On phone the live Player stays in `Lyrics`; the tablet toolbar offers `Lyrics` and `Grid`. Display transposition is per song (`-11..+11` semitones) and does not rewrite the source. Audio pitch is a separate per-track adjustment (`-6..+6` semitones); playback speed is `0.5..2.0`. `Sync Pitch` links explicit live adjustments of pitch and displayed chords without a recursive state-observer loop. Disabling it resets active audio pitch to zero. Non-neutral pitch or speed uses the sequential playback transition guard.
+
+Track Console currently exposes LEVEL and SPEED plus a static five-band EQ drawing. The EQ has no audio effect, callback or persistence. Background Sound and DJ use their own playback paths and remain subject to the central audio coordination rules; this paragraph does not change their existing priority contract.
 
 ⸻
 

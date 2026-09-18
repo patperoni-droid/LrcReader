@@ -93,6 +93,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.FillerSoundManager
 import com.patrick.lrcreader.core.HardwareListCommand
+import com.patrick.lrcreader.core.hardwareSelectionTargetIndex
 import com.patrick.lrcreader.core.MiniTunerVisibilityStore
 import com.patrick.lrcreader.core.NotesRepository
 import com.patrick.lrcreader.core.TunerEngine
@@ -197,6 +198,7 @@ fun QuickPlaylistsScreen(
     hardwareCommand: HardwareListCommand = HardwareListCommand.ACTIVATE,
     hardwareReturnToCurrentToken: Int = 0,
     hardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT,
+    hardwareOpenSelectedToken: Int = 0,
     playbackControlActivateSelectedToken: Int = 0,
     onSequentialSelectionChanged: (songId: String?, playbackItem: String?, playlist: String?) -> Unit = { _, _, _ -> },
     onAddTrackToPlaylist: (String) -> Unit = {},
@@ -408,6 +410,12 @@ fun QuickPlaylistsScreen(
     var keyboardSelectedItem by rememberSaveable(internalSelected) { mutableStateOf<String?>(null) }
     var lastHandledPlaybackControlActivateSelectedToken by remember {
         mutableIntStateOf(playbackControlActivateSelectedToken)
+    }
+    var lastHandledHardwareReturnToken by remember {
+        mutableIntStateOf(0)
+    }
+    var lastHandledHardwareOpenSelectedToken by remember {
+        mutableIntStateOf(hardwareOpenSelectedToken)
     }
 
     fun updatePlayedMoveSelection(selectedItem: String?) {
@@ -1273,10 +1281,12 @@ fun QuickPlaylistsScreen(
             .filter(::isKeyboardSelectablePlaylistItem)
         if (playableItems.isEmpty()) return null
 
+        val currentPlayingItem = internalSelected?.let(::findCurrentPlayingTrackIndexInPlaylist)
+            ?.let(songs::getOrNull)
+            ?.takeIf { it in playableItems }
         val anchorItem = when {
+            anchorToCurrentTrack && currentPlayingItem != null -> currentPlayingItem
             keyboardSelectedItem in playableItems -> keyboardSelectedItem
-            anchorToCurrentTrack && currentPlayingPlaylist == internalSelected &&
-                currentPlayingPlaylistItemKey in playableItems -> currentPlayingPlaylistItemKey
             currentPlayingPlaylist == internalSelected &&
                 currentPlayingPlaylistItemKey in playableItems -> currentPlayingPlaylistItemKey
             currentPlayingUri in playableItems -> currentPlayingUri
@@ -1284,11 +1294,8 @@ fun QuickPlaylistsScreen(
         } ?: playableItems.first()
 
         val anchorIndex = playableItems.indexOf(anchorItem).coerceAtLeast(0)
-        val targetIndex = when (command) {
-            HardwareListCommand.MOVE_PREVIOUS -> (anchorIndex - 1).coerceAtLeast(0)
-            HardwareListCommand.MOVE_NEXT -> (anchorIndex + 1).coerceAtMost(playableItems.lastIndex)
-            HardwareListCommand.ACTIVATE -> anchorIndex
-        }
+        val targetIndex = hardwareSelectionTargetIndex(anchorIndex, playableItems.size, command)
+            ?: return null
         val targetItem = playableItems[targetIndex]
         keyboardSelectedItem = targetItem
         updatePlayedMoveSelection(targetItem)
@@ -1373,11 +1380,39 @@ fun QuickPlaylistsScreen(
 
     LaunchedEffect(hardwareReturnToCurrentToken, visibleRows, internalSelected) {
         if (hardwareReturnToCurrentToken == 0) return@LaunchedEffect
+        if (hardwareReturnToCurrentToken == lastHandledHardwareReturnToken) return@LaunchedEffect
         if (internalSelected.isNullOrBlank()) return@LaunchedEffect
-        moveKeyboardSelection(
+        closePlaylistSearch()
+        val currentTrackIndex = findCurrentPlayingTrackIndexInPlaylist(internalSelected!!)
+        val currentTrackItem = currentTrackIndex?.let(songs::getOrNull)
+        val containingHeader = currentTrackIndex
+            ?.let { findContainingGroupHeaderIndex(songs, it) }
+            ?.let(songs::getOrNull)
+        if (containingHeader != null && containingHeader in collapsedGroupIds) {
+            collapsedGroupIds = collapsedGroupIds - containingHeader
+            return@LaunchedEffect
+        }
+        val targetItem = moveKeyboardSelection(
             command = hardwareReturnCommand,
             anchorToCurrentTrack = true
-        )
+        ) ?: return@LaunchedEffect
+        if (currentTrackItem != null && targetItem != currentTrackItem) return@LaunchedEffect
+        lastHandledHardwareReturnToken = hardwareReturnToCurrentToken
+    }
+
+    LaunchedEffect(hardwareOpenSelectedToken) {
+        if (hardwareOpenSelectedToken == 0) return@LaunchedEffect
+        if (hardwareOpenSelectedToken == lastHandledHardwareOpenSelectedToken) return@LaunchedEffect
+        lastHandledHardwareOpenSelectedToken = hardwareOpenSelectedToken
+        val currentPlaylist = internalSelected ?: return@LaunchedEffect
+        val targetItem = keyboardSelectedItem
+            ?.takeIf { selectedItem -> visibleRows.any { row -> row.item == selectedItem } }
+            ?: return@LaunchedEffect
+        val playbackItem = resolveVariantFamilyPlaybackItem(targetItem, variantFamilyById)
+        saveOriginalOrderIfMissing(context, currentPlaylist, songs.toList())
+        onPlaySong(playbackItem, currentPlaylist, Color.White)
+        closePlaylistSearch()
+        onRequestShowPlayer()
     }
 
     val miniTunerState: TunerState = if (isMiniTunerVisible) {
@@ -1812,7 +1847,7 @@ fun QuickPlaylistsScreen(
                                 val activeSongId = activeSongIdForFamily(family)
                                 val activePlaybackItem = activeSongId?.let(::buildSmpItem) ?: uriString
                                 val isExpanded = family.id in expandedVariantFamilyIds
-                                val isKeyboardSelected = compactTabletLayout && keyboardSelectedItem == uriString
+                                val isKeyboardSelected = keyboardSelectedItem == uriString
                                 val isCurrentPlaying = currentPlayingUri == activePlaybackItem ||
                                     currentPlayingPlaylistItemKey == activePlaybackItem
                                 val isForcedNext = nextTrackUri != null && nextTrackUri == activePlaybackItem

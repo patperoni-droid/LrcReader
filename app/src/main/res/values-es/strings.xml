@@ -139,7 +139,6 @@
     <string name="filler_default_music_name">Música</string>
 
     <string name="filler_bus_title">BUS DE FONDO</string>
-    <string name="filler_local_controller_title">Reproductor de fondo</string>
     <string name="filler_main_playback_controller_title">Playback principal</string>
 
     <string name="filler_enable">Activar sonido de fondo</string>
@@ -161,10 +160,8 @@
     <string name="filler_library_missing">⚠️ Ve a Biblioteca → “Elegir carpeta de música” (una vez).</string>
 
     <string name="filler_quick_ambiences">Ambientes rápidos</string>
-    <string name="filler_source_title">Fuente del sonido de fondo</string>
     <string name="filler_source_assets">Ambiente predeterminado</string>
     <string name="filler_source_default_title">Ambiente predeterminado</string>
-    <string name="filler_source_default_subtitle">2 capas incluidas en la aplicación</string>
     <string name="filler_source_custom_folder">Carpeta personalizada</string>
     <string name="filler_source_custom_subtitle">Usar los archivos de audio de una carpeta</string>
     <string name="filler_choose_custom_folder">Elegir una carpeta</string>
@@ -1280,6 +1277,10 @@ No olvides guardar 😉</string>
     <string name="lyrics_editor_chord_action">Insertar o editar un acorde ChordPro</string>
     <string name="lyrics_editor_chord_input_title">Acorde ChordPro</string>
     <string name="lyrics_editor_chord_input_label">Acorde (p. ej., Am, G7, C/E)</string>
+    <string name="prompter_chord_edit_title">Editar acorde</string>
+    <string name="prompter_chord_replace_title">Reemplazar acorde</string>
+    <string name="prompter_chord_replace_confirmation">¿Reemplazar todas las apariciones de %1$s por %2$s en esta canción?</string>
+    <string name="prompter_chord_replace_action">Reemplazar</string>
 
     <!-- Open beta welcome -->
     <string name="open_beta_welcome_title">Te damos la bienvenida a MusiMio</string>

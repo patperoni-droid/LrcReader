@@ -2,6 +2,8 @@ package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Add
@@ -37,6 +39,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -126,6 +129,11 @@ internal fun ScrollingTextEditorDialog(
     val automaticPaletteChords = remember(contentValue.text) {
         extractPrompterChordPaletteFromText(contentValue.text)
     }
+    var paletteChordBeingEdited by remember { mutableStateOf<String?>(null) }
+    var paletteChordDraft by remember { mutableStateOf("") }
+    var pendingPaletteChordReplacement by remember {
+        mutableStateOf<Pair<String, String>?>(null)
+    }
     val insertEmptyChord: () -> Unit = {
         onContentValueChange(insertEmptyChordProAtSelection(contentValue))
         contentFocusRequester.requestFocus()
@@ -133,6 +141,10 @@ internal fun ScrollingTextEditorDialog(
     val insertPaletteChord: (String) -> Unit = { chord ->
         onContentValueChange(editOrInsertPrompterChord(contentValue, chord))
         contentFocusRequester.requestFocus()
+    }
+    val editPaletteChord: (String) -> Unit = { chord ->
+        paletteChordBeingEdited = chord
+        paletteChordDraft = chord
     }
 
     fun collapsePhoneTools() {
@@ -212,7 +224,8 @@ internal fun ScrollingTextEditorDialog(
                 PrompterAutomaticChordPaletteRow(
                     chords = automaticPaletteChords,
                     onInsertEmptyChord = insertEmptyChord,
-                    onChordClick = insertPaletteChord
+                    onChordClick = insertPaletteChord,
+                    onChordLongClick = editPaletteChord
                 )
                 Spacer(Modifier.height(8.dp))
             }
@@ -243,6 +256,7 @@ internal fun ScrollingTextEditorDialog(
                             chords = automaticPaletteChords,
                             onInsertEmptyChord = insertEmptyChord,
                             onChordClick = insertPaletteChord,
+                            onChordLongClick = editPaletteChord,
                             modifier = Modifier.weight(1f)
                         )
                     } else {
@@ -318,6 +332,77 @@ internal fun ScrollingTextEditorDialog(
 
         }
     }
+
+    paletteChordBeingEdited?.let { currentChord ->
+        val normalizedDraft = paletteChordDraft.trim()
+        AlertDialog(
+            onDismissRequest = { paletteChordBeingEdited = null },
+            title = { Text(stringResource(R.string.prompter_chord_edit_title)) },
+            text = {
+                OutlinedTextField(
+                    value = paletteChordDraft,
+                    onValueChange = { paletteChordDraft = it },
+                    label = { Text(stringResource(R.string.lyrics_editor_chord_input_label)) },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingPaletteChordReplacement = currentChord to normalizedDraft
+                        paletteChordBeingEdited = null
+                    },
+                    enabled = normalizedDraft != currentChord &&
+                        isValidPrompterChordInput(normalizedDraft)
+                ) {
+                    Text(stringResource(R.string.common_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { paletteChordBeingEdited = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
+    pendingPaletteChordReplacement?.let { (oldChord, newChord) ->
+        AlertDialog(
+            onDismissRequest = { pendingPaletteChordReplacement = null },
+            title = { Text(stringResource(R.string.prompter_chord_replace_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.prompter_chord_replace_confirmation,
+                        oldChord,
+                        newChord
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onContentValueChange(
+                            replaceExactPrompterChordOccurrences(
+                                value = contentValue,
+                                oldChord = oldChord,
+                                newChord = newChord
+                            )
+                        )
+                        pendingPaletteChordReplacement = null
+                        contentFocusRequester.requestFocus()
+                    }
+                ) {
+                    Text(stringResource(R.string.prompter_chord_replace_action))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingPaletteChordReplacement = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -325,6 +410,7 @@ private fun PrompterAutomaticChordPaletteRow(
     chords: List<String>,
     onInsertEmptyChord: () -> Unit,
     onChordClick: (String) -> Unit,
+    onChordLongClick: (String) -> Unit,
     modifier: Modifier = Modifier.fillMaxWidth()
 ) {
     val insertChordDescription = stringResource(R.string.lyrics_editor_chord_action)
@@ -348,6 +434,7 @@ private fun PrompterAutomaticChordPaletteRow(
             PrompterChordPaletteRow(
                 chords = chords,
                 onChordClick = onChordClick,
+                onChordLongClick = onChordLongClick,
                 showBrackets = false,
                 modifier = Modifier.weight(1f)
             )
@@ -422,9 +509,11 @@ internal fun PrompterTranspositionControl(
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 internal fun PrompterChordPaletteRow(
     chords: List<String>,
     onChordClick: (String) -> Unit,
+    onChordLongClick: ((String) -> Unit)? = null,
     showBrackets: Boolean = true,
     modifier: Modifier = Modifier.fillMaxWidth()
 ) {
@@ -433,19 +522,33 @@ internal fun PrompterChordPaletteRow(
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         chords.forEach { chord ->
-            TextButton(
-                onClick = { onChordClick(chord) },
-                modifier = Modifier
-                    .testTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord)
-                    .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                    .focusProperties { canFocus = false },
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    if (showBrackets) "[$chord]" else chord,
-                    color = Color(0xFF80CBC4),
-                    fontSize = 13.sp
-                )
+            val chordText = if (showBrackets) "[$chord]" else chord
+            if (onChordLongClick == null) {
+                TextButton(
+                    onClick = { onChordClick(chord) },
+                    modifier = Modifier
+                        .testTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord)
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .focusProperties { canFocus = false },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(chordText, color = Color(0xFF80CBC4), fontSize = 13.sp)
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .testTag(SCROLLING_TEXT_EDITOR_CHORD_TAG_PREFIX + chord)
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                        .focusProperties { canFocus = false }
+                        .combinedClickable(
+                            onClick = { onChordClick(chord) },
+                            onLongClick = { onChordLongClick(chord) }
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    Text(chordText, color = Color(0xFF80CBC4), fontSize = 13.sp)
+                }
             }
         }
     }

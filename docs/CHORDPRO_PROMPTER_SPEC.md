@@ -2,8 +2,10 @@
 
 ## Statut et objectif
 
-État du code vérifié le **4 septembre 2026**, branche `fix/group-perf`, référence
-`dcd57d70`. Ce document actualise le cahier des charges initial : les comportements
+État du code vérifié le **18 septembre 2026**, branche
+`feature/chordpro-audio-lyrics`. La navigation par portions d'écran et l'édition
+exacte d'un accord depuis la palette ont été validées sur appareil réel. Ce document
+actualise le cahier des charges initial : les comportements
 présents sont décrits ci-dessous, les intentions restantes sont regroupées en fin de document.
 Il ne constitue ni une certification complète de la bêta ni une annonce de publication.
 
@@ -31,7 +33,7 @@ du standard ChordPro.
 | Insertion, remplacement et retrait de marqueurs | `ui/ChordProTextEditing.kt` |
 | Session d'édition Bibliothèque / crayon du Prompteur | `ui/EditScrollingTextDialog.kt` |
 | Création | `ui/CreateScrollingTextDialog.kt`, `ui/ScrollingTextCreation.kt` |
-| Texte, palette et alignement | `core/TextSongRepository.kt`, `core/TextPrompterChordPaletteStore.kt`, `core/TextPrompterDisplaySettingsStore.kt` |
+| Texte et alignement | `core/TextSongRepository.kt`, `core/TextPrompterDisplaySettingsStore.kt` |
 
 Le parcours principal concerne les textes autonomes du catalogue Bibliothèque,
 aussi référencés depuis les playlists. `TextPrompterScreen` sait également lire
@@ -180,15 +182,33 @@ précis lors d'un changement de géométrie restent absentes.
 
 Le défilement autonome utilise le `ScrollState` vertical et une animation linéaire
 vers sa limite mesurée. Les lignes n'ont pas de hauteur fixe supposée par le parser.
-Play/Pause, vitesse et déplacements manuels gardent leur logique existante, sans
-horodatage ChordPro ni synchronisation avec ExoPlayer.
+Le Prompteur reste autonome : il n'utilise ni horodatage ChordPro ni ExoPlayer.
 
-Limite à conserver dans les diagnostics : l'effet est relancé par l'identité, l'état
-Play/Pause et la vitesse, pas par la nouvelle hauteur du contenu. Il capture la
-limite de scroll au lancement ; sa durée est calculée avec cette limite totale,
-pas avec la distance restante. Une modification du texte ou de la géométrie pendant
-une animation ne garantit donc ni un recalage musical, ni une vitesse effective
-strictement constante après reprise. L'intégration ChordPro n'a pas refondu ce moteur.
+La navigation manuelle précédente/suivante est commune aux deux boutons tactiles et
+aux commandes clavier Android. Elle déplace le texte de **65 % de la hauteur réellement
+visible**, conserve **35 % de chevauchement**, puis anime le déplacement avec un `tween`
+de **300 ms**. La cible reste bornée entre zéro et `ScrollState.maxValue`.
+
+Le Prompteur traite les touches suivantes lorsqu'il est actif et possède le focus :
+
+- précédent : gauche, haut et Page Up ;
+- suivant : droite, bas et Page Down ;
+- début/fin : Home et End.
+
+Une pédale Bluetooth compatible n'est pas connectée par une API propriétaire : Android
+la présente comme un clavier physique et MusiMio traite ses `KeyEvent`. Le focus de la
+racine du Prompteur est demandé à l'ouverture et repris avant une commande matérielle si
+nécessaire.
+
+Pendant Play, une correction manuelle remplace l'animation automatique en cours. Une fois
+le déplacement terminé, `manualScrollRevision` relance l'auto-scroll depuis la nouvelle
+position sans désactiver Play. Home suit la même mécanique. End conserve Play actif et
+aboutit naturellement à une distance restante nulle. La hauteur du viewport et la valeur
+maximale défilable font partie des clés de relance : une rotation ou un changement de
+dimensions annule le calcul obsolète et recalcule la distance restante.
+
+Cette navigation appartient exclusivement au Prompteur. Elle ne décrit ni le scroll ni
+les paroles synchronisées du lecteur Audio + Paroles.
 
 ## 4. Éditeur partagé et sélection
 
@@ -208,12 +228,10 @@ Il n'y a pas de sauvegarde automatique du brouillon dans ce dialogue.
 
 ### Palette d'accords
 
-Le champ de configuration accepte les noms sans crochets, séparés par espaces,
-virgules ou points-virgules, par exemple `C Am F G7 C/E`. L'ordre est conservé et
-les doublons exacts supprimés. Une palette non configurée est vide : il n'existe
-pas encore de remplissage automatique depuis les accords du texte.
-Le champ n'effectue pas une validation harmonique ; un nom non reconnu inséré
-entre crochets restera littéral dans le Prompteur.
+La palette courante est dérivée automatiquement des `ChordAnchor` reconnus dans la
+source du morceau. Elle conserve l'ordre de première apparition et supprime les doublons
+exacts. Il n'existe pas de seconde liste musicale à maintenir ni de remplacement fondé
+sur du texte libre.
 
 Un clic appelle `editOrInsertPrompterChord` :
 
@@ -226,6 +244,22 @@ Un clic appelle `editOrInsertPrompterChord` :
 L'accord se supprime comme du texte normal. Aucun bouton de suppression d'accord
 spécifique n'existe. Les boutons d'accords ne prennent pas le focus et redemandent
 celui du champ après l'opération.
+
+Un appui long sur un accord de la palette du Prompteur ouvre **Modifier l'accord** avec
+la valeur actuelle préremplie. Après validation, une seconde confirmation propose de
+remplacer toutes ses occurrences dans le morceau courant. Le remplacement :
+
+- reparcourt la source avec `parseChordPro` ;
+- conserve uniquement les ancres dont `ChordSymbol.raw` est exactement égal à l'ancien
+  accord ;
+- remplace les plages `sourceRange` en ordre inverse pour préserver leurs offsets ;
+- remappe la sélection dans le nouveau `TextFieldValue`.
+
+Ainsi, remplacer `G` ne touche pas `Gm`, `G7`, `Gmaj7`, `G/B`, `G#` ni un autre symbole
+contenant cette lettre. Si la cible, par exemple `G7`, existe déjà, la palette recalculée
+depuis le ChordPro ne présente qu'un bouton `G7`. Annuler l'un des dialogues ne modifie
+pas le contenu. Ce geste n'est branché que dans l'éditeur du Prompteur ; le composant
+Audio + Paroles conserve son comportement propre.
 
 ### Texte/couleur et Alignement
 
@@ -264,8 +298,8 @@ pas un modèle matériel ni une mesure du clavier. L'orientation ou le multifen�
 peut donc changer la branche utilisée. Le dialogue tient compte du clavier par
 `imePadding`, indépendamment des états de visibilité.
 
-Dans les deux branches, le focus du contenu masque l'en-tête (titre du dialogue,
-champ titre et champ de configuration de palette), **sans masquer les boutons
+Dans les deux branches, le focus du contenu masque l'en-tête (titre du dialogue
+et champ titre), **sans masquer les boutons
 d'accords**. La zone de texte occupe la hauteur restante. Perdre ce focus permet
 à l'en-tête de revenir ; fermer seulement le clavier n'implique pas sa restauration.
 Il n'y a plus de libellé visuel « Accords » ni de barre de validation séparée en bas.
@@ -317,15 +351,16 @@ titre et au contenu. Les blancs et retours à la ligne aux extrémités ne sont 
 pas garantis ; le contenu intérieur et ses balises restent conservés.
 Le parser et les modèles de rendu sont des représentations dérivées en mémoire.
 
-La palette personnalisée et l'alignement sont enregistrés séparément, par identité,
-et rechargés à la réouverture. Ils ne sont pas encodés dans la source ChordPro.
-Le store de palette est distinct de `ChordPaletteStore` des accords synchronisés.
-Une nouvelle palette reste en session jusqu'à la création effective de l'identifiant.
+L'alignement est enregistré séparément par identité et n'est pas encodé dans la source
+ChordPro. La palette affichée est dérivée du texte enregistré ; elle suit donc le contenu
+sans persistance parallèle. Le store historique de palette n'est pas la source de la
+palette automatique actuelle et reste distinct de `ChordPaletteStore` des accords
+synchronisés.
 
 Les formats physiques, la compatibilité historique et les limites de transport sont
 détaillés dans [SMP_PERSISTENCE_SPEC.md](SMP_PERSISTENCE_SPEC.md#36-textes-défilants-autonomes--implémentation-actuelle).
-La conservation locale de la palette ne vaut pas promesse de son transport dans une
-sauvegarde ou dans SMP Sync. Les couleurs intégrées au texte suivent, elles, ce texte.
+Comme la palette automatique est reconstruite depuis le texte, elle suit le contenu
+transporté. Les couleurs intégrées au texte suivent également ce texte.
 Les morceaux audio existants et leurs fichiers de paroles/accords ne sont pas migrés.
 
 ## 7. Fonctionnel aujourd'hui / limites / suite
@@ -335,8 +370,10 @@ Les morceaux audio existants et leurs fichiers de paroles/accords ne sont pas mi
 - Parsing indépendant des accords courants, tolérance des crochets non musicaux.
 - Rendu accords au-dessus des paroles, wrapping par mots, hauteurs variables.
 - Titres, sections, commentaire, gras, italique, séparateur et couleurs sur paroles/accords.
-- Saisie manuelle, copier-coller de source et palette personnalisée par texte.
-- Insertion et remplacement simple d'accord, retrait simple de couleur et d'emphase.
+- Saisie manuelle, copier-coller de source et palette automatique dédupliquée.
+- Insertion par appui court et remplacement exact global confirmé par appui long.
+- Navigation tactile/clavier par portions de 65 %, chevauchement 35 % et animation 300 ms.
+- Correction manuelle pendant Play avec reprise automatique depuis la nouvelle position.
 - Crayon du Prompteur et éditeur commun avec Bibliothèque.
 - Repli de l'en-tête au focus, accords accessibles et panneaux indépendants.
 - Barre tablette unique horizontale, téléphone conservant sa disposition propre.
@@ -351,8 +388,7 @@ Les morceaux audio existants et leurs fichiers de paroles/accords ne sont pas mi
 - Une ligne qui devient `---` après extraction d'accords est rendue comme un séparateur :
   les accords de cette ligne restent dans le modèle préparé mais ne sont pas affichés.
 - Rechargement en place, sans ancrage sémantique de lecture après changement de hauteur.
-- Palette et alignement conservés localement, non inclus dans le transport actuel du
-  catalogue ; pas de préremplissage automatique depuis la source.
+- Alignement conservé localement ; palette reconstruite depuis la source.
 - Compatibilité du texte intérieur ; espaces de début/fin retirés à l'enregistrement.
 - Présence de tests JVM ne valant pas validation de tous les claviers, orientations,
   longues chansons et conditions réelles de scène.
@@ -368,8 +404,7 @@ Intentions du cahier initial et pistes ergonomiques non livrées,
   existe déjà, mais ce n'est pas un import de fichier) ;
 - transposition automatique, capo et directives ChordPro avancées ;
 - option afficher/masquer les accords et taille indépendante paroles/accords ;
-- zoom utilisateur dédié, remplissage de palette depuis le texte, suppression d'accord
-  assistée et édition musicale complexe ;
+- zoom utilisateur dédié, suppression d'accord assistée et édition musicale complexe ;
 - extension du rendu ChordPro au Deuxième écran et aux autres parcours de texte ;
 - éventuelle palette verticale tablette : **non créée** par la compaction horizontale.
 

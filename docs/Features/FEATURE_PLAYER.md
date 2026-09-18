@@ -1,4 +1,4 @@
-# FEATURE — PLAYER (Audio + Lyrics + Chords)
+# FEATURE — PLAYER (Audio + Lyrics + grille d’accords)
 
 CRITICAL — CORE RUNTIME COMPONENT
 
@@ -41,7 +41,7 @@ The Player is responsible for:
 
 - Audio playback (ExoPlayer)
 - Timing reference (single source of truth)
-- Lyrics / Chords synchronization
+- synchronized Lyrics and derived ChordPro Grid
 - Timeline event dispatch (MIDI / DMX)
 - Playback transitions
 - Define Next / Auto Play
@@ -200,37 +200,29 @@ If uncertainty exists:
 
 # LYRICS & CHORDS
 
-Lyrics and chords are independent layers.
+Lyrics is the editable source for synchronized ChordPro lines. The tablet `Grid` is derived from
+recognized chords in those lines; separate legacy chords data remains a fallback. Both displays
+follow the song timestamps, and changing the tablet view must not reload audio.
 
-Both are:
-- time-based
-- synchronized using timestamps
-- dynamically switchable
+Current live toolbar:
+- phone stays in `Lyrics`; its `Lyrics` / `Grid` view buttons are hidden;
+- tablet exposes `Lyrics` and `Grid` in the Player toolbar;
+- both layouts expose `Transpo − / value / +` and `Sync Pitch` when the live toolbar is shown;
+- `Transpo` changes displayed chords without rewriting the ChordPro source;
+- with `Sync Pitch` enabled, a Transpo action also updates audio pitch within its own bounds.
 
-Supported modes:
-- Lyrics mode
-- Chords mode
-
-Switching must be instant.
-No reload allowed.
-
-Tablet split UI:
-- the former dedicated `Lyrics / Chords` tab row is not shown on tablet split, to preserve vertical reading space
-- the active display mode is controlled from the Player/Audio toolbar
-- toolbar controls are explicit and localized:
-  - `🎤 Lyrics / Paroles / Letras`
-  - `🎸 Chords / Accords / Acordes`
-- the active mode must be visually obvious through SMP color, background, and border treatment
-- this toolbar-based model must remain extensible for a future simultaneous `Lyrics + Chords` display mode
-
-Phone UI:
-- existing phone Lyrics / Chords behavior remains unchanged
+Chord display transposition is clamped to `-11..+11` semitones; audio pitch is clamped to
+`-6..+6` semitones. Turning Sync Pitch off resets active audio pitch to neutral. A Transpo
+action while it is off also requests neutral audio pitch. Sync Pitch state and per-song display
+transposition are persisted; audio pitch and speed use the existing per-track settings.
+The pitch/speed transition guard still selects sequential playback when either track uses
+non-neutral pitch or speed.
 
 ⸻
 
 # STANDALONE SCROLLING-TEXT PROMPTER
 
-Standalone scrolling texts are separate from the Player's synchronized Lyrics / Chords layers.
+Standalone scrolling texts are separate from the Player's synchronized Lyrics and derived Grid views.
 They contain free text without audio or `.lrc` timestamps and can be opened from the Library or
 from a playlist occurrence.
 
@@ -238,8 +230,8 @@ from a playlist occurrence.
 per content change. `PrompterTextViewport` renders chords above lyric portions,
 wraps by whole words and measures variable line heights. Plain source without
 recognized chords or formatting keeps the historical direct Text path. Color tags
-apply to both lyrics and enclosed chords. This does not add ChordPro support to the
-synchronized Lyrics/Chords layers or to the separate `PrompterArea` component.
+apply to both lyrics and enclosed chords. The standalone Prompter and synchronized audio Lyrics
+use shared ChordPro parsing but keep separate content, timing, editing and display routes.
 
 The top-right pencil edits the displayed catalog text through the same
 `EditScrollingTextDialog` as Library; save closes the dialog and reloads that text
@@ -288,17 +280,18 @@ Lyrics remains reserved here for synchronized song lyrics, not for this autonomo
 
 # SONG EDITOR SAVE
 
-The unified song editor must preserve user work across its permanent tabs:
+The current synchronized song editor exposes two permanent tabs:
 - Lyrics
-- Chords
 - Sync
+
+The former separate Chords editor tab is absent. Legacy chords assets remain readable as a
+Grid fallback; ChordPro for new synchronized content is edited in Lyrics.
 
 Covered changes:
 - lyric text
 - lyric timestamps
 - line colors
-- chord text
-- chord timestamps
+- ChordPro text embedded in Lyrics
 - LRC import results
 - line edit/delete operations
 
@@ -794,7 +787,7 @@ Must provide:
 - Play / Pause
 - Next / Previous
 - Define Next feedback
-- Lyrics / Chords switch
+- tablet Lyrics / Grid switch and phone Lyrics display
 - readability mode
 
 FORBIDDEN:

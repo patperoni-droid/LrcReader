@@ -1,4 +1,4 @@
-# Tests SPL
+# Tests MusiMio (SMP)
 
 ## Sécurité des appareils (CRITIQUE)
 
@@ -46,6 +46,19 @@ Voir la [règle globale de sécurité](00_PROJECT_RULES.md#instrumented-tests-an
 ```bash
 ./gradlew :app:ci
 ```
+
+## Couvertures ciblées Prompteur, accords et pédale
+
+- `PrompterKeyMappingTest` couvre les touches du Prompteur, les bornes, le déplacement
+  de 65 %, le chevauchement de 35 % et la durée d'animation de 300 ms.
+- `ChordProTextEditingTest` couvre le remplacement exact par ancres `parseChordPro`, les
+  symboles voisins non modifiés, les occurrences multiples, altérations/slash chords et
+  la déduplication de la palette automatique.
+- `PlaylistPedalNavigationTest` couvre la logique pure de mapping et de bornes. Ses tests
+  de répétition clavier ne certifient pas un appui long réel : ce geste reste non garanti
+  avec la pédale testée et ne doit pas être présenté comme fonctionnalité stable.
+- La validation de reprise de l'auto-scroll du Prompteur, du focus matériel et du retour
+  Player → playlist exige un essai manuel sur l'appareil concerné.
 
 ## Quarantaine temporaire (QuickPlaylistsScreenTest)
 Si un device flaky casse le run global, tu peux isoler temporairement:

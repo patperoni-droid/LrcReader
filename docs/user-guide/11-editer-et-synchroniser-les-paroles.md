@@ -27,6 +27,8 @@ Saisissez le texte, généralement une phrase par ligne. Les lignes vides, les e
 
 Saisissez ou modifiez les accords associés au morceau. Leur contenu est enregistré séparément des paroles.
 
+Pour afficher des accords ChordPro directement avec une ligne de paroles, saisissez-les dans l’onglet **Paroles**, au bon endroit dans la phrase, par exemple `Je [Am]chante`. Cette saisie est différente du contenu de l’onglet Accords.
+
 ### Synchro
 
 Associez les lignes au temps audio à l’aide du bouton **TAG** et des commandes de lecture.
@@ -41,6 +43,16 @@ Changer d’onglet ne signifie pas quitter l’éditeur. Vous pouvez passer des 
 4. utilisez **Enregistrer** lorsque vous souhaitez valider la session.
 
 L’enregistrement automatique intervient après de vraies modifications, mais utilisez l’action Enregistrer avant de quitter après un travail important.
+
+## Vérifier les accords ChordPro dans le Lecteur
+
+1. dans l’onglet **Paroles**, placez les accords entre crochets dans les lignes voulues ;
+2. enregistrez, puis revenez au Lecteur du même morceau ;
+3. vérifiez les accords affichés avec les paroles ;
+4. sur tablette, ouvrez **Grid** pour vérifier la grille d’accords synchronisée lorsqu’elle est disponible ;
+5. utilisez **Transpo − / valeur / +** pour vérifier une autre tonalité, puis touchez la valeur pour revenir à `0`.
+
+Transpo change les accords affichés, pas le texte ChordPro enregistré. **Sync Pitch** peut aussi faire changer la hauteur sonore du morceau : vérifiez ce réglage séparément à l’oreille. Consultez [Afficher les paroles et les accords](10-paroles-et-accords.md) pour ses limites et son comportement.
 
 ## Importer un fichier LRC
 

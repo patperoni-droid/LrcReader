@@ -87,6 +87,27 @@ Pour imposer un prochain titre :
 
 Un seul morceau peut être défini explicitement comme prochain. Ce choix temporaire prend la priorité sur l’ordre normal de la playlist.
 
+## Naviguer avec une pédale ou un clavier
+
+Android présente une pédale Bluetooth compatible comme un clavier physique ; aucune
+connexion spéciale n'est à configurer dans MusiMio.
+
+- **Haut / Page Up** : sélectionner le morceau précédent ;
+- **Bas / Page Down** : sélectionner le morceau suivant.
+
+La sélection s'arrête au premier et au dernier morceau et la playlist défile pour garder
+la ligne choisie visible. Une pression déplace seulement la sélection : elle ne lance pas
+le morceau.
+
+Sur téléphone, utiliser l'une de ces commandes depuis le Lecteur ramène à la playlist sans
+arrêter l'audio. Le morceau en cours est sélectionné, son groupe est ouvert si nécessaire
+et sa ligne est rendue visible. Sur tablette, la pédale navigue dans la playlist sans ajouter
+ce retour spécifique depuis le Lecteur.
+
+L'appui long n'est pas une fonction officielle de la pédale playlist : le périphérique testé
+ne permet pas de garantir ce geste en conditions réelles. Utilisez uniquement les pressions
+simples pour la navigation de scène.
+
 ## Auto Play
 
 L’action **Auto Play** permet d’enchaîner les morceaux selon l’ordre prévu. Vérifiez toujours le prochain titre affiché dans le Lecteur avant le concert.

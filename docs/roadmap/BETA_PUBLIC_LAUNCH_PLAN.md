@@ -1,6 +1,8 @@
 # Stage Music Player — Plan de lancement de la bêta publique
 
-> **Objectif actuel : préparer Stage Music Player pour le lancement de sa bêta publique.**
+> **Archive de planification (16 août 2026).** Les états « actuel », « en cours » et « à faire » ci-dessous décrivent ce jalon historique ; ils ne constituent plus le statut courant. Consulter [PROJECT_STATUS](../../PROJECT_STATUS.md) et le [backlog](../BACKLOG.md) avant de reprendre un chantier.
+
+> **Objectif au moment du plan : préparer Stage Music Player pour le lancement de sa bêta publique.**
 
 Stage Music Player se trouve dans les derniers jours du test fermé Google Play. Le seuil des
 12 testeurs est atteint. Cette période doit maintenant servir à stabiliser l'application et à

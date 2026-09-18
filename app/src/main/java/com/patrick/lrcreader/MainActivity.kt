@@ -239,6 +239,11 @@ class MainActivity : AppCompatActivity() {
     private var quickHardwareCommandToken by mutableIntStateOf(0)
     private var quickHardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT
     private var quickHardwareReturnToken by mutableIntStateOf(0)
+    private var quickHardwareOpenSelectedToken by mutableIntStateOf(0)
+    private var quickHardwarePressedKeyCode: Int? = null
+    private var quickHardwareLongPressHandled = false
+    @Volatile
+    private var isPhoneHardwareLayout = false
     private var libraryHardwareCommand: HardwareListCommand = HardwareListCommand.ACTIVATE
     private var libraryHardwareCommandToken by mutableIntStateOf(0)
     private var libraryHardwareReturnCommand: HardwareListCommand = HardwareListCommand.MOVE_NEXT
@@ -267,11 +272,45 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val trackedQuickKey = quickHardwarePressedKeyCode
+        if (trackedQuickKey != null && event.keyCode == trackedQuickKey) {
+            when (
+                resolvePlaylistPedalKeyAction(
+                    eventAction = event.action,
+                    keyCode = event.keyCode,
+                    repeatCount = event.repeatCount,
+                    isPhoneLayout = isPhoneHardwareLayout,
+                    pressedKeyCode = trackedQuickKey,
+                    longPressAlreadyHandled = quickHardwareLongPressHandled
+                )
+            ) {
+                PlaylistPedalKeyAction.OPEN_SELECTED -> {
+                    quickHardwareLongPressHandled = true
+                    quickHardwareOpenSelectedToken += 1
+                    return true
+                }
+
+                PlaylistPedalKeyAction.CONSUME -> {
+                    if (event.action == KeyEvent.ACTION_UP) {
+                        quickHardwarePressedKeyCode = null
+                        quickHardwareLongPressHandled = false
+                    }
+                    return true
+                }
+
+                else -> Unit
+            }
+        }
+
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
             when (activeHardwareInputRoute) {
                 HardwareInputRoute.QUICK_PLAYLISTS -> {
                     val command = toHardwareListCommand(event.keyCode)
                     if (command != null) {
+                        if (playlistMoveCommandForKeyCode(event.keyCode) != null) {
+                            quickHardwarePressedKeyCode = event.keyCode
+                            quickHardwareLongPressHandled = false
+                        }
                         quickHardwareCommand = command
                         quickHardwareCommandToken += 1
                         return true
@@ -2926,23 +2965,22 @@ class MainActivity : AppCompatActivity() {
                     if (playerReturnNavigateToken == 0) return@LaunchedEffect
                     if (selectedTab !is BottomTab.Player) return@LaunchedEffect
 
-                    val moveCommand = if (playerReturnNavigateDirection < 0) {
-                        HardwareListCommand.MOVE_PREVIOUS
-                    } else {
-                        HardwareListCommand.MOVE_NEXT
-                    }
-
                     val targetPlaylist = currentPlayingPlaylist ?: selectedQuickPlaylist
                     when {
                         !targetPlaylist.isNullOrBlank() -> {
                             selectedQuickPlaylist = targetPlaylist
                             openedPlaylist = targetPlaylist
                             setTabAndPersist(BottomTab.QuickPlaylists, reason = "hardwareReturnFromPlayerPlaylist")
-                            quickHardwareReturnCommand = moveCommand
+                            quickHardwareReturnCommand = HardwareListCommand.ACTIVATE
                             quickHardwareReturnToken += 1
                         }
 
                         !currentPlayingSongId.isNullOrBlank() -> {
+                            val moveCommand = if (playerReturnNavigateDirection < 0) {
+                                HardwareListCommand.MOVE_PREVIOUS
+                            } else {
+                                HardwareListCommand.MOVE_NEXT
+                            }
                             setTabAndPersist(BottomTab.Library, reason = "hardwareReturnFromPlayerLibrary")
                             libraryHardwareReturnCommand = moveCommand
                             libraryHardwareReturnToken += 1
@@ -4426,6 +4464,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 SideEffect {
+                    isPhoneHardwareLayout = !adaptiveTokens.tabletMode
                     latestSessionSnapshot = SessionSnapshot(
                         tabKey = tabKeyOf(selectedTab),
                         quickPlaylist = selectedQuickPlaylist,
@@ -4436,7 +4475,11 @@ class MainActivity : AppCompatActivity() {
                     activeHardwareInputRoute = when {
                         isSearchOpen -> HardwareInputRoute.NONE
                         textPrompterId != null -> HardwareInputRoute.PROMPTER
-                        selectedTab is BottomTab.Player -> HardwareInputRoute.PLAYER
+                        adaptiveTokens.tabletMode && tabletExperimentalModeEnabled &&
+                            (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists) ->
+                            HardwareInputRoute.QUICK_PLAYLISTS
+                        selectedTab is BottomTab.Player && !adaptiveTokens.tabletMode ->
+                            HardwareInputRoute.PLAYER
                         selectedTab is BottomTab.QuickPlaylists -> HardwareInputRoute.QUICK_PLAYLISTS
                         selectedTab is BottomTab.Library && libraryKeyboardNavigationEnabled ->
                             HardwareInputRoute.LIBRARY_SONGS
@@ -5277,6 +5320,7 @@ class MainActivity : AppCompatActivity() {
                                         onPlaySelectedPlaylistItem = ::requestQuickPlaylistSelectedPlayback,
                                         compactTabletLayout = adaptiveTokens.tabletMode &&
                                             tabletExperimentalModeEnabled,
+                                        isPhoneLayout = !adaptiveTokens.tabletMode,
                                         playbackControlSelectionInSync = quickPlaylistLiveSelectionInSync,
                                         showAutoReturnButton = false,
                                         showLiveGainControls = true,
@@ -5970,6 +6014,7 @@ class MainActivity : AppCompatActivity() {
                                         hardwareCommand = quickHardwareCommand,
                                         hardwareReturnToCurrentToken = quickHardwareReturnToken,
                                         hardwareReturnCommand = quickHardwareReturnCommand,
+                                        hardwareOpenSelectedToken = quickHardwareOpenSelectedToken,
                                         playbackControlActivateSelectedToken = quickPlaylistPlaybackControlActivateToken,
                                         onSequentialSelectionChanged = { preparedSongId, preparedItem, playlist ->
                                             quickPlaylistPreparedSelectionSongId = preparedSongId
@@ -6503,6 +6548,7 @@ class MainActivity : AppCompatActivity() {
                                             ::effectiveMainPlaybackTimeDomains,
                                         seekToMs = ::seekMainPlaybackToMs,
                                         onPlaySelectedPlaylistItem = ::requestQuickPlaylistSelectedPlayback,
+                                        isPhoneLayout = !adaptiveTokens.tabletMode,
                                         liveGainControlsEnabled = canAdjustLiveGain(),
                                         onLiveGainDelta = ::adjustLiveGain,
                                         showPhoneLiveGainDrawer = !adaptiveTokens.tabletMode
@@ -6673,6 +6719,7 @@ class MainActivity : AppCompatActivity() {
                                     hardwareCommand = quickHardwareCommand,
                                     hardwareReturnToCurrentToken = quickHardwareReturnToken,
                                     hardwareReturnCommand = quickHardwareReturnCommand,
+                                    hardwareOpenSelectedToken = quickHardwareOpenSelectedToken,
                                     playbackControlActivateSelectedToken = quickPlaylistPlaybackControlActivateToken,
                                     onSequentialSelectionChanged = { preparedSongId, preparedItem, playlist ->
                                         quickPlaylistPreparedSelectionSongId = preparedSongId

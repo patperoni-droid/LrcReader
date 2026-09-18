@@ -1,4 +1,4 @@
-# PROJECT RULES — Stage Music Player
+# PROJECT RULES — MusiMio (SMP)
 
 CRITICAL — MUST BE FOLLOWED
 

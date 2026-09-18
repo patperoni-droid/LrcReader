@@ -1,23 +1,31 @@
 # Afficher les paroles et les accords
 
-Le Lecteur peut afficher des paroles ou des accords synchronisés avec la position du morceau. Ces deux contenus sont indépendants : modifier les accords ne remplace pas les paroles, et inversement.
+Le Lecteur suit la position du morceau dans les paroles. Les accords ChordPro peuvent apparaître avec ces paroles et, sur tablette, dans une grille séparée lorsqu’ils sont disponibles. Leur transposition à l’écran ne réécrit ni les paroles ni le fichier audio.
 
 ## Ouvrir l’affichage synchronisé
 
 1. lancez un morceau depuis la Bibliothèque ou une playlist ;
 2. ouvrez **Lecteur** si nécessaire ;
-3. choisissez **Paroles** ou **Accords**.
+3. suivez les paroles affichées ; sur tablette, choisissez **Lyrics** ou **Grid** si la grille d’accords est disponible.
 
 Sur tablette en mode partagé, la destination **Paroles** affiche le contenu synchronisé dans le panneau droit, avec la playlist à gauche.
 
-## Passer des paroles aux accords
+## Lire les paroles et la grille d’accords
 
-- Sur téléphone, utilisez le sélecteur Paroles/Accords du Lecteur.
-- Sur tablette, utilisez les commandes **Paroles** et **Accords** de la barre du Lecteur.
+- Sur téléphone, le Lecteur reste en vue **Lyrics** : il n’y a plus de boutons Lyrics/Grid dans la barre live.
+- Sur tablette, **Lyrics** affiche les paroles et **Grid** affiche la grille d’accords synchronisée lorsqu’elle est disponible.
 
-Le changement est immédiat et ne modifie pas la lecture audio.
+La grille peut être construite à partir des accords ChordPro saisis avec les paroles. Si le morceau ne contient pas d’accords utilisables, elle peut rester vide ou indisponible. Changer de vue sur tablette ne modifie pas la lecture audio.
 
-Si aucun accord n’est disponible, le Lecteur indique que le fichier Accords est introuvable.
+## Transpo : accords affichés et hauteur sonore
+
+Dans la barre live, utilisez **Transpo −** ou **+** pour abaisser ou monter les accords affichés d’un demi-ton. La valeur centrale indique la transposition ; touchez-la pour revenir à `0`. La plage des accords va de `−11` à `+11` demi-tons.
+
+La **transposition des accords** désigne la valeur appliquée à leur affichage. Le **pitch audio** change la hauteur entendue du morceau ; sa plage est de `−6` à `+6` demi-tons. Ces deux valeurs peuvent donc différer, notamment près de leurs limites.
+
+Activez **Sync Pitch** dans cette même barre pour que les actions Transpo ajustent également le pitch audio, dans sa propre plage. Avec Sync Pitch désactivé, les actions Transpo changent les accords affichés et ramènent le pitch audio à `0` s’il était modifié ; désactiver Sync Pitch remet également la hauteur sonore courante à sa valeur neutre. N’utilisez donc pas ce mode en supposant que le pitch audio précédent sera conservé.
+
+La transposition des accords et l’état de Sync Pitch sont conservés par l’application. Les accords transposés ne sont pas enregistrés dans le texte source du morceau. Vérifiez toujours à l’oreille le résultat audio avant de jouer en public.
 
 ## Ligne active et ligne suivante
 
@@ -97,9 +105,7 @@ Modifier les paroles d’une variante ne doit pas modifier les paroles du morcea
 
 Consultez [Créer et utiliser des textes défilants](12-textes-defilants.md) pour les textes autonomes.
 
-Le Prompteur des textes défilants sait afficher des accords ChordPro au-dessus des
-paroles, avec sa propre mise en forme et ses couleurs. Cela n'ajoute pas un mode
-ChordPro synchronisé aux couches Paroles/Accords décrites dans ce chapitre.
+Le Prompteur des textes défilants possède son propre éditeur ChordPro et sa propre présentation. Ne le confondez pas avec les accords ChordPro d’un morceau synchronisé, décrits ici et dans [Éditer et synchroniser les paroles](11-editer-et-synchroniser-les-paroles.md).
 
 ## Problèmes courants
 

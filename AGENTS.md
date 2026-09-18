@@ -35,6 +35,10 @@ Then load ONLY relevant documents depending on the task:
 For Player / audio:
 - /docs/Features/FEATURE_PLAYER.md
 
+For synchronized ChordPro Lyrics / Grid, chord transposition or Sync Pitch:
+- /docs/CHORDPRO_AUDIO_LYRICS_SPEC.md
+- /docs/Features/FEATURE_PLAYER.md
+
 For Playlist:
 - /docs/Features/FEATURE_PLAYLISTS.md
 

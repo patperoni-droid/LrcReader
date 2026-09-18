@@ -133,6 +133,28 @@ Toutes ces interfaces utilisent exactement le même composant.
 
 Aucune ne possède sa propre logique de navigation.
 
+## Adaptateur clavier / pédale actuellement validé
+
+Android présente la pédale Bluetooth compatible comme un clavier physique. Il n'existe
+pas de connexion Bluetooth propriétaire dans MusiMio.
+
+- Haut et Page Up demandent la sélection précédente.
+- Bas et Page Down demandent la sélection suivante.
+- La sélection est bornée et le `LazyListState` existant maintient la ligne visible.
+- Une pression simple ne lance jamais la lecture.
+
+Sur téléphone, ces commandes utilisées depuis le Player reviennent à la playlist,
+réancrent la sélection sur l'occurrence courante, déplient son groupe si nécessaire et
+la rendent visible sans arrêter l'audio. Sur tablette, elles déplacent uniquement la
+sélection de la playlist.
+
+L'appui long de la pédale n'est pas un contrat du composant : le périphérique testé ne
+permet pas de garantir ce geste en situation réelle. Une expérimentation éventuellement
+présente dans le code ne doit pas être présentée comme fonctionnalité utilisateur stable.
+
+Le routage est contextuel. Quand le Prompteur est actif, son propre mapping clavier est
+prioritaire et Sequential Navigation ne reçoit pas ces commandes.
+
 ---
 
 # Présentation selon le périphérique

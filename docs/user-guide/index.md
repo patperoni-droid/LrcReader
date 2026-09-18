@@ -19,6 +19,8 @@ Ce manuel décrit les fonctions présentes dans la version bêta actuelle. Une f
 
 ## Lire, afficher et préparer un live
 
+Pour commencer avec le son et les paroles, consultez d’abord [les commandes du Lecteur](08-lecteur-et-commandes-de-lecture.md), puis [les paroles, Transpo et Sync Pitch](10-paroles-et-accords.md). Ce dernier chapitre distingue la transposition des accords affichés du pitch audio entendu.
+
 8. [Utiliser le Lecteur et ses commandes](08-lecteur-et-commandes-de-lecture.md)
 9. [Préparer et enchaîner une prestation](09-preparer-et-enchainer-un-live.md)
 10. [Afficher les paroles et les accords](10-paroles-et-accords.md)
@@ -27,6 +29,8 @@ Ce manuel décrit les fonctions présentes dans la version bêta actuelle. Une f
 
 ## Préparer le son et la structure
 
+Pour régler LEVEL et SPEED, consultez [Track Console et le mixage](14-mixage-du-titre-et-bus-principal.md). Le pitch audio lié à Sync Pitch est expliqué avec [les accords du Lecteur](10-paroles-et-accords.md).
+
 13. [Préparer les niveaux avec LEVELS](13-levels-et-niveaux-des-morceaux.md)
 14. [Régler le mixage du titre et le Bus principal](14-mixage-du-titre-et-bus-principal.md)
 15. [Utiliser Waveform et les points IN/OUT](15-waveform-et-points-in-out.md)
@@ -34,6 +38,8 @@ Ce manuel décrit les fonctions présentes dans la version bêta actuelle. Une f
 17. [Utiliser la Timeline, MIDI, DMX et les annotations](17-timeline-midi-dmx-et-annotations.md)
 
 ## Utiliser les outils de scène
+
+Pour diffuser une ambiance entre deux morceaux, commencez par [le Fond sonore](18-fond-sonore.md).
 
 18. [Utiliser le Fond sonore](18-fond-sonore.md)
 19. [Utiliser le mode DJ](19-mode-dj.md)

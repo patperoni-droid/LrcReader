@@ -113,6 +113,74 @@ class ChordProTextEditingTest {
     }
 
     @Test
+    fun exactChordReplacementChangesEveryMatchingAnchorOnly() {
+        val result = replaceExactPrompterChordOccurrences(
+            value = TextFieldValue(
+                "[G] [Gm] [G7] [Gmaj7] [G/B] [G#] [G]",
+                selection = TextRange(43)
+            ),
+            oldChord = "G",
+            newChord = "G7"
+        )
+
+        assertEquals("[G7] [Gm] [G7] [Gmaj7] [G/B] [G#] [G7]", result.text)
+    }
+
+    @Test
+    fun exactChordReplacementSupportsMinorAlteredAndSlashChords() {
+        val source = TextFieldValue("[Am] [Am7] [C#] [C#/G#] [C] [Cmaj7]")
+
+        assertEquals(
+            "[Am7] [Am7] [C#] [C#/G#] [C] [Cmaj7]",
+            replaceExactPrompterChordOccurrences(source, "Am", "Am7").text
+        )
+        assertEquals(
+            "[Am] [Am7] [Db] [C#/G#] [C] [Cmaj7]",
+            replaceExactPrompterChordOccurrences(source, "C#", "Db").text
+        )
+        assertEquals(
+            "[Am] [Am7] [C#] [C#/A] [C] [Cmaj7]",
+            replaceExactPrompterChordOccurrences(source, "C#/G#", "C#/A").text
+        )
+        assertEquals(
+            "[Am] [Am7] [C#] [C#/G#] [Cmaj7] [Cmaj7]",
+            replaceExactPrompterChordOccurrences(source, "C", "Cmaj7").text
+        )
+    }
+
+    @Test
+    fun targetAlreadyInPaletteRemainsUniqueAfterReplacement() {
+        val result = replaceExactPrompterChordOccurrences(
+            TextFieldValue("[G] texte [G7] puis [G]"),
+            oldChord = "G",
+            newChord = "G7"
+        )
+
+        assertEquals(listOf("G7"), extractPrompterChordPaletteFromText(result.text))
+    }
+
+    @Test
+    fun replacesEveryOccurrenceWhenChordIsUsedManyTimes() {
+        val source = List(30) { "[G]ligne $it" }.joinToString("\n")
+        val result = replaceExactPrompterChordOccurrences(
+            TextFieldValue(source),
+            oldChord = "G",
+            newChord = "G7"
+        )
+
+        assertEquals(30, Regex("\\[G7]").findAll(result.text).count())
+        assertEquals(listOf("G7"), extractPrompterChordPaletteFromText(result.text))
+    }
+
+    @Test
+    fun sameOrInvalidReplacementLeavesTextUnchanged() {
+        val source = TextFieldValue("[G] texte", TextRange(3))
+
+        assertEquals(source, replaceExactPrompterChordOccurrences(source, "G", "G"))
+        assertEquals(source, replaceExactPrompterChordOccurrences(source, "G", "invalid chord"))
+    }
+
+    @Test
     fun emptyChordButtonInsertsBracketsAndPlacesCaretInside() {
         val result = insertEmptyChordProAtSelection(
             TextFieldValue("Je pars ce soir", selection = TextRange(8))

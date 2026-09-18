@@ -22,9 +22,9 @@ Il assure uniquement une continuité sonore lorsque le Playback principal n'est 
 
 ---
 
-# Les deux moteurs audio SMP
+# Deux parcours audio concernés par cette fonction
 
-SMP possède deux moteurs audio indépendants.
+Cette section décrit les deux parcours concernés par la priorité du Fond sonore : le Playback principal et le Fond sonore. Le bus DJ est distinct et relève de la coordination audio générale.
 
 ## 1. Playback principal
 

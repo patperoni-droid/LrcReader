@@ -268,6 +268,7 @@ fun PlayerScreen(
     seekToMs: (Long) -> Unit,
     onPlaySelectedPlaylistItem: () -> Boolean = { false },
     compactTabletLayout: Boolean = false,
+    isPhoneLayout: Boolean = false,
     playbackControlSelectionInSync: Boolean = true,
     showAutoReturnButton: Boolean = true,
     showLiveGainControls: Boolean = false,
@@ -798,13 +799,14 @@ fun PlayerScreen(
             }
         }
     }
-    var selectedViewMode by rememberSaveable(currentTrackUri) {
+    var rememberedViewMode by rememberSaveable(currentTrackUri) {
         mutableStateOf(
             currentTrackUri
                 ?.let { TrackLyricsViewPrefs.get(context, it) }
                 ?: LyricsViewMode.LYRICS
         )
     }
+    val selectedViewMode = if (isPhoneLayout) LyricsViewMode.LYRICS else rememberedViewMode
     var parsedChordLines by remember(currentTrackUri) { mutableStateOf<List<LrcLine>>(emptyList()) }
     var chordsLoading by remember(currentTrackUri) { mutableStateOf(false) }
     var lyricsResolving by remember(currentTrackUri) { mutableStateOf(false) }
@@ -2732,7 +2734,7 @@ fun PlayerScreen(
             ).show()
             return
         }
-        selectedViewMode = mode
+        rememberedViewMode = mode
         currentTrackUri?.let { trackUri ->
             TrackLyricsViewPrefs.save(context, trackUri, mode)
         }
@@ -3746,6 +3748,7 @@ fun PlayerScreen(
                                 contentAlignment = Alignment.TopCenter
                             ) {
                                 LiveLyricsChordToolbar(
+                                    showViewModeButtons = !isPhoneLayout,
                                     selectedMode = selectedViewMode,
                                     chordsBlocked = EditionConfig.isLite,
                                     onSelectMode = ::selectLyricsViewMode,
@@ -4162,6 +4165,7 @@ private fun HqOffBanner() {
 
 @Composable
 private fun LiveLyricsChordToolbar(
+    showViewModeButtons: Boolean,
     selectedMode: LyricsViewMode,
     chordsBlocked: Boolean,
     onSelectMode: (LyricsViewMode) -> Unit,
@@ -4173,21 +4177,23 @@ private fun LiveLyricsChordToolbar(
     accent: Color
 ) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        LiveToolbarButton(
-            label = stringResource(R.string.player_view_lyrics),
-            selected = selectedMode == LyricsViewMode.LYRICS,
-            accent = accent,
-            weight = 1.35f,
-            onClick = { onSelectMode(LyricsViewMode.LYRICS) }
-        )
-        LiveToolbarButton(
-            label = stringResource(R.string.lyrics_live_grid),
-            selected = selectedMode == LyricsViewMode.CHORDS,
-            accent = accent,
-            weight = 1.05f,
-            dimmed = chordsBlocked,
-            onClick = { onSelectMode(LyricsViewMode.CHORDS) }
-        )
+        if (showViewModeButtons) {
+            LiveToolbarButton(
+                label = stringResource(R.string.player_view_lyrics),
+                selected = selectedMode == LyricsViewMode.LYRICS,
+                accent = accent,
+                weight = 1.35f,
+                onClick = { onSelectMode(LyricsViewMode.LYRICS) }
+            )
+            LiveToolbarButton(
+                label = stringResource(R.string.lyrics_live_grid),
+                selected = selectedMode == LyricsViewMode.CHORDS,
+                accent = accent,
+                weight = 1.05f,
+                dimmed = chordsBlocked,
+                onClick = { onSelectMode(LyricsViewMode.CHORDS) }
+            )
+        }
         Row(
             modifier = Modifier
                 .weight(5.25f)

@@ -30,7 +30,7 @@ Contrôlez dans cet ordre :
 
 ## Le son sature
 
-Réduisez le gain du morceau, puis le bus concerné. Vérifiez ensuite LEVELS et l’EQ. Une correction positive à plusieurs endroits peut dépasser la marge disponible.
+Réduisez le gain du morceau, puis le bus concerné. Vérifiez ensuite LEVELS. Une correction positive à plusieurs endroits peut dépasser la marge disponible. Les cinq bandes EQ visibles dans Track Console ne règlent pas encore le son.
 
 ## Les paroles ne suivent pas
 
@@ -40,6 +40,14 @@ Réduisez le gain du morceau, puis le bus concerné. Vérifiez ensuite LEVELS et
 4. testez après un déplacement dans la barre de progression.
 
 Après un Arrangement, la chronologie du parent peut ne plus correspondre à la variante.
+
+## Les accords affichés ou la hauteur sonore ne correspondent pas
+
+- Si **seuls les accords affichés** semblent décalés, regardez la valeur **Transpo** dans le Lecteur. Touchez cette valeur pour remettre les accords à `0`, puis vérifiez les accords ChordPro du bon morceau.
+- Si **le son** semble trop haut ou trop bas, vérifiez l’état de **Sync Pitch**. Une transposition des accords avec Sync Pitch activé peut aussi changer la hauteur sonore, dans une plage plus limitée.
+- Désactiver Sync Pitch, ou utiliser Transpo lorsqu’il est désactivé, peut ramener la hauteur sonore à sa valeur neutre. Écoutez le morceau après ce changement ; ne vous fiez pas seulement à la valeur des accords.
+
+La valeur Transpo indique les accords à l’écran, pas directement le pitch audio. Consultez [Afficher les paroles et les accords](10-paroles-et-accords.md) pour distinguer les deux réglages.
 
 ## Le morceau commence ou finit au mauvais endroit
 

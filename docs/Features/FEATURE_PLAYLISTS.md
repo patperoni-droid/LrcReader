@@ -191,6 +191,42 @@ Rules:
 
 ⸻
 
+PEDAL / PHYSICAL KEYBOARD NAVIGATION
+
+Android exposes the supported Bluetooth pedal as a physical keyboard. MusiMio does not
+implement a proprietary Bluetooth connection for this workflow.
+
+Validated commands in the playlist:
+
+- Up or Page Up selects the previous selectable track;
+- Down or Page Down selects the next selectable track;
+- selection is bounded at the first and last selectable track;
+- moving the selection does not start playback;
+- the existing `LazyListState` scrolls when required to keep the selection visible.
+
+On phone:
+
+- the same previous/next commands used from the Player return to the current playlist;
+- playback is not stopped by this screen navigation;
+- the selection is anchored to the current playing occurrence;
+- a collapsed group containing that occurrence is expanded when necessary;
+- the current occurrence is scrolled into view before further navigation.
+
+On tablet:
+
+- the pedal moves the playlist selection only;
+- no phone-specific Player-to-playlist navigation is added.
+
+Current product contract: **simple previous/next navigation only**. A long-press attempt
+may still exist in implementation experiments, but the tested pedal does not provide a
+sufficiently reliable stage gesture. Long press must not be documented, tested, or treated
+as a guaranteed user feature until a separate real-device validation explicitly promotes it.
+
+The Prompter owns a different contextual key mapping. Playlist input must never intercept
+keys while the Prompter is the active hardware route.
+
+⸻
+
 VIRTUAL ARRANGEMENT VARIANTS
 
 A virtual Arrangement variant is a distinct Playlist target.
@@ -611,6 +647,11 @@ Test at least:
   catalog and in that playlist
 - create a scrolling text from the Library and verify that no playlist occurrence is added
 - open a scrolling-text occurrence in the text prompter on phone and tablet
+- on phone, return from Player to the playlist with the pedal without stopping playback
+- verify that the current playing occurrence is selected and visible after the return
+- navigate previous/next with Up, Down, Page Up and Page Down at the first, middle and last item
+- on tablet, verify previous/next selection without adding Player-to-playlist behavior
+- verify that Prompter key handling remains isolated from playlist key handling
 
 👉 Must be tested on real device
 

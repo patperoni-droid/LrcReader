@@ -15,10 +15,10 @@ Le Lecteur prépare le morceau live correspondant, applique ses réglages puis d
 
 ## Commandes principales
 
-Le Playback Control officiel regroupe les commandes de lecture. Selon l’écran et l’appareil, il propose :
+Les commandes de lecture regroupent, selon l’écran et l’appareil :
 
 - **Play** : lancer ou reprendre la cible préparée ;
-- **Pause** : mettre en pause ou arrêter la préécoute ciblée selon l’outil ;
+- **Pause** : mettre en pause le morceau principal ; selon l’outil ouvert, arrêter une préécoute ciblée ;
 - **Retour au début** : revenir à `00:00` ;
 - **Précédent / Suivant** : naviguer selon le contexte ;
 - une barre de progression et la durée ;
@@ -57,12 +57,12 @@ La barre de progression permet de changer de position. Le déplacement actualise
 
 ## Afficher les paroles ou les accords
 
-Le Lecteur propose deux contenus synchronisés :
+Le Lecteur suit les paroles du morceau. Selon la disposition et les accords disponibles, il peut aussi présenter :
 
-- **Paroles** ;
-- **Accords**.
+- les accords ChordPro avec les paroles ;
+- une grille d’accords **Grid** sur tablette.
 
-Le changement d’affichage ne recharge pas l’audio et ne change pas sa position. Consultez [Afficher les paroles et les accords](10-paroles-et-accords.md).
+Sur téléphone, les boutons Lyrics/Grid ne figurent plus dans la barre live : la vue reste sur les paroles. Sur tablette, passer de **Lyrics** à **Grid** ne recharge pas l’audio et ne change pas sa position. Consultez [Afficher les paroles et les accords](10-paroles-et-accords.md).
 
 ## Régler le gain du morceau
 
@@ -77,15 +77,16 @@ Lorsque vous changez de morceau, le fader doit afficher le gain mémorisé pour 
 
 ## Réglages du morceau
 
-La Track Console donne accès, selon l’édition et la configuration, à :
+La Track Console donne accès à :
 
 - LEVEL ;
-- vitesse ;
-- pitch ;
-- égaliseur ;
-- indicateur de niveau.
+- SPEED, pour la vitesse de lecture, avec retour à `1,00x`.
 
-Les réglages sont non destructifs : ils ne modifient pas le fichier audio d’origine.
+Le bloc EQ cinq bandes visible n’agit pas encore sur le son. Il n’y a plus de commande PITCH ni de VU dans Track Console. LEVEL et SPEED ne modifient pas le fichier audio d’origine.
+
+## Transpo et Sync Pitch
+
+Dans la barre live du Lecteur, appuyez sur **−** ou **+** dans le bloc **Transpo** pour changer les accords affichés ; touchez la valeur centrale pour revenir à `0`. Activez **Sync Pitch** si vous voulez que ces actions changent aussi la hauteur sonore du morceau. La transposition des accords et le pitch audio sont deux réglages distincts, avec des limites différentes. Quand Sync Pitch est désactivé, la hauteur sonore courante peut revenir à `0`. Voir [Afficher les paroles et les accords](10-paroles-et-accords.md) avant de préparer une tonalité pour la scène.
 
 ## Points IN et OUT
 

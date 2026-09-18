@@ -23,7 +23,7 @@ L’éditeur propose deux onglets :
 
 L’ancien onglet d’édition `Grille` / `Accords` a été supprimé. Les anciennes données d’accords séparées ne sont pas supprimées pour autant et restent disponibles pour la compatibilité du Lecteur.
 
-### Lecteur : `Lyrics | Grille`
+### Lecteur : `Lyrics | Grille` sur tablette
 
 Le Lecteur conserve deux vues :
 
@@ -31,6 +31,7 @@ Le Lecteur conserve deux vues :
 * `Grille`, qui affiche les accords ChordPro extraits de `Lyrics`.
 
 La vue `Grille` est une vue de lecture. Elle ne constitue pas une seconde source éditable d’accords.
+Sur téléphone, la barre live reste en vue `Lyrics` et ne montre pas les boutons de bascule `Lyrics` / `Grille`. La tablette expose ces deux vues.
 
 ## `Lyrics`, source éditable unique
 
@@ -194,11 +195,15 @@ La barre compacte contient le contrôle `− 0 +`, dans la plage `-11` à `+11` 
 
 La transposition :
 
-* affecte uniquement l’affichage des accords ChordPro ;
+* affecte l’affichage des accords ChordPro ; si `Sync Pitch` est actif, une action live `Transpo` met aussi à jour le pitch audio dans ses propres bornes ;
 * utilise le moteur commun `ChordTransposition.kt` ;
 * est persistée par morceau avec l’identité stable du morceau ;
 * est restaurée lorsque l’utilisateur revient sur le morceau ;
 * ne modifie jamais le texte Lyrics source, le fichier audio ou les timestamps.
+
+Le réglage d’affichage des accords est borné de `-11` à `+11` demi-tons. Le pitch audio est un réglage distinct, borné de `-6` à `+6` demi-tons. `Sync Pitch` désactivé, les commandes `Transpo` n’agissent que sur l’affichage ; le pitch audio n’est pas couplé aux accords. `Sync Pitch` activé, les actions explicites de `Transpo` ajustent les deux réglages dans leurs bornes respectives ; le pitch audio modifié depuis ses propres commandes est aussi reflété dans les accords affichés. Une action de remise à zéro de `Transpo` remet les deux à zéro quand la synchronisation est active. Désactiver `Sync Pitch` remet le pitch audio actif à zéro. La liaison est pilotée par les actions utilisateur, sans observateurs récursifs entre les deux états.
+
+L’état `Sync Pitch` et la transposition d’affichage par morceau sont persistés par leurs réglages existants ; le pitch audio conserve sa persistance par titre. Aucun de ces réglages ne réécrit le contenu ChordPro ou les octets du fichier audio. La vitesse de lecture reste un réglage audio séparé (`0,5` à `2,0`) et ne transpose pas les accords.
 
 La palette automatique continue de représenter les accords source du morceau, indépendamment de la valeur transposée affichée.
 
@@ -302,6 +307,8 @@ La logique fonctionnelle est identique sur téléphone et tablette :
 * même transposition ;
 * même dérivation de la Grille ;
 * même fallback legacy.
+
+L’accès aux vues diffère : le téléphone affiche `Lyrics` sans bascule live `Lyrics` / `Grille` ; la tablette montre les deux boutons dans la barre du Lecteur.
 
 La palette automatique reste sur une seule ligne et peut défiler horizontalement. La tablette profite de la largeur disponible sans utiliser un second moteur de palette.
 

@@ -56,11 +56,21 @@ L’ouverture d’un texte défilant ne démarre pas un morceau audio et ne chan
 Selon l’appareil, les commandes disponibles comprennent :
 
 - **Play / Pause** : démarrer ou suspendre le défilement continu ;
-- **Précédent / Suivant** : déplacer le texte d’un pas de lecture ;
+- **Précédent / Suivant** : déplacer le texte de 65 % de la hauteur visible, avec 35 %
+  de chevauchement pour conserver plusieurs lignes de repère ;
 - réglage de **vitesse** : accélérer ou ralentir le défilement ;
 - **Retour au début** : revenir au sommet, notamment sur tablette.
 
 La vitesse choisie est mémorisée pour le texte.
+
+Le déplacement précédent/suivant glisse pendant environ 300 ms. Les boutons tactiles et
+la pédale utilisent exactement la même navigation.
+
+Si Play est actif, une correction manuelle n'arrête pas le défilement automatique : le
+mouvement courant est remplacé, la nouvelle position est appliquée, puis le défilement
+reprend depuis cette position. Home revient au début avec la même reprise. End conserve
+Play actif et termine naturellement en bas du texte. Une rotation ou un changement de
+dimensions recalcule la distance restante.
 
 ## Sur téléphone
 
@@ -105,16 +115,21 @@ Dans le Prompteur, les accords reconnus apparaissent au-dessus des paroles, sans
 crochets. Un texte sans accords reste utilisable. `[Refrain]` reste du texte ;
 les directives ChordPro complètes comme `{title:}` ne sont pas interprétées.
 
-Avant d'entrer dans le contenu, renseignez le champ **Palette d’accords** avec,
-par exemple, `C Am F G7 C/E`, sans crochets. Vous retrouvez cette palette à la
-réouverture du même texte sur l'appareil. Elle n'est pas remplie automatiquement
-à partir des accords déjà présents.
+La palette d'accords est construite automatiquement à partir des accords reconnus dans
+le texte. Elle conserve leur ordre de première apparition et n'affiche chaque accord
+qu'une fois.
 
 Placez le curseur puis touchez un accord : son tag est inséré à cet endroit,
 et vous pouvez continuer à taper juste après. Si vous avez sélectionné des paroles,
 l'accord est ajouté au début de la sélection sans supprimer ces paroles.
 Pour remplacer un accord, placez le curseur à l'intérieur de son tag, ou sélectionnez
 le tag entier, puis choisissez un autre accord. Pour le supprimer, effacez son texte.
+
+Vous pouvez aussi maintenir un accord de la palette pour ouvrir **Modifier l'accord**.
+Après avoir saisi la nouvelle valeur, une confirmation propose de remplacer toutes les
+occurrences exactes dans ce morceau. Par exemple, remplacer `G` par `G7` ne modifie pas
+`Gm`, `G7`, `Gmaj7`, `G/B` ou `G#`. Si `G7` est déjà présent, la palette recalculée ne
+conserve qu'un seul bouton `G7`. Annuler l'un des dialogues laisse le texte inchangé.
 
 ## Mettre en forme et colorer
 
@@ -144,8 +159,8 @@ Choisir une commande ferme son panneau et ramène au champ de texte.
 
 ## Espace d'édition sur téléphone et tablette
 
-Quand le contenu reçoit le focus, l'en-tête, le champ titre et le champ de
-configuration de palette se replient. Les **boutons d'accords restent disponibles**.
+Quand le contenu reçoit le focus, l'en-tête et le champ titre se replient.
+Les **boutons d'accords restent disponibles**.
 Ouvrir Texte/couleur ou Alignement ne restaure pas le titre pendant la saisie.
 La fermeture du clavier seule ne fait pas nécessairement réapparaître l'en-tête :
 c'est la sortie du focus du contenu qui le permet.
@@ -172,8 +187,8 @@ le mode multifenêtre peut changer la disposition proposée.
 Accords, mise en forme et couleurs restent dans le texte enregistré. Les espaces
 et lignes vides aux extrémités peuvent être retirés lors de l'enregistrement ; les
 espaces et retours à la ligne à l'intérieur du texte sont conservés.
-Une sauvegarde complète protège le contenu du catalogue, couleurs comprises,
-mais ne transporte pas actuellement la palette personnalisée ni le choix d'alignement.
+Une sauvegarde complète protège le contenu du catalogue, couleurs et accords compris.
+La palette est reconstruite depuis ce texte ; le choix d'alignement reste un réglage séparé.
 
 Cette intégration ne synchronise pas les accords avec l'audio. Elle ne propose pas
 encore de transposition, de capo, d'import/export dédié de fichiers ChordPro, de
@@ -192,7 +207,15 @@ Vérifiez la formulation de la confirmation avant de supprimer :
 
 ## Matériel de navigation
 
-Lorsque le prompteur possède le focus, certaines commandes matérielles Précédent/Suivant et Début/Fin peuvent agir sur le texte. Leur disponibilité dépend du périphérique Android connecté.
+Lorsque le Prompteur possède le focus :
+
+- gauche, haut et Page Up reviennent à la portion précédente ;
+- droite, bas et Page Down avancent à la portion suivante ;
+- Home et End atteignent le début ou la fin.
+
+Une pédale Bluetooth compatible est traitée comme un clavier Android. MusiMio n'établit
+pas de connexion Bluetooth propriétaire pour ces commandes. Ce mapping appartient au
+Prompteur et ne modifie pas le lecteur Audio + Paroles.
 
 Testez toujours un clavier, une télécommande ou une pédale avant de l’utiliser en concert.
 

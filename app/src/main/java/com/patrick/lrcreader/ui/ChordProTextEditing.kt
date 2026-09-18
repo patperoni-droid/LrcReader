@@ -174,6 +174,53 @@ internal fun isValidPrompterChordInput(chord: String): Boolean {
     return normalized.isNotEmpty() && parseChordPro("[$normalized]").hasChords
 }
 
+internal fun replaceExactPrompterChordOccurrences(
+    value: TextFieldValue,
+    oldChord: String,
+    newChord: String
+): TextFieldValue {
+    val normalizedOldChord = oldChord.trim()
+    val normalizedNewChord = newChord.trim()
+    if (
+        normalizedOldChord.isEmpty() ||
+        normalizedOldChord == normalizedNewChord ||
+        !isValidPrompterChordInput(normalizedNewChord)
+    ) {
+        return value
+    }
+
+    val replacement = "[$normalizedNewChord]"
+    val ranges = parseChordPro(value.text).lines
+        .flatMap { it.anchors }
+        .filter { it.symbol.raw == normalizedOldChord }
+        .map { it.sourceRange }
+        .sortedBy { it.first }
+    if (ranges.isEmpty()) return value
+
+    fun mapOffset(offset: Int): Int {
+        var delta = 0
+        ranges.forEach { range ->
+            val endExclusive = range.last + 1
+            if (offset <= range.first) return offset + delta
+            if (offset < endExclusive) return range.first + delta + replacement.length
+            delta += replacement.length - (endExclusive - range.first)
+        }
+        return offset + delta
+    }
+
+    var updatedText = value.text
+    ranges.asReversed().forEach { range ->
+        updatedText = updatedText.replaceRange(range.first, range.last + 1, replacement)
+    }
+    return TextFieldValue(
+        text = updatedText,
+        selection = TextRange(
+            start = mapOffset(value.selection.start).coerceIn(0, updatedText.length),
+            end = mapOffset(value.selection.end).coerceIn(0, updatedText.length)
+        )
+    )
+}
+
 private fun selectedPrompterChordAnchor(value: TextFieldValue) =
     parseChordPro(value.text).lines.flatMap { it.anchors }.firstOrNull {
         val start = it.sourceRange.first

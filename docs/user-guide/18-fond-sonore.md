@@ -14,10 +14,10 @@ Si le morceau principal est déjà en lecture, l’activation prépare le Fond s
 
 ## Choisir la source
 
-Deux sources sont prévues :
+Deux choix de source sont présentés :
 
-- **Ambiance par défaut** : deux nappes incluses dans l’application ;
-- **Dossier personnalisé** : fichiers audio choisis par l’utilisateur.
+- **Ambiance par défaut** : sons inclus dans l’application ;
+- **Dossier personnalisé** : fichiers audio choisis par l’utilisateur avec **Choisir un dossier**.
 
 Le dossier personnalisé peut être réservé à la version Pro. L’application peut demander l’autorisation d’accéder au dossier DJ ou au dossier choisi.
 
@@ -41,9 +41,9 @@ Ce comportement évite que l’ambiance se superpose involontairement au morceau
 ## Préparer une ambiance personnalisée
 
 1. placez les fichiers dans un dossier accessible à l’application ;
-2. ouvrez **Source du fond sonore** ;
-3. choisissez **Dossier personnalisé** ;
-4. autorisez le dossier demandé ;
+2. ouvrez **Fond sonore** ;
+3. choisissez **Dossier personnalisé**, puis **Choisir un dossier** ;
+4. autorisez l’accès demandé par Android ;
 5. sélectionnez le dossier ou sous-dossier ;
 6. testez précédent, suivant et reprise après le Player.
 

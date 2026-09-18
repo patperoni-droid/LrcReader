@@ -147,7 +147,6 @@
     <string name="filler_dj_scan_wait">Scan DJ en cours… patiente 🙂</string>
 
     <string name="filler_bus_title">BUS FOND SONORE</string>
-    <string name="filler_local_controller_title">Lecteur Fond sonore</string>
     <string name="filler_main_playback_controller_title">Playback principal</string>
     <string name="filler_enable">Activer le fond sonore</string>
     <string name="filler_volume">Volume</string>
@@ -160,10 +159,8 @@
     <string name="filler_library_missing">⚠️ Va dans Bibliothèque → “Choisir dossier Music” (1 fois).</string>
 
     <string name="filler_quick_ambiences">Ambiances rapides</string>
-    <string name="filler_source_title">Source du fond sonore</string>
     <string name="filler_source_assets">Ambiance par défaut</string>
     <string name="filler_source_default_title">Ambiance par défaut</string>
-    <string name="filler_source_default_subtitle">2 nappes incluses dans l’application</string>
     <string name="filler_source_custom_folder">Dossier personnalisé</string>
     <string name="filler_source_custom_subtitle">Utiliser les fichiers audio d’un dossier</string>
     <string name="filler_choose_custom_folder">Choisir un dossier</string>
@@ -1371,6 +1368,10 @@ N’oubliez pas d’enregistrer 😉</string>
     <string name="lyrics_editor_chord_action">Insérer ou modifier un accord ChordPro</string>
     <string name="lyrics_editor_chord_input_title">Accord ChordPro</string>
     <string name="lyrics_editor_chord_input_label">Accord (ex. Am, G7, C/E)</string>
+    <string name="prompter_chord_edit_title">Modifier l’accord</string>
+    <string name="prompter_chord_replace_title">Remplacer l’accord</string>
+    <string name="prompter_chord_replace_confirmation">Remplacer toutes les occurrences de %1$s par %2$s dans ce morceau ?</string>
+    <string name="prompter_chord_replace_action">Remplacer</string>
 
     <!-- Open beta welcome -->
     <string name="open_beta_welcome_title">Bienvenue sur MusiMio</string>

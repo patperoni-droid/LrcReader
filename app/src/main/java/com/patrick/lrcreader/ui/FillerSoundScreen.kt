@@ -415,13 +415,6 @@ fun FillerSoundScreen(
 
         Spacer(Modifier.height(10.dp))
 
-        Text(
-            text = stringResource(R.string.filler_source_title),
-            color = onBg,
-            fontSize = 13.sp
-        )
-        Spacer(Modifier.height(4.dp))
-
         Card(
             colors = CardDefaults.cardColors(containerColor = card),
             shape = RoundedCornerShape(12.dp)
@@ -432,7 +425,7 @@ fun FillerSoundScreen(
                     Box(modifier = optionModifier) {
                         SourceOptionRow(
                             title = stringResource(R.string.filler_source_default_title),
-                            subtitle = stringResource(R.string.filler_source_default_subtitle),
+                            subtitle = null,
                             selected = isDefaultSource,
                             activeColor = accent,
                             titleColor = onBg,
@@ -535,11 +528,6 @@ fun FillerSoundScreen(
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
         ) {
-            FillerControlLabel(
-                text = stringResource(R.string.filler_local_controller_title),
-                color = Color(0xFFB0BEC5)
-            )
-            Spacer(Modifier.height(4.dp))
             FillerLocalPlaybackControls(
                 positionMs = if (playbackDragging) playbackDragPositionMs else playbackPositionMs,
                 durationMs = playbackDurationMs,

@@ -4,25 +4,21 @@ MusiMio sépare les réglages propres à un morceau du mixage général des diff
 
 ## Track Console : réglages du morceau
 
-Ouvrez la Track Console depuis les outils du morceau ou le Lecteur. Selon la configuration de l’application, elle regroupe :
+Ouvrez la Track Console depuis les outils du morceau ou le Lecteur. Elle présente :
 
 - **LEVEL** : niveau mémorisé pour le morceau ;
-- **SPEED** : vitesse de lecture, avec retour à `1,00x` ;
-- **PITCH** : hauteur, avec retour à `0` ;
-- **EQ** : graves, médiums et aigus ;
-- **VU** : indication du niveau du signal.
+- **SPEED** : vitesse de lecture, avec retour à `1,00x`.
 
-Ces réglages sont non destructifs. Ils s’appliquent à la lecture dans MusiMio et ne réécrivent pas le fichier audio source.
+Les cinq bandes **EQ** visibles sont pour l’instant un aperçu graphique : elles ne se règlent pas et ne modifient pas le son. LEVEL et SPEED ne réécrivent pas le fichier audio source.
 
 ## Régler un morceau
 
 1. ouvrez le morceau dans le Lecteur ;
 2. ouvrez sa Track Console ;
-3. placez SPEED et PITCH sur leurs valeurs neutres si vous ne souhaitez pas les modifier ;
+3. remettez SPEED à `1,00x` si vous ne souhaitez pas changer la vitesse ;
 4. ajustez LEVEL par petites étapes ;
-5. corrigez l’EQ seulement si nécessaire ;
-6. écoutez le début, une partie forte et la fin ;
-7. passez à un autre morceau puis revenez pour vérifier la mémorisation.
+5. écoutez le début, une partie forte et la fin ;
+6. passez à un autre morceau puis revenez pour vérifier la mémorisation.
 
 La disponibilité ou la mémorisation de certains réglages peut dépendre de l’édition de l’application.
 
@@ -46,23 +42,13 @@ Les faders règlent l’équilibre global de ces sources. Pour une première bal
 
 Le Bus principal donne une vue centrale sur la sortie et les sources audio. Sur tablette, il peut rester accessible dans la disposition de scène. Utilisez-le pour surveiller quelle source est active et corriger le niveau général sans modifier chaque morceau.
 
-## SPEED et PITCH
+## Vitesse et hauteur sonore
 
-- SPEED change la vitesse de lecture.
-- PITCH change la hauteur.
-- Les valeurs neutres sont `1,00x` et `0`.
+**SPEED** change la vitesse dans Track Console. Sa valeur neutre est `1,00x`.
+
+La hauteur sonore n’a pas de commande PITCH dans Track Console. Dans le Lecteur, **Sync Pitch** peut lier la hauteur sonore aux actions **Transpo** sur les accords. Ces deux réglages restent différents : consultez [Afficher les paroles et les accords](10-paroles-et-accords.md).
 
 Une transition impliquant un morceau dont la vitesse ou le pitch est modifié peut devenir séquentielle au lieu d’utiliser un chevauchement. Ce comportement protège la stabilité de la lecture.
-
-## Égaliseur
-
-L’EQ trois bandes permet une correction simple :
-
-- graves pour le bas du spectre ;
-- médiums pour la présence ;
-- aigus pour la clarté.
-
-Préférez de petites corrections. Si tous les morceaux nécessitent la même modification, effectuez plutôt ce réglage sur le système de sonorisation.
 
 ## Problèmes courants
 
@@ -76,6 +62,6 @@ Identifiez d’abord la source active dans la navigation ou le Bus principal : P
 
 ### Le son sature
 
-Réduisez d’abord LEVEL ou le gain rapide du morceau, puis vérifiez l’EQ et le Mixage général. Évitez d’additionner plusieurs augmentations importantes.
+Réduisez d’abord LEVEL ou le gain rapide du morceau, puis vérifiez le Mixage général. Évitez d’additionner plusieurs augmentations importantes.
 
 Chapitre suivant : [Utiliser Waveform et les points IN/OUT](15-waveform-et-points-in-out.md).

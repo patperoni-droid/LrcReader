@@ -3,10 +3,9 @@
 Ce dossier contient les évolutions futures du projet Stage Music Player et les plans opérationnels
 des jalons majeurs qui nécessitent un point de reprise durable.
 
-## Plan actif de lancement
+## Plan historique de lancement
 
-- [Lancement de la bêta publique](BETA_PUBLIC_LAUNCH_PLAN.md) : point de reprise opérationnel
-  jusqu'à l'ouverture de la bêta publique.
+- [Lancement de la bêta publique](BETA_PUBLIC_LAUNCH_PLAN.md) : plan historique du jalon d'août 2026. Le statut courant est dans [PROJECT_STATUS](../../PROJECT_STATUS.md) et les priorités dans [BACKLOG](../BACKLOG.md).
 
 Ce plan de lancement coordonne un jalon de publication. Il ne crée pas une seconde liste de
 priorités techniques : `docs/BACKLOG.md` reste la référence des chantiers produit et techniques.

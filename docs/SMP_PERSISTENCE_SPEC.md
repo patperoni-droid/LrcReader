@@ -290,23 +290,25 @@ reproduire pour une nouvelle fonctionnalité.
 
 #### Palette, alignement et transport
 
-- `TextPrompterChordPaletteStore` conserve la palette personnalisée en JSON dans
-  `text_prompter_chord_palette_prefs`, sous `text:<id>` ; les anciennes notes utilisent
-  un espace séparé `note:<id>`. Il ne réutilise pas `ChordPaletteStore` des accords LRC.
+- La palette actuelle du Prompteur est une vue dérivée des accords reconnus dans le
+  texte ChordPro. Elle n'est plus une donnée à enregistrer séparément : ordre et
+  déduplication sont reconstruits depuis les `ChordAnchor` à chaque modification.
+- `TextPrompterChordPaletteStore` conserve uniquement la compatibilité avec l'ancien
+  stockage local de palette dans `text_prompter_chord_palette_prefs`. L'éditeur courant
+  ne l'utilise pas comme source de vérité et il ne réutilise pas `ChordPaletteStore`
+  des accords LRC.
 - `TextPrompterDisplaySettingsStore` conserve l'alignement global Gauche/Centré dans
   `text_prompter_display_settings_prefs`, avec les mêmes espaces de clés. Gauche (`START`) est
   la valeur de repli. Ce choix de présentation est une préférence locale.
-- Ces deux stores sont sauvegardés à la validation de l'éditeur, puis rechargés à
-  sa réouverture. Ils ne font pas partie de la chaîne ChordPro ni du JSON du catalogue.
+- Le réglage d'alignement est sauvegardé à la validation de l'éditeur puis rechargé à
+  sa réouverture. Il ne fait pas partie de la chaîne ChordPro ni du JSON du catalogue.
 - La sauvegarde complète du catalogue écrit `prompters.json` avec `id`, `title`,
   `text` (`writeLibraryBackupPromptersToTree` dans `MoreScreen`). La restauration
   passe par `TextSongRepository.importOne` selon le mode Conserver/Remplacer.
   Les couleurs intégrées à la source suivent donc le texte transporté.
-- La palette personnalisée et l'alignement ne sont pas transportés par ce fichier.
-  Le contrat actuel de sauvegarde de l'État global ne sérialise pas ces stores.
-  En particulier, la palette saisie par l'utilisateur n'est pas reconstruite
-  automatiquement à partir du texte : sa portabilité reste à traiter explicitement,
-  sans modifier ici les règles normatives de propriété des données.
+- La palette automatique suit le texte transporté puisqu'elle est reconstruite depuis
+  celui-ci. L'alignement reste une préférence locale non transportée par ce fichier ;
+  le contrat actuel de sauvegarde de l'État global ne sérialise pas son store.
 - **Mettre à jour la bibliothèque** ne republie pas encore ce catalogue ; une
   sauvegarde complète reste nécessaire après modification de textes défilants.
   Leur transfert utilisateur par SMP Sync reste prévu plus tard.

@@ -4,16 +4,15 @@ MusiMio adapte son interface à la taille de l’écran. Les mêmes morceaux, pl
 
 ## Navigation sur téléphone
 
-La barre située en bas de l’écran donne accès aux destinations principales. Selon les réglages et l’édition de l’application, elle peut afficher :
+La barre située en bas de l’écran donne accès aux destinations principales. Selon les réglages et l’édition de l’application, elle affiche :
 
-- **Accueil / Bus principal** : réglage global des sources audio ;
 - **Playlists** : sélection et organisation du set ;
-- **Lecteur** : audio, paroles et accords ;
-- **Fond** : fond sonore entre les morceaux ;
-- **DJ** : lecteur DJ séparé ;
-- **Bibliothèque** : morceaux, fichiers, listes et textes ;
-- **Recherche** : recherche rapide d’un morceau ;
-- **Plus** : fonctions, réglages et outils complémentaires.
+- **Lecteur** : audio et paroles du morceau ;
+- **Bibliothèque** : morceaux, fichiers, listes et textes.
+
+**Accueil / Bus principal** peut s’ajouter dans l’édition et la configuration qui le proposent. **DJ** s’ajoute quand son affichage est activé.
+
+La même barre donne aussi accès à des **actions temporaires** : **Fond sonore** ouvre son panneau sans changer de destination principale ; **Recherche** ouvre une recherche contextuelle ; **Plus** ouvre le menu des outils et réglages. Ces actions ne sont pas des onglets de contenu permanents.
 
 Les icônes du Lecteur, du Fond sonore ou du DJ peuvent être colorées lorsque la source correspondante produit le son actif.
 
@@ -23,9 +22,24 @@ Touchez l’icône **Lecteur** dans la barre inférieure. Si vous êtes déjà d
 
 Ouvrir un autre écran n’arrête pas automatiquement la musique. La lecture continue tant qu’une commande de transport ne l’interrompt pas.
 
+## Utiliser une pédale comme clavier
+
+Une pédale Bluetooth compatible est reconnue directement par Android comme un clavier
+physique. MusiMio ne demande aucune connexion Bluetooth propriétaire.
+
+Sur téléphone, les commandes haut/bas ou Page précédente/Page suivante permettent de
+revenir du Lecteur à la playlist, puis d'y déplacer la sélection sans interrompre la lecture.
+Le morceau en cours est automatiquement resélectionné et rendu visible.
+
+Sur tablette, ces commandes déplacent uniquement la sélection dans la playlist. Elles
+n'ajoutent pas le retour Lecteur → playlist propre au téléphone.
+
+L'appui long sur la pédale n'est pas considéré comme une commande fiable ou garantie.
+Utilisez des pressions simples et testez toujours le modèle de pédale avant une prestation.
+
 ## Recherche sur téléphone
 
-L’icône de recherche ouvre un écran temporaire :
+L’icône de recherche ouvre une recherche temporaire :
 
 1. saisissez une partie du titre ;
 2. touchez un résultat pour lancer le morceau ;
@@ -106,12 +120,16 @@ Le bouton Retour ou l’action de fermeture doit vous ramener au cockpit sans ar
 
 Les textes défilants sont différents des paroles synchronisées.
 
+Dans le Prompteur actif, la pédale change de contexte : gauche, haut et Page Up remontent
+le texte ; droite, bas et Page Down l'avancent. Home et End restent disponibles lorsque
+le clavier ou la pédale les émet.
+
 ## Si vous ne retrouvez plus l’écran principal
 
 - Sur téléphone, touchez **Lecteur** ou utilisez le bouton Retour.
 - Sur tablette, choisissez **Paroles** dans le menu du cockpit.
 - Si un outil est en plein écran, utilisez son bouton de fermeture ou le bouton Retour Android.
-- Une navigation d’écran ne doit pas être utilisée comme commande d’arrêt : utilisez **Pause**, **Stop** ou le retour au début selon le besoin.
+- Une navigation d’écran ne doit pas être utilisée comme commande d’arrêt : utilisez **Pause** ou le retour au début selon le besoin.
 
 ## Précautions en concert
 

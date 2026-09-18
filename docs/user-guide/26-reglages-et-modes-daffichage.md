@@ -50,6 +50,12 @@ Les tailles proposées sont :
 
 Choisissez la taille depuis la distance réelle de lecture. Une taille plus grande affiche moins de lignes et peut modifier votre anticipation visuelle.
 
+## Sync Pitch dans le Lecteur
+
+Le bouton **Sync Pitch** se trouve dans la barre live du Lecteur, à côté de **Transpo** ; ce n’est pas un réglage de Track Console. Son état activé ou désactivé est conservé lorsque vous revenez dans l’application.
+
+Quand il est activé, une action Transpo peut changer à la fois les accords affichés et la hauteur sonore, chacun dans sa plage. Le désactiver remet la hauteur sonore courante à `0`. Consultez [Afficher les paroles et les accords](10-paroles-et-accords.md) avant de changer de tonalité pendant une prestation.
+
 ## Couleurs de lecture guidée
 
 Les couleurs A et B servent à distinguer les lignes dans certains modes de lecture guidée. Les choix incluent notamment blanc, jaune doux, bleu et vert.
@@ -71,7 +77,7 @@ L’indicateur DMX aide au contrôle visuel, mais ne garantit pas que le project
 
 ## Disposition téléphone et tablette
 
-La tablette utilise une présentation partagée avec playlist à gauche et outil actif à droite. Certains panneaux peuvent être repliés pour donner plus d’espace à Waveform ou Arrangement.
+Sur téléphone, le Lecteur affiche les paroles sans boutons Lyrics/Grid dans sa barre live. Sur tablette, les boutons **Lyrics** et **Grid** sont disponibles dans le Lecteur, et la présentation partagée garde la playlist à gauche et l’outil actif à droite. Certains panneaux peuvent être repliés pour donner plus d’espace à Waveform ou Arrangement.
 
 Un réglage tablette expérimental peut être proposé. Testez-le hors prestation et revenez à la disposition stable en cas de problème.
 
