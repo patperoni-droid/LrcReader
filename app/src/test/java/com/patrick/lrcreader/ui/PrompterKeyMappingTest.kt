@@ -39,9 +39,14 @@ class PrompterKeyMappingTest {
     }
 
     @Test
-    fun viewportTarget_usesVisibleHeightWithFifteenPercentOverlap() {
-        assertEquals(1_050, prompterViewportTarget(200, 2_000, 1_000, direction = 1))
+    fun viewportTarget_usesVisibleHeightWithThirtyFivePercentOverlap() {
+        assertEquals(850, prompterViewportTarget(200, 2_000, 1_000, direction = 1))
         assertEquals(0, prompterViewportTarget(200, 2_000, 1_000, direction = -1))
+    }
+
+    @Test
+    fun viewportNavigation_usesShortSmoothAnimation() {
+        assertEquals(300, PROMPTER_VIEWPORT_SCROLL_DURATION_MS)
     }
 
     @Test

@@ -88,7 +88,8 @@ internal fun mapPrompterKey(nativeKeyCode: Int): PrompterAction? = when (nativeK
     else -> null
 }
 
-internal const val PROMPTER_VIEWPORT_OVERLAP_FRACTION = 0.15f
+internal const val PROMPTER_VIEWPORT_OVERLAP_FRACTION = 0.35f
+internal const val PROMPTER_VIEWPORT_SCROLL_DURATION_MS = 300
 
 internal fun prompterViewportTarget(
     currentScrollPx: Int,
@@ -269,30 +270,45 @@ fun TextPrompterScreen(
     val minSpeed = 0.10f
     val maxSpeed = 1.40f // + rapide possible → marge en haut
 
-    fun scrollManuallyTo(targetProvider: () -> Int) {
+    fun scrollManuallyTo(
+        targetProvider: () -> Int,
+        animationDurationMillis: Int? = null
+    ) {
         scope.launch {
             val target = targetProvider().coerceIn(0, scrollState.maxValue)
-            scrollState.animateScrollTo(target)
+            if (animationDurationMillis != null) {
+                scrollState.animateScrollTo(
+                    value = target,
+                    animationSpec = tween(durationMillis = animationDurationMillis)
+                )
+            } else {
+                scrollState.animateScrollTo(target)
+            }
             manualScrollRevision++
         }
     }
 
     fun scrollByViewport(direction: Int) {
-        scrollManuallyTo {
-            prompterViewportTarget(
-                currentScrollPx = scrollState.value,
-                maxScrollPx = scrollState.maxValue,
-                viewportHeightPx = viewportHeightPx,
-                direction = direction
-            )
-        }
+        scrollManuallyTo(
+            targetProvider = {
+                prompterViewportTarget(
+                    currentScrollPx = scrollState.value,
+                    maxScrollPx = scrollState.maxValue,
+                    viewportHeightPx = viewportHeightPx,
+                    direction = direction
+                )
+            },
+            animationDurationMillis = PROMPTER_VIEWPORT_SCROLL_DURATION_MS
+        )
     }
 
     val onTogglePlayPause: () -> Unit = { isPlaying = !isPlaying }
     val previousViewport: () -> Unit = { scrollByViewport(direction = -1) }
     val nextViewport: () -> Unit = { scrollByViewport(direction = 1) }
-    val onJumpToStart: () -> Unit = { scrollManuallyTo { 0 } }
-    val onJumpToEnd: () -> Unit = { scrollManuallyTo { scrollState.maxValue } }
+    val onJumpToStart: () -> Unit = { scrollManuallyTo(targetProvider = { 0 }) }
+    val onJumpToEnd: () -> Unit = {
+        scrollManuallyTo(targetProvider = { scrollState.maxValue })
+    }
 
     fun dispatchPrompterAction(action: PrompterAction) {
         when (action) {
