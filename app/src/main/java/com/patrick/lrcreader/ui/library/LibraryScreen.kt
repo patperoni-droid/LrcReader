@@ -91,6 +91,7 @@ import com.patrick.lrcreader.smp.SmpConverter
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpImportedUiSignal
 import com.patrick.lrcreader.smp.SmpLibraryScanner
+import com.patrick.lrcreader.smp.SmpRuntimeSongCache
 import com.patrick.lrcreader.smp.SongUnit
 import com.patrick.lrcreader.ui.LibraryEntry
 import com.patrick.lrcreader.ui.LibraryFolderCache
@@ -557,6 +558,7 @@ fun LibraryScreen(
     compactHeaderEndContent: @Composable () -> Unit = {},
     smpRefreshVersion: Int = 0,
     smpSongsCache: Map<String, SongUnit> = emptyMap(),
+    initialSmpDisplayCache: List<SmpRuntimeSongCache.CachedSong> = emptyList(),
     lastImportedSmpSignal: SmpImportedUiSignal? = null,
     onConsumeImportedSmpAutoOpen: () -> Unit = {},
     onWorkspaceChanged: () -> Unit = {},
@@ -799,7 +801,10 @@ fun LibraryScreen(
         mutableStateOf(cachedUiSnapshot?.entries ?: emptyList())
     }
     var songItems by remember(libraryUiCacheKey) {
-        mutableStateOf(cachedUiSnapshot?.songItems ?: emptyList())
+        mutableStateOf(
+            cachedUiSnapshot?.songItems
+                ?: buildLibrarySongItemsFromCache(initialSmpDisplayCache)
+        )
     }
     val songListState = rememberSaveable(libraryUiCacheKey, saver = LazyListState.Saver) {
         LazyListState()
@@ -810,6 +815,22 @@ fun LibraryScreen(
     var selectedSongs by remember { mutableStateOf<Set<Uri>>(emptySet()) }
     var playlistSelection by remember { mutableStateOf(LibrarySelectionState<String>()) }
     var prompterSelection by remember { mutableStateOf(LibrarySelectionState<Uri>()) }
+    var prompterEntriesSnapshot by remember(libraryUiCacheKey) {
+        mutableStateOf(
+            LibraryFolderCache.get(PROMPTER_FOLDER_URI)
+                ?: cachedUiSnapshot
+                    ?.takeIf { isPrompterFolderUri(it.currentFolderUri) }
+                    ?.entries
+                ?: emptyList()
+        )
+    }
+    var prompterEntriesReady by remember(libraryUiCacheKey) {
+        mutableStateOf(
+            LibraryFolderCache.get(PROMPTER_FOLDER_URI) != null ||
+                cachedUiSnapshot?.currentFolderUri?.let(::isPrompterFolderUri) == true
+        )
+    }
+    var prompterEntriesLoading by remember(libraryUiCacheKey) { mutableStateOf(false) }
 
     var isLoading by remember { mutableStateOf(false) }
     var loadingStartedAt by remember { mutableStateOf(0L) }
@@ -2043,12 +2064,20 @@ fun LibraryScreen(
             prompterSelection = prompterSelection.clear()
         }
     }
-    LaunchedEffect(textSongRepositoryVersion) {
-        LibraryFolderCache.remove(PROMPTER_FOLDER_URI)
-        val refreshedEntries = buildPrompterEntries()
-        LibraryFolderCache.put(PROMPTER_FOLDER_URI, refreshedEntries)
-        if (isPrompterFolderUri(currentFolderUri) && entries != refreshedEntries) {
-            entries = refreshedEntries
+    LaunchedEffect(textSongRepositoryVersion, libraryUiCacheKey) {
+        prompterEntriesLoading = true
+        try {
+            val refreshedEntries = withContext(Dispatchers.IO) {
+                buildPrompterEntries()
+            }
+            prompterEntriesSnapshot = refreshedEntries
+            prompterEntriesReady = true
+            LibraryFolderCache.put(PROMPTER_FOLDER_URI, refreshedEntries)
+            if (isPrompterFolderUri(currentFolderUri) && entries != refreshedEntries) {
+                entries = refreshedEntries
+            }
+        } finally {
+            prompterEntriesLoading = false
         }
     }
     LaunchedEffect(filteredPlaylists) {
@@ -2124,16 +2153,24 @@ fun LibraryScreen(
         else -> searchablePlaylists.isNotEmpty()
     }
     val hasStartupSongCache = isSongBasedViewMode && smpSongsCache.isNotEmpty()
-    val isLibraryLoadInProgress = isLoading ||
-        !initialLoadDone ||
-        (isSongBasedViewMode && songItemsLoading)
+    val isInitialGlobalLibraryScan =
+        isLoading && !initialLoadDone && moveLabel == sScanning
+    val isLibraryLoadInProgress = if (isPrompterViewMode) {
+        prompterEntriesLoading || !prompterEntriesReady ||
+            (isLoading && !isInitialGlobalLibraryScan)
+    } else {
+        isLoading || !initialLoadDone || (isSongBasedViewMode && songItemsLoading)
+    }
     val showInitialLibraryLoadingState =
         !hasVisibleLibraryContent && isLibraryLoadInProgress
     val showBackgroundLibraryUpdateIndicator =
         hasVisibleLibraryContent &&
             isSongBasedViewMode &&
             (songItemsLoading || (isLoading && moveLabel == sScanning))
-    val showBlockingLoadingOverlay = isLoading && !showBackgroundLibraryUpdateIndicator
+    val showBlockingLoadingOverlay =
+        isLoading &&
+            !showBackgroundLibraryUpdateIndicator &&
+            !(isPrompterViewMode && isInitialGlobalLibraryScan)
     LaunchedEffect(
         showInitialLibraryLoadingState,
         isLoading,
@@ -2260,14 +2297,26 @@ fun LibraryScreen(
         }
     }
 
-    LaunchedEffect(initialLoadDone, smpRefreshVersion, titleAliasVersion, smpSongsCache) {
+    LaunchedEffect(
+        initialLoadDone,
+        smpRefreshVersion,
+        titleAliasVersion,
+        playlistRepoVersion,
+        smpSongsCache
+    ) {
         if (smpSongsCache.isNotEmpty()) {
             Log.i(
                 SMP_LIBRARY_CACHE_DIAG_TAG,
                 "song_cache_hit source=main_activity count=${smpSongsCache.size} refreshVersion=$smpRefreshVersion initialLoadDone=$initialLoadDone"
             )
             songItems = withContext(Dispatchers.IO) {
-                buildLibrarySongItemsFromSongs(smpSongsCache.values)
+                buildLibrarySongItemsFromSongs(smpSongsCache.values).also {
+                    SmpRuntimeSongCache.save(
+                        context,
+                        smpSongsCache.values,
+                        workspaceRootUri?.toString()
+                    )
+                }
             }
             songItemsLoading = false
             return@LaunchedEffect
@@ -3576,7 +3625,9 @@ fun LibraryScreen(
                 return@LaunchedEffect
             }
 
-            indexAll = backend.loadIndex()
+            indexAll = withContext(Dispatchers.IO) {
+                backend.loadIndex()
+            }
             val filesRoot = filesNavigationRoot ?: workspaceRoot
             val backendInitialFolder = resolveFilesInitialFolderForLibrary(filesRoot) ?: workspaceRoot
             val folderToShow = when (libraryViewMode) {
@@ -3948,10 +3999,13 @@ fun LibraryScreen(
                         libraryViewMode = LIBRARY_VIEW_MODE_PROMPTERS
                         selectedSongs = emptySet()
                         stopQuickPlay()
-                        LibraryFolderCache.clear()
                         searchQuery = ""
                         folderStack = emptyList()
                         currentFolderUri = PROMPTER_FOLDER_URI
+                        entries = prompterEntriesSnapshot
+                        if (prompterEntriesReady) {
+                            LibraryFolderCache.put(PROMPTER_FOLDER_URI, prompterEntriesSnapshot)
+                        }
                     }
                 )
                 LibraryViewModeButton(
