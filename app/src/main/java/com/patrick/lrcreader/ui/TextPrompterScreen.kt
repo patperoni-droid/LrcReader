@@ -458,7 +458,7 @@ fun TextPrompterScreen(
                 scrollState = scrollState,
                 alignment = displaySettings.alignment,
                 transposeSemitones = transposeSemitones,
-                startOffsetFraction = 0.55f,
+                startOffsetFraction = 0f,
                 bottomOffsetFraction = 0.30f,
                 modifier = Modifier
                     .fillMaxSize()
