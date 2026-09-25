@@ -2,6 +2,7 @@ package com.patrick.lrcreader.ui
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.smp.SmpFamilyAudioHashCache
 import com.patrick.lrcreader.smp.SmpFamilyFingerprintResult
 import com.patrick.lrcreader.smp.SongUnit
@@ -181,7 +182,10 @@ class LibraryUpdateV0Test {
 
     @Test
     fun encodedReferenceSurvivesSimulatedRestart() {
-        val before = reference(mapOf("parent" to "archive-old"))
+        val before = reference(
+            archives = mapOf("parent" to "archive-old"),
+            promptersFingerprint = "a".repeat(64)
+        )
         var persistedJson: String? = null
         val context = Mockito.mock(Context::class.java)
         val preferences = Mockito.mock(SharedPreferences::class.java)
@@ -406,6 +410,129 @@ class LibraryUpdateV0Test {
         assertNull(LibraryUpdateReferenceCodec.decode(null))
         assertNull(LibraryUpdateReferenceCodec.decode(""))
         assertNull(LibraryUpdateReferenceCodec.decode("{\"state\":\"legacy\"}"))
+    }
+
+    @Test
+    fun promptersFingerprintIsCanonicalAndIndependentFromMapOrder() {
+        val first = linkedMapOf(
+            "b" to prompter("Beta", "Texte B"),
+            "a" to prompter("Alpha", "Texte A")
+        )
+        val second = linkedMapOf(
+            "a" to prompter("Alpha", "Texte A"),
+            "b" to prompter("Beta", "Texte B")
+        )
+
+        assertEquals(
+            calculateLibraryPromptersFingerprint(first),
+            calculateLibraryPromptersFingerprint(second)
+        )
+    }
+
+    @Test
+    fun createUpdateAndDeletePrompterEachNeedBackupUpdate() {
+        val saved = mapOf("a" to prompter("Alpha", "Texte A"))
+        val savedFingerprint = calculateLibraryPromptersFingerprint(saved)
+        val reference = reference(promptersFingerprint = savedFingerprint)
+        val created = saved + ("b" to prompter("Beta", "Texte B"))
+        val updated = saved + ("a" to prompter("Alpha modifié", "Nouveau texte"))
+        val deleted = emptyMap<String, TextSongRepository.TextSongData>()
+
+        assertFalse(updateNeededForPrompters(reference, saved))
+        assertTrue(updateNeededForPrompters(reference, created))
+        assertTrue(updateNeededForPrompters(reference, updated))
+        assertTrue(updateNeededForPrompters(reference, deleted))
+    }
+
+    @Test
+    fun legacyReferenceWithoutPromptersFingerprintNeedsOneUpdate() {
+        val decoded = requireNotNull(
+            LibraryUpdateReferenceCodec.decode(
+                """{"treeUri":"tree","folderUri":"folder","archives":{}}"""
+            )
+        )
+        val items = mapOf("a" to prompter("Alpha", "Texte A"))
+
+        assertNull(decoded.promptersFingerprint)
+        assertTrue(updateNeededForPrompters(decoded, items))
+    }
+
+    @Test
+    fun successfulGlobalUpdatePublishesBothFilesThenStoresFingerprint() {
+        val items = mapOf("a" to prompter("Alpha", "Texte A"))
+        val fingerprint = calculateLibraryPromptersFingerprint(items)
+        val gateway = FakeGlobalStateGateway()
+        var saved: LibraryUpdateReference? = null
+
+        val result = updateLibraryGlobalState(
+            reference = reference(),
+            currentPromptersFingerprint = fingerprint,
+            promptersJson = buildLibraryBackupPromptersJson(items),
+            stateJson = "state-current",
+            gateway = gateway,
+            saveReference = { saved = it; true }
+        )
+
+        assertTrue(result.updated)
+        assertFalse(result.failed)
+        assertTrue(gateway.promptersWritten)
+        assertTrue(gateway.stateWritten)
+        assertEquals(fingerprint, saved?.promptersFingerprint)
+        assertEquals(fingerprint, result.reference.promptersFingerprint)
+        assertFalse(updateNeededForPrompters(result.reference, items))
+    }
+
+    @Test
+    fun unchangedGlobalStateDoesNotRewriteEitherFile() {
+        val items = mapOf("a" to prompter("Alpha", "Texte A"))
+        val fingerprint = calculateLibraryPromptersFingerprint(items)
+        val before = reference(promptersFingerprint = fingerprint)
+        val gateway = FakeGlobalStateGateway()
+        var saveCalled = false
+
+        val result = updateLibraryGlobalState(
+            reference = before,
+            currentPromptersFingerprint = fingerprint,
+            promptersJson = buildLibraryBackupPromptersJson(items),
+            stateJson = "state-current",
+            gateway = gateway,
+            saveReference = { saveCalled = true; true }
+        )
+
+        assertFalse(result.updated)
+        assertFalse(result.failed)
+        assertEquals(before, result.reference)
+        assertFalse(gateway.promptersWritten)
+        assertFalse(gateway.stateWritten)
+        assertFalse(saveCalled)
+    }
+
+    @Test
+    fun promptersOrStateWriteFailureNeverStoresNewFingerprint() {
+        val items = mapOf("a" to prompter("Alpha", "Texte A"))
+        val fingerprint = calculateLibraryPromptersFingerprint(items)
+
+        listOf(
+            FakeGlobalStateGateway(failPrompters = true),
+            FakeGlobalStateGateway(failState = true)
+        ).forEach { gateway ->
+            var saveCalled = false
+            val before = reference()
+            val result = updateLibraryGlobalState(
+                reference = before,
+                currentPromptersFingerprint = fingerprint,
+                promptersJson = buildLibraryBackupPromptersJson(items),
+                stateJson = "state-current",
+                gateway = gateway,
+                saveReference = { saveCalled = true; true }
+            )
+
+            assertTrue(result.failed)
+            assertFalse(result.updated)
+            assertEquals(before, result.reference)
+            assertFalse(saveCalled)
+            assertTrue(updateNeededForPrompters(result.reference, items))
+        }
     }
 
     @Test
@@ -765,13 +892,28 @@ class LibraryUpdateV0Test {
     private fun reference(
         archives: Map<String, String> = emptyMap(),
         fingerprints: Map<String, String> = emptyMap(),
-        audioHashes: Map<String, SmpFamilyAudioHashCache> = emptyMap()
+        audioHashes: Map<String, SmpFamilyAudioHashCache> = emptyMap(),
+        promptersFingerprint: String? = null
     ) = LibraryUpdateReference(
         treeUri = "content://tree/root",
         folderUri = "content://tree/root/backup",
         archivesBySongId = archives,
         fingerprintsBySongId = fingerprints,
-        audioHashesBySongId = audioHashes
+        audioHashesBySongId = audioHashes,
+        promptersFingerprint = promptersFingerprint
+    )
+
+    private fun prompter(title: String, text: String) =
+        TextSongRepository.TextSongData(title, text)
+
+    private fun updateNeededForPrompters(
+        reference: LibraryUpdateReference,
+        items: Map<String, TextSongRepository.TextSongData>
+    ): Boolean = isLibraryBackupUpdateNeeded(
+        reference = reference,
+        runtimeSongs = emptyList(),
+        calculateFingerprint = { _, _ -> null },
+        currentPromptersFingerprint = calculateLibraryPromptersFingerprint(items)
     )
 
     private fun fingerprint(songId: String, marker: Char): SmpFamilyFingerprintResult {
@@ -835,6 +977,26 @@ class LibraryUpdateV0Test {
             if (archiveUri in undeletableUris) return false
             if (undeletablePublishedArchives && archiveUri.startsWith("archive-new-")) return false
             archives.remove(archiveUri)
+            return true
+        }
+    }
+
+    private class FakeGlobalStateGateway(
+        private val failPrompters: Boolean = false,
+        private val failState: Boolean = false
+    ) : LibraryUpdateGlobalStateGateway {
+        var promptersWritten = false
+        var stateWritten = false
+
+        override fun publishGlobalState(
+            reference: LibraryUpdateReference,
+            promptersJson: String,
+            stateJson: String
+        ): Boolean {
+            if (failPrompters) return false
+            promptersWritten = true
+            if (failState) return false
+            stateWritten = true
             return true
         }
     }

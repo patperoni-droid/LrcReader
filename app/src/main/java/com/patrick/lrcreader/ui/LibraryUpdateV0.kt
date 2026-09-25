@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
+import com.patrick.lrcreader.core.TextSongRepository
 import com.patrick.lrcreader.smp.SmpArchiveSongIdResolver
 import com.patrick.lrcreader.smp.SmpExporter
 import com.patrick.lrcreader.smp.SmpFamilyAudioHashCache
@@ -11,13 +12,17 @@ import com.patrick.lrcreader.smp.SmpFamilyFingerprintResult
 import com.patrick.lrcreader.smp.SmpLibraryScanner
 import com.patrick.lrcreader.smp.SongUnit
 import org.json.JSONObject
+import org.json.JSONArray
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 
 internal data class LibraryUpdateReference(
     val treeUri: String,
     val folderUri: String,
     val archivesBySongId: Map<String, String>,
     val fingerprintsBySongId: Map<String, String> = emptyMap(),
-    val audioHashesBySongId: Map<String, SmpFamilyAudioHashCache> = emptyMap()
+    val audioHashesBySongId: Map<String, SmpFamilyAudioHashCache> = emptyMap(),
+    val promptersFingerprint: String? = null
 )
 
 internal object LibraryUpdateReferenceCodec {
@@ -41,6 +46,7 @@ internal object LibraryUpdateReferenceCodec {
                 }
             }
         )
+        reference.promptersFingerprint?.let { put("promptersFingerprint", it) }
     }.toString()
 
     fun decode(raw: String?): LibraryUpdateReference? = runCatching {
@@ -93,7 +99,17 @@ internal object LibraryUpdateReferenceCodec {
                 }
             }
         }
-        LibraryUpdateReference(treeUri, folderUri, archives, fingerprints, audioHashes)
+        val promptersFingerprint = root.optString("promptersFingerprint")
+            .trim()
+            .takeIf(SHA_256::matches)
+        LibraryUpdateReference(
+            treeUri,
+            folderUri,
+            archives,
+            fingerprints,
+            audioHashes,
+            promptersFingerprint
+        )
     }.getOrNull()
 
     private val SHA_256 = Regex("[0-9a-f]{64}")
@@ -152,6 +168,7 @@ internal fun registerSuccessfulLibraryBackupV0(
     exportedArchivesBySongId: Map<String, String>,
     fingerprintsBySongId: Map<String, String> = emptyMap(),
     audioHashesBySongId: Map<String, SmpFamilyAudioHashCache> = emptyMap(),
+    promptersFingerprint: String? = null,
     failureCount: Int,
     saveReference: (LibraryUpdateReference) -> Boolean
 ): LibraryUpdateReference? {
@@ -161,7 +178,8 @@ internal fun registerSuccessfulLibraryBackupV0(
         folderUri = folderUri,
         archivesBySongId = exportedArchivesBySongId,
         fingerprintsBySongId = fingerprintsBySongId.filterKeys(exportedArchivesBySongId::containsKey),
-        audioHashesBySongId = audioHashesBySongId.filterKeys(exportedArchivesBySongId::containsKey)
+        audioHashesBySongId = audioHashesBySongId.filterKeys(exportedArchivesBySongId::containsKey),
+        promptersFingerprint = promptersFingerprint
     )
     return reference.takeIf { runCatching { saveReference(it) }.getOrDefault(false) }
 }
@@ -178,13 +196,20 @@ internal fun isLibraryBackupUpdateNeeded(
     reference: LibraryUpdateReference,
     runtimeSongs: List<SongUnit>,
     calculateFingerprint: (SongUnit, SmpFamilyAudioHashCache?) -> SmpFamilyFingerprintResult?,
+    currentPromptersFingerprint: String? = null,
     isArchiveOwnedBySong: (archiveUri: String, songId: String) -> Boolean = { _, _ -> true }
-): Boolean = runtimeSongs
-    .asSequence()
-    .filter { it.arrangementSourceSongId == null }
-    .distinctBy { it.id.trim() }
-    .filter { it.id.isNotBlank() }
-    .any { song ->
+): Boolean {
+    if (
+        currentPromptersFingerprint != null &&
+        reference.promptersFingerprint != currentPromptersFingerprint
+    ) {
+        return true
+    }
+    return runtimeSongs.asSequence()
+        .filter { it.arrangementSourceSongId == null }
+        .distinctBy { it.id.trim() }
+        .filter { it.id.isNotBlank() }
+        .any { song ->
         val songId = song.id.trim()
         val archiveUri = reference.archivesBySongId[songId]
         val previousAudioHash = reference.audioHashesBySongId[songId]
@@ -195,6 +220,77 @@ internal fun isLibraryBackupUpdateNeeded(
             reference.fingerprintsBySongId[songId] != runtimeFingerprint.fingerprint ||
             previousAudioHash != runtimeFingerprint.audioHashCache
     }
+}
+
+internal fun calculateLibraryPromptersFingerprint(
+    items: Map<String, TextSongRepository.TextSongData>
+): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    fun add(value: String) {
+        val bytes = value.toByteArray(Charsets.UTF_8)
+        digest.update(ByteBuffer.allocate(Int.SIZE_BYTES).putInt(bytes.size).array())
+        digest.update(bytes)
+    }
+    add("library-prompters-v1")
+    items.toSortedMap().forEach { (id, data) ->
+        add(id)
+        add(data.title)
+        add(data.content)
+    }
+    return digest.digest().joinToString("") { "%02x".format(it) }
+}
+
+internal fun buildLibraryBackupPromptersJson(
+    items: Map<String, TextSongRepository.TextSongData>
+): String {
+    val prompters = items.toSortedMap().map { (id, data) ->
+        JSONObject().apply {
+            put("id", id)
+            put("title", data.title)
+            put("text", data.content)
+        }
+    }
+    return JSONObject().apply {
+        put("version", 1)
+        put("prompters", JSONArray(prompters))
+    }.toString(2)
+}
+
+internal data class LibraryGlobalStateUpdateResult(
+    val reference: LibraryUpdateReference,
+    val updated: Boolean,
+    val failed: Boolean
+)
+
+internal interface LibraryUpdateGlobalStateGateway {
+    fun publishGlobalState(
+        reference: LibraryUpdateReference,
+        promptersJson: String,
+        stateJson: String
+    ): Boolean
+}
+
+internal fun updateLibraryGlobalState(
+    reference: LibraryUpdateReference,
+    currentPromptersFingerprint: String,
+    promptersJson: String,
+    stateJson: String,
+    gateway: LibraryUpdateGlobalStateGateway,
+    saveReference: (LibraryUpdateReference) -> Boolean
+): LibraryGlobalStateUpdateResult {
+    if (reference.promptersFingerprint == currentPromptersFingerprint) {
+        return LibraryGlobalStateUpdateResult(reference, updated = false, failed = false)
+    }
+    if (!gateway.publishGlobalState(reference, promptersJson, stateJson)) {
+        return LibraryGlobalStateUpdateResult(reference, updated = false, failed = true)
+    }
+    val nextReference = reference.copy(promptersFingerprint = currentPromptersFingerprint)
+    return if (runCatching { saveReference(nextReference) }.getOrDefault(false)) {
+        LibraryGlobalStateUpdateResult(nextReference, updated = true, failed = false)
+    } else {
+        LibraryGlobalStateUpdateResult(reference, updated = false, failed = true)
+    }
+}
 
 internal suspend fun detectLibraryBackupUpdateNeededAfterPendingWrites(
     awaitPendingWrites: suspend () -> Boolean,
@@ -330,7 +426,7 @@ internal class SafLibraryUpdateArchiveGateway(
     private val context: Context
 ) : LibraryUpdateArchiveGateway {
     override fun isFolderWritable(reference: LibraryUpdateReference): Boolean = runCatching {
-        val folder = resolveWorkingFolder(reference) ?: return@runCatching false
+        val folder = resolveLibraryUpdateWorkingFolder(context, reference) ?: return@runCatching false
         isResolvedSafFolderUsable(
             hasWritableTreePermission = true,
             folderExistsAndIsDirectory = folder.exists() && folder.isDirectory
@@ -349,7 +445,7 @@ internal class SafLibraryUpdateArchiveGateway(
         song: SongUnit
     ): String? {
         val songId = song.id.trim()
-        val folder = resolveWorkingFolder(reference) ?: return null
+        val folder = resolveLibraryUpdateWorkingFolder(context, reference) ?: return null
         if (!folder.exists() || !folder.isDirectory) return null
         val currentSong = SmpLibraryScanner(context).findSongById(songId) ?: return null
         val cacheArchive = SmpExporter.exportSongUnitToCacheSmp(context, currentSong) ?: return null
@@ -395,38 +491,128 @@ internal class SafLibraryUpdateArchiveGateway(
         }
     }
 
-    private fun resolveWorkingFolder(reference: LibraryUpdateReference): DocumentFile? {
-        val recordedRootUri = Uri.parse(reference.treeUri)
-        val storedFolderUri = Uri.parse(reference.folderUri)
-        val recordedRootDocumentId = runCatching {
-            DocumentsContract.getTreeDocumentId(recordedRootUri)
-        }.getOrNull()
-        val folderDocumentId = storedSafFolderDocumentId(
-            documentId = runCatching {
-                DocumentsContract.getDocumentId(storedFolderUri)
-            }.getOrNull(),
-            treeDocumentId = runCatching {
-                DocumentsContract.getTreeDocumentId(storedFolderUri)
-            }.getOrNull()
-        ) ?: return null
-        val permission = context.contentResolver.persistedUriPermissions.firstOrNull { candidate ->
-            safTreePermissionCoversFolder(
-                recordedRootAuthority = recordedRootUri.authority,
-                recordedRootDocumentId = recordedRootDocumentId,
-                folderAuthority = storedFolderUri.authority,
-                folderDocumentId = folderDocumentId,
-                permissionAuthority = candidate.uri.authority,
-                permissionTreeDocumentId = runCatching {
-                    DocumentsContract.getTreeDocumentId(candidate.uri)
-                }.getOrNull(),
-                permissionCanRead = candidate.isReadPermission,
-                permissionCanWrite = candidate.isWritePermission
+}
+
+internal class SafLibraryUpdateGlobalStateGateway(
+    private val context: Context
+) : LibraryUpdateGlobalStateGateway {
+    override fun publishGlobalState(
+        reference: LibraryUpdateReference,
+        promptersJson: String,
+        stateJson: String
+    ): Boolean = runCatching {
+        val folder = resolveLibraryUpdateWorkingFolder(context, reference) ?: return@runCatching false
+        if (!folder.exists() || !folder.isDirectory) return@runCatching false
+        replaceGlobalFilesSafely(
+            folder = folder,
+            payloads = linkedMapOf(
+                "prompters.json" to promptersJson.toByteArray(Charsets.UTF_8),
+                "state.json" to stateJson.toByteArray(Charsets.UTF_8)
             )
-        } ?: return null
-        val folderDocumentUri = DocumentsContract.buildDocumentUriUsingTree(
-            permission.uri,
-            folderDocumentId
         )
-        return DocumentFile.fromTreeUri(context, folderDocumentUri)
+    }.getOrDefault(false)
+
+    private fun replaceGlobalFilesSafely(
+        folder: DocumentFile,
+        payloads: Map<String, ByteArray>
+    ): Boolean {
+        val token = System.nanoTime().toString(16)
+        val staged = linkedMapOf<String, DocumentFile>()
+        payloads.forEach { (targetName, bytes) ->
+            val part = folder.createFile(
+                "application/octet-stream",
+                ".$targetName.$token.part"
+            ) ?: run {
+                staged.values.forEach { runCatching { it.delete() } }
+                return false
+            }
+            val written = runCatching {
+                context.contentResolver.openOutputStream(part.uri, "w")?.use { output ->
+                    output.write(bytes)
+                    output.flush()
+                    true
+                } == true
+            }.getOrDefault(false)
+            val verified = written && runCatching {
+                context.contentResolver.openInputStream(part.uri)?.use { input ->
+                    input.readBytes().contentEquals(bytes)
+                } == true
+            }.getOrDefault(false)
+            if (!verified) {
+                runCatching { part.delete() }
+                staged.values.forEach { runCatching { it.delete() } }
+                return false
+            }
+            staged[targetName] = part
+        }
+
+        val rollbackFiles = linkedMapOf<String, DocumentFile>()
+        payloads.keys.forEach { targetName ->
+            val current = folder.findFile(targetName)
+            if (current != null) {
+                if (
+                    !current.isFile ||
+                    !runCatching {
+                        current.renameTo(".$targetName.$token.rollback")
+                    }.getOrDefault(false)
+                ) {
+                    rollbackFiles.forEach { (name, file) -> runCatching { file.renameTo(name) } }
+                    staged.values.forEach { runCatching { it.delete() } }
+                    return false
+                }
+                rollbackFiles[targetName] = current
+            }
+        }
+
+        val published = mutableListOf<String>()
+        staged.forEach { (targetName, part) ->
+            if (!runCatching { part.renameTo(targetName) }.getOrDefault(false)) {
+                published.forEach { name -> runCatching { folder.findFile(name)?.delete() } }
+                rollbackFiles.forEach { (name, file) -> runCatching { file.renameTo(name) } }
+                staged.values.forEach { runCatching { it.delete() } }
+                return false
+            }
+            published += targetName
+        }
+        rollbackFiles.values.forEach { runCatching { it.delete() } }
+        return true
     }
+}
+
+private fun resolveLibraryUpdateWorkingFolder(
+    context: Context,
+    reference: LibraryUpdateReference
+): DocumentFile? {
+    val recordedRootUri = Uri.parse(reference.treeUri)
+    val storedFolderUri = Uri.parse(reference.folderUri)
+    val recordedRootDocumentId = runCatching {
+        DocumentsContract.getTreeDocumentId(recordedRootUri)
+    }.getOrNull()
+    val folderDocumentId = storedSafFolderDocumentId(
+        documentId = runCatching {
+            DocumentsContract.getDocumentId(storedFolderUri)
+        }.getOrNull(),
+        treeDocumentId = runCatching {
+            DocumentsContract.getTreeDocumentId(storedFolderUri)
+        }.getOrNull()
+    ) ?: return null
+    val permission = context.contentResolver.persistedUriPermissions.firstOrNull { candidate ->
+        safTreePermissionCoversFolder(
+            recordedRootAuthority = recordedRootUri.authority,
+            recordedRootDocumentId = recordedRootDocumentId,
+            folderAuthority = storedFolderUri.authority,
+            folderDocumentId = folderDocumentId,
+            permissionAuthority = candidate.uri.authority,
+            permissionTreeDocumentId = runCatching {
+                DocumentsContract.getTreeDocumentId(candidate.uri)
+            }.getOrNull(),
+            permissionCanRead = candidate.isReadPermission,
+            permissionCanWrite = candidate.isWritePermission
+        )
+    } ?: return null
+    val folderDocumentUri = DocumentsContract.buildDocumentUriUsingTree(
+        permission.uri,
+        folderDocumentId
+    )
+    return DocumentFile.fromTreeUri(context, folderDocumentUri)
 }

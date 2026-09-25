@@ -625,7 +625,8 @@ private fun MoreRootScreen(
     androidx.compose.runtime.LaunchedEffect(tabletExperimentalModeEnabled) {
         tabletExperimentalMode = tabletExperimentalModeEnabled
     }
-    LaunchedEffect(libraryUpdateReference) {
+    val textSongRepositoryVersion = TextSongRepository.version.intValue
+    LaunchedEffect(libraryUpdateReference, textSongRepositoryVersion) {
         val reference = libraryUpdateReference
         libraryBackupUpdateNeeded = if (reference == null) {
             false
@@ -635,6 +636,9 @@ private fun MoreRootScreen(
                 detectPersistedChanges = {
                     withContext(Dispatchers.IO) {
                         val runtimeSongs = SmpLibraryScanner(context.applicationContext).listSongs()
+                        val promptersFingerprint = calculateLibraryPromptersFingerprint(
+                            TextSongRepository.exportAll(context.applicationContext)
+                        )
                         val fingerprint = SmpFamilyFingerprint()
                         val gateway = SafLibraryUpdateArchiveGateway(context.applicationContext)
                         isLibraryBackupUpdateNeeded(
@@ -643,6 +647,7 @@ private fun MoreRootScreen(
                             calculateFingerprint = { song, cachedAudio ->
                                 fingerprint.calculate(context.applicationContext, song, cachedAudio)
                             },
+                            currentPromptersFingerprint = promptersFingerprint,
                             isArchiveOwnedBySong = gateway::isArchiveOwnedBySong
                         )
                     }
@@ -811,6 +816,7 @@ private fun MoreRootScreen(
             val exportedFamilyFingerprints = linkedMapOf<String, String>()
             val exportedFamilyAudioHashes = linkedMapOf<String, SmpFamilyAudioHashCache>()
             val familyFingerprint = SmpFamilyFingerprint()
+            var savedPromptersFingerprint: String? = null
 
             runtimeSongs.forEach { song ->
                 exportLiveSongsCurrentTitle = song.title
@@ -895,14 +901,19 @@ private fun MoreRootScreen(
             exportLiveSongsDone = completedCount
 
             exportLiveSongsCurrentTitle = "prompters.json"
+            val promptersSnapshot = withContext(Dispatchers.IO) {
+                TextSongRepository.exportAll(context.applicationContext)
+            }
             val promptersWritten = withContext(Dispatchers.IO) {
                 writeLibraryBackupPromptersToTree(
                     context = context.applicationContext,
-                    exportDir = exportTarget
+                    exportDir = exportTarget,
+                    items = promptersSnapshot
                 )
             }
             if (promptersWritten) {
                 successCount += 1
+                savedPromptersFingerprint = calculateLibraryPromptersFingerprint(promptersSnapshot)
             } else {
                 failureCount += 1
             }
@@ -917,6 +928,7 @@ private fun MoreRootScreen(
                     exportedArchivesBySongId = exportedFamilyArchives,
                     fingerprintsBySongId = exportedFamilyFingerprints,
                     audioHashesBySongId = exportedFamilyAudioHashes,
+                    promptersFingerprint = savedPromptersFingerprint,
                     failureCount = failureCount,
                     saveReference = { reference ->
                         LibraryUpdateReferenceStore.save(context.applicationContext, reference)
@@ -1193,10 +1205,19 @@ private fun MoreRootScreen(
                                     val runtimeSongs = withContext(Dispatchers.IO) {
                                         SmpLibraryScanner(context.applicationContext).listSongs()
                                     }
-                                    exportLiveSongsTotal = runtimeSongs.count {
-                                        it.arrangementSourceSongId == null
+                                    val promptersSnapshot = withContext(Dispatchers.IO) {
+                                        TextSongRepository.exportAll(context.applicationContext)
                                     }
-                                    val result = withContext(Dispatchers.IO) {
+                                    val promptersFingerprint = calculateLibraryPromptersFingerprint(
+                                        promptersSnapshot
+                                    )
+                                    val globalUpdateNeeded =
+                                        reference.promptersFingerprint != promptersFingerprint
+                                    val totalTasks = runtimeSongs.count {
+                                        it.arrangementSourceSongId == null
+                                    } + if (globalUpdateNeeded) 2 else 0
+                                    exportLiveSongsTotal = totalTasks
+                                    val familyResult = withContext(Dispatchers.IO) {
                                         val fingerprint = SmpFamilyFingerprint()
                                         updateLibraryFamiliesV0(
                                             reference = reference,
@@ -1217,27 +1238,71 @@ private fun MoreRootScreen(
                                                     updatedReference
                                                 )
                                             },
-                                            onProgress = { completed, total, title ->
+                                            onProgress = { completed, _, title ->
                                                 scope.launch {
                                                     exportLiveSongsDone = completed
-                                                    exportLiveSongsTotal = total
+                                                    exportLiveSongsTotal = totalTasks
                                                     exportLiveSongsCurrentTitle = title
                                                 }
                                             }
                                         )
                                     }
-                                    libraryUpdateReference = result.reference
-                                    libraryBackupUpdateNeeded = result.folderInaccessible ||
-                                        result.failedCount > 0
-                                    libraryUpdateResultMessage = if (result.folderInaccessible) {
+                                    val globalResult = if (
+                                        !familyResult.folderInaccessible && globalUpdateNeeded
+                                    ) {
+                                        exportLiveSongsCurrentTitle = "prompters.json / state.json"
+                                        withContext(Dispatchers.IO) {
+                                            val stateJson = BackupManager.exportState(
+                                                context = context.applicationContext,
+                                                lastPlayer = null,
+                                                libraryFolders = listOfNotNull(
+                                                    WorkspaceResolver.resolve(context.applicationContext)
+                                                        .workspaceRootUri
+                                                        ?.toString()
+                                                        ?.takeIf { it.isNotBlank() }
+                                                )
+                                            )
+                                            updateLibraryGlobalState(
+                                                reference = familyResult.reference,
+                                                currentPromptersFingerprint = promptersFingerprint,
+                                                promptersJson = buildLibraryBackupPromptersJson(
+                                                    promptersSnapshot
+                                                ),
+                                                stateJson = stateJson,
+                                                gateway = SafLibraryUpdateGlobalStateGateway(
+                                                    context.applicationContext
+                                                ),
+                                                saveReference = { updatedReference ->
+                                                    LibraryUpdateReferenceStore.save(
+                                                        context.applicationContext,
+                                                        updatedReference
+                                                    )
+                                                }
+                                            )
+                                        }.also {
+                                            exportLiveSongsDone = totalTasks
+                                        }
+                                    } else {
+                                        LibraryGlobalStateUpdateResult(
+                                            reference = familyResult.reference,
+                                            updated = false,
+                                            failed = false
+                                        )
+                                    }
+                                    val totalFailedCount = familyResult.failedCount +
+                                        if (globalResult.failed) 1 else 0
+                                    libraryUpdateReference = globalResult.reference
+                                    libraryBackupUpdateNeeded = familyResult.folderInaccessible ||
+                                        totalFailedCount > 0
+                                    libraryUpdateResultMessage = if (familyResult.folderInaccessible) {
                                         context.getString(R.string.more_library_update_inaccessible)
                                     } else {
                                         context.getString(
                                             R.string.more_library_update_result,
-                                            result.updatedCount,
-                                            result.addedCount,
-                                            result.unchangedCount,
-                                            result.failedCount
+                                            familyResult.updatedCount,
+                                            familyResult.addedCount,
+                                            familyResult.unchangedCount,
+                                            totalFailedCount
                                         )
                                     }
                                     exportLiveSongsCurrentTitle = null
@@ -3096,28 +3161,16 @@ private fun writeLibraryBackupStateToTree(
 
 private fun writeLibraryBackupPromptersToTree(
     context: Context,
-    exportDir: DocumentFile
+    exportDir: DocumentFile,
+    items: Map<String, TextSongRepository.TextSongData>
 ): Boolean {
-    val items = TextSongRepository.exportAll(context)
-        .toSortedMap()
-        .map { (id, data) ->
-            JSONObject().apply {
-                put("id", id)
-                put("title", data.title)
-                put("text", data.content)
-            }
-        }
-    val root = JSONObject().apply {
-        put("version", 1)
-        put("prompters", JSONArray(items))
-    }
     val targetFile = exportDir.findFile("prompters.json")
         ?.takeIf { it.isFile }
         ?: exportDir.createFile("application/json", "prompters.json")
         ?: return false
     return try {
         context.contentResolver.openOutputStream(targetFile.uri, "w")?.use { output ->
-            output.write(root.toString(2).toByteArray(Charsets.UTF_8))
+            output.write(buildLibraryBackupPromptersJson(items).toByteArray(Charsets.UTF_8))
             output.flush()
         } != null
     } catch (_: Throwable) {
