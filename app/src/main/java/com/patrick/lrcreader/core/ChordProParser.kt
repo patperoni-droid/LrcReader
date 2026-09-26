@@ -93,7 +93,7 @@ private fun parseChordProLine(sourceLine: ChordProSourceLine): ChordProLine {
     )
 }
 
-private fun parseChordSymbol(raw: String): ChordSymbol? {
+internal fun parseChordSymbol(raw: String): ChordSymbol? {
     if (raw.isEmpty() || raw.any(Char::isWhitespace)) return null
 
     val slashIndex = raw.indexOf('/')
