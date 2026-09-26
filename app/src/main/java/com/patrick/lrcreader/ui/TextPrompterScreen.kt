@@ -530,6 +530,38 @@ fun TextPrompterScreen(
                     )
             )
 
+            if (preparedDocument.hasChords) {
+                Row(
+                    modifier = Modifier
+                        .zIndex(2f)
+                        .align(Alignment.BottomStart)
+                        .padding(
+                            start = 12.dp,
+                            bottom = transportBottom + transportHeight + 44.dp
+                        )
+                        .offset(y = transportNudgeY)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.Black.copy(alpha = 0.90f))
+                        .border(
+                            1.dp,
+                            Color.White.copy(alpha = 0.22f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(start = 10.dp, end = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.lyrics_live_chords),
+                        color = Color.White,
+                        fontSize = 12.sp
+                    )
+                    PrompterTranspositionControl(
+                        semitones = transposeSemitones,
+                        onSemitonesChange = ::updateTransposeSemitones
+                    )
+                }
+            }
+
 // ✅ PROGRESS AU-DESSUS de la vitre
             Row(
                 modifier = Modifier
