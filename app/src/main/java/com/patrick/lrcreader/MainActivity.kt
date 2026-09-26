@@ -80,6 +80,7 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.media3.common.C
@@ -1412,6 +1413,7 @@ class MainActivity : AppCompatActivity() {
                     onDispose { exoPlayer.removeListener(embeddedLyricsListener) }
                 }
 
+                val configuration = LocalConfiguration.current
                 val adaptiveTokens = rememberSmpAdaptiveTokens()
                 val hasInitialSessionToRestore = !initialTabKey.isNullOrBlank() ||
                     !initialQuickPlaylist.isNullOrBlank() ||
@@ -1451,14 +1453,13 @@ class MainActivity : AppCompatActivity() {
                         tabletExperimentalModeEnabled = true
                     }
                 }
-                LaunchedEffect(adaptiveTokens.tabletMode, tabletExperimentalModeEnabled) {
-                    requestedOrientation = if (
-                        adaptiveTokens.tabletMode &&
-                        tabletExperimentalModeEnabled
-                    ) {
-                        ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-                    } else {
+                LaunchedEffect(configuration.screenWidthDp, configuration.screenHeightDp) {
+                    val isCompactWindow =
+                        configuration.screenWidthDp < 600 || configuration.screenHeightDp < 600
+                    requestedOrientation = if (isCompactWindow) {
                         ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                    } else {
+                        ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
                     }
                 }
                 DisposableEffect(adaptiveTokens.tabletMode, tabletExperimentalModeEnabled) {
