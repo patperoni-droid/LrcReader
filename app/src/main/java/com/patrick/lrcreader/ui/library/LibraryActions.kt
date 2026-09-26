@@ -45,7 +45,9 @@ suspend fun libraryLoadInitial(
         return
     }
 
-    val cachedAll = LibraryIndexCache.load(context)
+    val cachedAll = withContext(Dispatchers.IO) {
+        LibraryIndexCache.load(context)
+    }
     if (!cachedAll.isNullOrEmpty()) {
         onIndexAll(cachedAll)
         onEntries(LibraryIndexCache.childrenOf(cachedAll, root).map { e ->
@@ -63,8 +65,9 @@ suspend fun libraryRescanAll(
     onIndexAll: (List<LibraryIndexCache.CachedEntry>) -> Unit,
     onEntries: (List<LibraryEntry>) -> Unit
 ) {
-    val newFull = withContext(Dispatchers.IO) { buildFullIndex(context, root) }
-    LibraryIndexCache.save(context, newFull)
+    val newFull = withContext(Dispatchers.IO) {
+        buildFullIndex(context, root).also { LibraryIndexCache.save(context, it) }
+    }
     onIndexAll(newFull)
 
     onEntries(
@@ -227,7 +230,9 @@ suspend fun libraryApplyMoveResult(
                 parentUriString = destParentStr
             )
 
-    LibraryIndexCache.save(context, newIndex)
+    withContext(Dispatchers.IO) {
+        LibraryIndexCache.save(context, newIndex)
+    }
     onIndexAll(newIndex)
 
     libraryRefreshCurrentFolderOnly(context, refreshFolderUri, onEntries)

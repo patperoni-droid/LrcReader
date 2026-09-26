@@ -414,6 +414,23 @@ Ces éléments peuvent exister dans le runtime pour la performance ou la sûret�
 mais ils ne doivent jamais devenir nécessaires pour restaurer fidèlement une
 bibliothèque.
 
+### 6.1 Cache runtime d'affichage de la Bibliothèque
+
+Le cache local des lignes de morceaux affichées au démarrage est une projection
+entièrement dérivable. Il ne possède aucune donnée utilisateur et ne remplace ni
+les Familles SongUnit, ni l'État global, ni le Manifest.
+
+Son format est versionné et rattaché à la clé de la racine de workspace résolue.
+Une projection d'un autre workspace n'est pas présentée. Le format historique
+non versionné reste décodable pour compatibilité, mais son absence de portée de
+workspace interdit de l'utiliser comme instantané d'affichage scoped.
+
+La publication de cette projection est atomique : le nouveau fichier est écrit
+et validé temporairement avant remplacement, et le dernier fichier valide est
+conservé comme secours. Une absence, une version inconnue ou une corruption du
+cache déclenche simplement sa reconstruction par le scan normal. Aucun de ces
+cas ne doit supprimer ou modifier une donnée de bibliothèque.
+
 Si une donnée apparemment dérivable contient une information utilisateur qui ne
 peut pas être reconstruite, elle doit être reclassée avant toute évolution dans
 la Famille SongUnit ou dans l'État global.

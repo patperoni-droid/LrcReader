@@ -365,6 +365,16 @@ Instant startup rule:
 - if no cache or usable data exists yet, the UI must show clear loading feedback instead of appearing empty or frozen
 - when a scan completes with no songs, the UI must show a real empty state, not an infinite loader
 
+Runtime cache contract:
+- the startup cache is a versioned, rebuildable projection and is never a source of truth
+- it is scoped to the resolved workspace root; a cache from another root must not be displayed
+- it contains only the fields required to build the first visible song rows without reading each SongUnit configuration again: identity, display title, Arrangement parent link, asset paths, LEVELS values and Arrangement playability
+- the historical unversioned song array remains readable for migration, but its missing workspace scope prevents it from being displayed as a scoped startup snapshot
+- publication is atomic and retains the previous valid snapshot as a recovery copy
+- a missing, obsolete or corrupt snapshot falls back to the normal runtime scan without deleting user content
+- title aliases and playlist custom titles are projected into the cache whenever the visible song rows are refreshed
+- Library index cache reads and writes used by startup, rescan and move operations must run off the main thread
+
 Live UX rule:
 - in concert, the user must always understand whether the app is showing cached content, updating in background, loading for the first time, or truly empty
 - no heavy scan or cache rebuild may run on the main thread

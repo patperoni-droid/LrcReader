@@ -1,6 +1,8 @@
 package com.patrick.lrcreader.ui.library
 
 import com.patrick.lrcreader.smp.SongUnit
+import com.patrick.lrcreader.smp.SmpRuntimeSongCache
+import com.patrick.lrcreader.core.buildSmpItem
 
 data class LibrarySongItem(
     val song: SongUnit,
@@ -28,3 +30,24 @@ data class LibrarySongItem(
     val hasPrompter: Boolean get() = song.prompterPath != null
     val storageFolder: String? get() = song.storageFolder
 }
+
+internal fun buildLibrarySongItemsFromCache(
+    cachedSongs: Collection<SmpRuntimeSongCache.CachedSong>
+): List<LibrarySongItem> = cachedSongs
+    .map { cached ->
+        val song = cached.song
+        LibrarySongItem(
+            song = song,
+            playbackItem = buildSmpItem(song.id),
+            displayTitle = cached.displayTitle.ifBlank { song.title.ifBlank { song.id } },
+            fallbackTitle = song.title.ifBlank { song.id },
+            volumeSource = cached.volumeSource,
+            volumeDb = cached.volumeDb,
+            lufsMeasured = cached.lufsMeasured,
+            lufsTarget = cached.lufsTarget,
+            lufsAutoDb = cached.lufsAutoDb,
+            lufsManualDb = cached.lufsManualDb,
+            arrangementPlayable = cached.arrangementPlayable
+        )
+    }
+    .sortedBy { it.displayTitle.lowercase() }

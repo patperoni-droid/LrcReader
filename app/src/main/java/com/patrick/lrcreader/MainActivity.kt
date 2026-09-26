@@ -581,9 +581,15 @@ class MainActivity : AppCompatActivity() {
                     LibrarySnapshot.isReady = true
                 }
             }
-            val startupSmpSongsById = withContext(Dispatchers.IO) {
-                SmpRuntimeSongCache.load(this@MainActivity).associateBy { it.id }
+            val startupSmpSnapshot = root?.let { workspaceRoot ->
+                withContext(Dispatchers.IO) {
+                    SmpRuntimeSongCache.loadSnapshot(
+                        context = this@MainActivity,
+                        expectedWorkspaceKey = workspaceRoot.toString()
+                    )
+                }
             }
+            val startupSmpSongsById = startupSmpSnapshot?.songsById().orEmpty()
             warmQuickPlaylistComposeStores()
             mark("setContent:before")
             setContent {
@@ -729,6 +735,9 @@ class MainActivity : AppCompatActivity() {
                 var isSmpImportedSongsDialogOpen by remember { mutableStateOf(false) }
                 var smpImportedSongs by remember { mutableStateOf<List<com.patrick.lrcreader.smp.SongUnit>>(emptyList()) }
                 var smpSongsById by remember { mutableStateOf(startupSmpSongsById) }
+                var smpSongsWorkspaceKey by remember {
+                    mutableStateOf(startupSmpSnapshot?.workspaceKey)
+                }
                 var activeVirtualArrangementPlayback by remember {
                     mutableStateOf<PreparedVirtualArrangementPlayback?>(null)
                 }
@@ -777,6 +786,19 @@ class MainActivity : AppCompatActivity() {
                 val smpLibraryScanner = remember(ctx) { SmpLibraryScanner(ctx) }
                 val smpUserArchiveRebuilder = remember(ctx) { SmpUserArchiveRebuilder(ctx) }
                 var smpCacheRefreshTick by remember { mutableIntStateOf(0) }
+                LaunchedEffect(savedRoot) {
+                    val currentWorkspaceKey = savedRoot?.toString()
+                    if (smpSongsWorkspaceKey != currentWorkspaceKey) {
+                        smpSongsById = emptyMap()
+                        smpSongsWorkspaceKey = currentWorkspaceKey
+                        smpCacheRefreshTick++
+                    }
+                }
+                val librarySmpSongsCache = if (smpSongsWorkspaceKey == savedRoot?.toString()) {
+                    smpSongsById
+                } else {
+                    emptyMap()
+                }
                 var arrangementNavigationRevisions by remember {
                     mutableStateOf<Map<String, Int>>(emptyMap())
                 }
@@ -1266,9 +1288,10 @@ class MainActivity : AppCompatActivity() {
                             result.errors.take(20).forEach { android.util.Log.e("IMPORT", it) }
 
                             val newIndex = withContext(Dispatchers.IO) {
-                                buildFullIndex(ctx, libraryFolders.rootUri)
+                                buildFullIndex(ctx, libraryFolders.rootUri).also {
+                                    LibraryIndexCache.save(ctx, it)
+                                }
                             }
-                            LibraryIndexCache.save(ctx, newIndex)
                             LibrarySnapshot.rootFolderUri = libraryFolders.rootUri
                             LibrarySnapshot.entries = newIndex.map { it.uriString }
                             LibrarySnapshot.isReady = true
@@ -2289,7 +2312,7 @@ class MainActivity : AppCompatActivity() {
                             smpSongsById = refreshedSongsById
                         }
                         withContext(Dispatchers.IO) {
-                            SmpRuntimeSongCache.save(ctx, refreshedSongsById.values)
+                            SmpRuntimeSongCache.save(ctx, refreshedSongsById.values, savedRoot?.toString())
                         }
                         return@LaunchedEffect
                     }
@@ -2302,13 +2325,13 @@ class MainActivity : AppCompatActivity() {
                             "step=runtime_cache_refresh_keep_cache reason=empty_runtime_scan refreshTick=$smpCacheRefreshTick cachedCount=${smpSongsById.size}"
                         )
                         withContext(Dispatchers.IO) {
-                            SmpRuntimeSongCache.save(ctx, smpSongsById.values)
+                            SmpRuntimeSongCache.save(ctx, smpSongsById.values, savedRoot?.toString())
                         }
                         return@LaunchedEffect
                     }
                     smpSongsById = refreshedSongsById
                     withContext(Dispatchers.IO) {
-                        SmpRuntimeSongCache.save(ctx, smpSongsById.values)
+                        SmpRuntimeSongCache.save(ctx, smpSongsById.values, savedRoot?.toString())
                     }
                 }
                 LaunchedEffect(savedRoot, hasSetupPerm, isInternalMode, shouldShowSetup, configInitDoneForRoot) {
@@ -5378,7 +5401,13 @@ class MainActivity : AppCompatActivity() {
                                             tabletExperimentalModeEnabled,
                                         compactHeaderEndContent = {},
                                         smpRefreshVersion = smpCacheRefreshTick,
-                                        smpSongsCache = smpSongsById,
+                                        smpSongsCache = librarySmpSongsCache,
+                                        initialSmpDisplayCache = startupSmpSnapshot
+                                            ?.takeIf {
+                                                it.isForWorkspace(workspaceSnapshot.workspaceRootUri?.toString())
+                                            }
+                                            ?.songs
+                                            .orEmpty(),
                                         lastImportedSmpSignal = lastImportedSmpUiSignal,
                                         onConsumeImportedSmpAutoOpen = {
                                             lastImportedSmpUiSignal = null
@@ -5638,7 +5667,11 @@ class MainActivity : AppCompatActivity() {
                                                 if (refreshedSongsById.isNotEmpty()) {
                                                     smpSongsById = refreshedSongsById
                                                     withContext(Dispatchers.IO) {
-                                                        SmpRuntimeSongCache.save(ctx, refreshedSongsById.values)
+                                                        SmpRuntimeSongCache.save(
+                                                            ctx,
+                                                            refreshedSongsById.values,
+                                                            savedRoot?.toString()
+                                                        )
                                                     }
                                                 }
                                                 smpCacheRefreshTick++
@@ -6769,7 +6802,13 @@ class MainActivity : AppCompatActivity() {
                                         reselectRootSignal = libraryTabReselectSignal,
                                         searchToggleSignal = librarySearchToggleSignal,
                                         smpRefreshVersion = smpCacheRefreshTick,
-                                        smpSongsCache = smpSongsById,
+                                        smpSongsCache = librarySmpSongsCache,
+                                        initialSmpDisplayCache = startupSmpSnapshot
+                                            ?.takeIf {
+                                                it.isForWorkspace(workspaceSnapshot.workspaceRootUri?.toString())
+                                            }
+                                            ?.songs
+                                            .orEmpty(),
                                         lastImportedSmpSignal = lastImportedSmpUiSignal,
                                         onConsumeImportedSmpAutoOpen = {
                                             lastImportedSmpUiSignal = null
@@ -7034,7 +7073,11 @@ class MainActivity : AppCompatActivity() {
                                                 if (refreshedSongsById.isNotEmpty()) {
                                                     smpSongsById = refreshedSongsById
                                                     withContext(Dispatchers.IO) {
-                                                        SmpRuntimeSongCache.save(ctx, refreshedSongsById.values)
+                                                        SmpRuntimeSongCache.save(
+                                                            ctx,
+                                                            refreshedSongsById.values,
+                                                            savedRoot?.toString()
+                                                        )
                                                     }
                                                 }
                                                 smpCacheRefreshTick++

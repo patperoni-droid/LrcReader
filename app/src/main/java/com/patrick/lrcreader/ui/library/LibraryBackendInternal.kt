@@ -73,8 +73,9 @@ class LibraryBackendInternal(
         onEntries: (List<LibraryEntry>) -> Unit
     ) {
         val rootDir = File(root.path ?: return)
-        val index = withContext(Dispatchers.IO) { buildInternalIndex(rootDir) }
-        saveIndex(index)
+        val index = withContext(Dispatchers.IO) {
+            buildInternalIndex(rootDir).also(::saveIndex)
+        }
         onIndexAll(index)
         onEntries(listFolder(folderToShow, index, djExcludedReason = "Exclu de la bibliothèque (utilisé en mode DJ)"))
     }
