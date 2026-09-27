@@ -35,9 +35,30 @@ Then load ONLY relevant documents depending on the task:
 For Player / audio:
 - /docs/Features/FEATURE_PLAYER.md
 
-For synchronized ChordPro Lyrics / Grid, chord transposition or Sync Pitch:
-- /docs/CHORDPRO_AUDIO_LYRICS_SPEC.md
-- /docs/Features/FEATURE_PLAYER.md
+For any ChordPro task, start with the common contract:
+- /docs/Features/FEATURE_CHORDPRO.md
+
+Then add ONLY the documents required by the affected surface:
+- standalone Prompter / scrolling text ChordPro:
+  - /docs/CHORDPRO_PROMPTER_SPEC.md
+- synchronized Audio Lyrics / Grid ChordPro:
+  - /docs/CHORDPRO_AUDIO_LYRICS_SPEC.md
+  - /docs/Features/FEATURE_PLAYER.md when the Player is affected
+- scrolling-text import through Library, creation or editing:
+  - /docs/Features/FEATURE_LIBRARY.md when that workflow is affected
+- ChordPro persistence or ownership:
+  - /docs/SMP_PERSISTENCE_SPEC.md
+- live audio, timing or playback-sensitive ChordPro:
+  - /docs/02_LIVE_STABILITY_RULES.md
+- structural ChordPro change:
+  - /docs/01_SMP_ARCHITECTURE.md
+- ChordPro tests or validation documentation:
+  - /docs/TESTS.md when useful
+
+ChordPro is multilingual by design. Never add a French, English, Spanish or other
+language rule to the canonical musical parser. Any future language-aware filtering
+must remain a separate layer defined by `FEATURE_CHORDPRO.md`. Never create a second
+chord parser or duplicate the shared transposition logic here or in a feature.
 
 For Playlist:
 - /docs/Features/FEATURE_PLAYLISTS.md
