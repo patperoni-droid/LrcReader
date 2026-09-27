@@ -6,6 +6,7 @@ import java.util.Locale
 private const val CHORD_LINE_TAB_STOP = 4
 private const val MAX_CHORD_COLUMN_OVERRUN = 2
 private const val MAX_FORWARD_WORD_SNAP = 2
+private const val MAX_CHORD_LINES_PER_BLOCK = 3
 
 internal class ChordLineImportAnalysis internal constructor(
     val source: String,
@@ -31,7 +32,6 @@ private data class LogicalUnit(
 
 private data class ChordLineToken(
     val text: String,
-    val sourceRange: IntRange,
     val column: Int,
     val isChord: Boolean
 )
@@ -41,14 +41,14 @@ private data class LineClassification(
     val hasChordPro: Boolean
 ) {
     val validChordCount: Int = tokens.count(ChordLineToken::isChord)
-    val isSafeChordLine: Boolean = tokens.size >= 2 && validChordCount == tokens.size
-    val looksLikeChordContent: Boolean = tokens.isNotEmpty() &&
-        (validChordCount == tokens.size || validChordCount >= 2)
-    val isAmbiguousChordLine: Boolean = validChordCount >= 2 && validChordCount != tokens.size
+    val looksLikeChordContent: Boolean = validChordCount >= 2
+    val isConvertibleChordLine: Boolean = looksLikeChordContent &&
+        tokens.filterNot(ChordLineToken::isChord).none { it.text.looksLikeMarkup() }
+    val isAmbiguousChordLine: Boolean = looksLikeChordContent && !isConvertibleChordLine
 }
 
 /**
- * Finds conservative pairs of an all-chord line followed immediately by its lyric line.
+ * Finds conservative blocks of one to three chord lines followed immediately by a lyric line.
  * Tabs use deterministic four-column stops; this is necessarily an approximation of the
  * tab width used by the application from which the text was copied.
  */
@@ -56,23 +56,41 @@ internal fun analyzeChordLineImport(source: String): ChordLineImportAnalysis {
     val lines = splitSourceLines(source)
     val classifications = lines.map(::classifyLine)
     val replacements = mutableListOf<ChordProImportReplacement>()
-    var ambiguousLineCount = classifications.count(LineClassification::isAmbiguousChordLine)
+    var ambiguousLineCount = 0
     var index = 0
 
     while (index < lines.size) {
-        val chordLine = lines[index]
         val classification = classifications[index]
-        if (!classification.isSafeChordLine) {
+        if (!classification.isConvertibleChordLine) {
+            if (classification.isAmbiguousChordLine) ambiguousLineCount += 1
+            index += 1
+            continue
+        }
+        if (classification.hasChordPro) {
+            ambiguousLineCount += 1
             index += 1
             continue
         }
 
         val previousLooksLikeChords = classifications.getOrNull(index - 1)?.looksLikeChordContent == true
-        val lyricLine = lines.getOrNull(index + 1)
-        val lyricClassification = classifications.getOrNull(index + 1)
-        val cannotPair = classification.hasChordPro ||
-            previousLooksLikeChords ||
-            lyricLine == null ||
+        var lyricLineIndex = index
+        while (
+            lyricLineIndex < lines.size &&
+            classifications[lyricLineIndex].isConvertibleChordLine &&
+            !classifications[lyricLineIndex].hasChordPro
+        ) {
+            lyricLineIndex += 1
+        }
+        val chordLineCount = lyricLineIndex - index
+        if (previousLooksLikeChords || chordLineCount > MAX_CHORD_LINES_PER_BLOCK) {
+            ambiguousLineCount += 1
+            index = lyricLineIndex
+            continue
+        }
+
+        val lyricLine = lines.getOrNull(lyricLineIndex)
+        val lyricClassification = classifications.getOrNull(lyricLineIndex)
+        val cannotPair = lyricLine == null ||
             lyricLine.text.isAnalysisBlank() ||
             lyricLine.text.isSectionLine() ||
             lyricClassification?.hasChordPro == true ||
@@ -80,18 +98,21 @@ internal fun analyzeChordLineImport(source: String): ChordLineImportAnalysis {
 
         if (cannotPair) {
             ambiguousLineCount += 1
-            index += 1
+            index = lyricLineIndex
             continue
         }
 
-        val insertions = classification.tokens.map { token ->
+        val chordTokens = (index until lyricLineIndex).flatMap { chordLineIndex ->
+            classifications[chordLineIndex].tokens.filter(ChordLineToken::isChord)
+        }
+        val insertions = chordTokens.map { token ->
             val lyricOffset = lyricOffsetForColumn(lyricLine.text, token.column)
                 ?: return@map null
             lyricOffset to "[${token.text}]"
         }
         if (insertions.any { it == null }) {
             ambiguousLineCount += 1
-            index += 1
+            index = lyricLineIndex
             continue
         }
 
@@ -102,10 +123,10 @@ internal fun analyzeChordLineImport(source: String): ChordLineImportAnalysis {
             .forEach { (offset, tags) -> convertedLyric.insert(offset, tags.joinToString("")) }
 
         replacements += ChordProImportReplacement(
-            sourceRange = chordLine.sourceStart until lyricLine.sourceEndExclusive,
+            sourceRange = lines[index].sourceStart until lyricLine.sourceEndExclusive,
             replacement = convertedLyric.toString()
         )
-        index += 2
+        index = lyricLineIndex + 1
     }
 
     return ChordLineImportAnalysis(
@@ -146,8 +167,6 @@ private fun tokenizeChordLine(line: SourceLine): List<ChordLineToken> {
         val text = line.text.substring(first.start, last.endExclusive)
         tokens += ChordLineToken(
             text = text,
-            sourceRange = (line.sourceStart + first.start)..
-                (line.sourceStart + last.endExclusive - 1),
             column = first.columnStart,
             isChord = parseChordSymbol(text) != null
         )
@@ -242,6 +261,10 @@ private fun String.trimAnalysisWhitespace(): String {
     while (end > start && isAnalysisWhitespace(this[end - 1])) end -= 1
     return substring(start, end)
 }
+
+private fun String.looksLikeMarkup(): Boolean =
+    any { it == '[' || it == ']' || it == '<' || it == '>' || it == '{' || it == '}' || it == '*' } ||
+        startsWith('#')
 
 private fun isAnalysisWhitespace(char: Char): Boolean =
     char.isWhitespace() || Character.isSpaceChar(char)
