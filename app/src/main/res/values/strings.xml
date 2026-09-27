@@ -1372,6 +1372,10 @@ N’oubliez pas d’enregistrer 😉</string>
     <string name="prompter_chord_replace_title">Remplacer l’accord</string>
     <string name="prompter_chord_replace_confirmation">Remplacer toutes les occurrences de %1$s par %2$s dans ce morceau ?</string>
     <string name="prompter_chord_replace_action">Remplacer</string>
+    <string name="prompter_chordpro_import_suggestion">Des accords semblent présents. Convertir au format ChordPro ?</string>
+    <string name="prompter_chord_line_import_suggestion">Des lignes d’accords ont été détectées. Convertir au format ChordPro ?</string>
+    <string name="prompter_chordpro_import_convert">Convertir</string>
+    <string name="prompter_chordpro_import_ignore">Ignorer</string>
 
     <!-- Open beta welcome -->
     <string name="open_beta_welcome_title">Bienvenue sur MusiMio</string>

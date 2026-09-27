@@ -1281,6 +1281,10 @@ No olvides guardar 😉</string>
     <string name="prompter_chord_replace_title">Reemplazar acorde</string>
     <string name="prompter_chord_replace_confirmation">¿Reemplazar todas las apariciones de %1$s por %2$s en esta canción?</string>
     <string name="prompter_chord_replace_action">Reemplazar</string>
+    <string name="prompter_chordpro_import_suggestion">Parece que hay acordes. ¿Convertir al formato ChordPro?</string>
+    <string name="prompter_chord_line_import_suggestion">Se han detectado líneas de acordes. ¿Convertir al formato ChordPro?</string>
+    <string name="prompter_chordpro_import_convert">Convertir</string>
+    <string name="prompter_chordpro_import_ignore">Ignorar</string>
 
     <!-- Open beta welcome -->
     <string name="open_beta_welcome_title">Te damos la bienvenida a MusiMio</string>

@@ -1366,6 +1366,10 @@ Don’t forget to save 😉</string>
     <string name="prompter_chord_replace_title">Replace chord</string>
     <string name="prompter_chord_replace_confirmation">Replace every occurrence of %1$s with %2$s in this song?</string>
     <string name="prompter_chord_replace_action">Replace</string>
+    <string name="prompter_chordpro_import_suggestion">Chords seem to be present. Convert to ChordPro format?</string>
+    <string name="prompter_chord_line_import_suggestion">Chord lines were detected. Convert to ChordPro format?</string>
+    <string name="prompter_chordpro_import_convert">Convert</string>
+    <string name="prompter_chordpro_import_ignore">Ignore</string>
 
     <!-- Open beta welcome -->
     <string name="open_beta_welcome_title">Welcome to MusiMio</string>

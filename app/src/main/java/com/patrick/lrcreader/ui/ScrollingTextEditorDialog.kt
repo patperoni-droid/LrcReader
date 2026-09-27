@@ -115,6 +115,8 @@ internal fun ScrollingTextEditorDialog(
     transposeSemitones: Int? = null,
     onTransposeSemitonesChange: (Int) -> Unit = {}
 ) {
+    var handledChordProImportSource by remember(show) { mutableStateOf<String?>(null) }
+    var handledChordLineImportSource by remember(show) { mutableStateOf<String?>(null) }
     if (!show) return
     val contentFocusRequester = remember { FocusRequester() }
     var isContentFocused by remember { mutableStateOf(false) }
@@ -128,6 +130,17 @@ internal fun ScrollingTextEditorDialog(
     )
     val automaticPaletteChords = remember(contentValue.text) {
         extractPrompterChordPaletteFromText(contentValue.text)
+    }
+    val importSuggestion = remember(
+        contentValue.text,
+        handledChordProImportSource,
+        handledChordLineImportSource
+    ) {
+        scrollingTextChordProImportSuggestion(
+            source = contentValue.text,
+            ignoredExplicitChordSource = handledChordProImportSource,
+            ignoredChordLineSource = handledChordLineImportSource
+        )
     }
     var paletteChordBeingEdited by remember { mutableStateOf<String?>(null) }
     var paletteChordDraft by remember { mutableStateOf("") }
@@ -305,6 +318,67 @@ internal fun ScrollingTextEditorDialog(
                         contentFocusRequester.requestFocus()
                     }
                 )
+                Spacer(Modifier.height(4.dp))
+            }
+
+            importSuggestion?.let { suggestion ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF2B3D3B)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(
+                                when (suggestion) {
+                                    is ScrollingTextChordProImportSuggestion.ExplicitChordMarkup ->
+                                        R.string.prompter_chordpro_import_suggestion
+                                    is ScrollingTextChordProImportSuggestion.ChordLines ->
+                                        R.string.prompter_chord_line_import_suggestion
+                                }
+                            ),
+                            color = Color.White,
+                            fontSize = 14.sp
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    when (suggestion) {
+                                        is ScrollingTextChordProImportSuggestion.ExplicitChordMarkup ->
+                                            handledChordProImportSource = suggestion.source
+                                        is ScrollingTextChordProImportSuggestion.ChordLines ->
+                                            handledChordLineImportSource = suggestion.source
+                                    }
+                                }
+                            ) {
+                                Text(stringResource(R.string.prompter_chordpro_import_ignore))
+                            }
+                            TextButton(
+                                onClick = {
+                                    val converted = applyScrollingTextChordProImportSuggestion(
+                                        value = contentValue,
+                                        suggestion = suggestion
+                                    ) ?: return@TextButton
+                                    when (suggestion) {
+                                        is ScrollingTextChordProImportSuggestion.ExplicitChordMarkup ->
+                                            handledChordProImportSource = suggestion.source
+                                        is ScrollingTextChordProImportSuggestion.ChordLines ->
+                                            handledChordLineImportSource = suggestion.source
+                                    }
+                                    onContentValueChange(converted)
+                                    contentFocusRequester.requestFocus()
+                                }
+                            ) {
+                                Text(stringResource(R.string.prompter_chordpro_import_convert))
+                            }
+                        }
+                    }
+                }
                 Spacer(Modifier.height(4.dp))
             }
 
