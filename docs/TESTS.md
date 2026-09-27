@@ -49,6 +49,50 @@ Voir la [règle globale de sécurité](00_PROJECT_RULES.md#instrumented-tests-an
 
 ## Couvertures ciblées Prompteur, accords et pédale
 
+Le [contrat transversal ChordPro](Features/FEATURE_CHORDPRO.md) définit les invariants
+fonctionnels. La présente section inventorie les tests réellement présents ; elle ne
+constitue pas une seconde spécification du parser ou de l'import.
+
+### Tests ChordPro existants
+
+- `ChordProParserTest` couvre le parser canonique : accords simples, accords enrichis,
+  slash chords, suffixes supportés, tags complets invalides, crochets non musicaux,
+  positions UTF-16, Unicode et conservation de la source. Les mots apostrophés
+  `C'est` et `D'accord` sont protégés dans les scénarios d'import de lignes, où leur
+  token complet est refusé.
+- `ChordProImportNormalizerTest` couvre l'import `**accord**` : grammaire canonique,
+  plages exactes, mots non musicaux, ChordPro existant, balisages incomplets ou
+  ambigus, préservation des caractères et séparateurs, absence de compensation
+  d'espaces et idempotence.
+- `ChordLineImportNormalizerTest` couvre la reconnaissance token par token, le minimum
+  de deux accords, les tokens ordinaires inconnus, les blocs de une, deux et trois
+  lignes, le refus de quatre lignes, les sections et balises, le ChordPro existant,
+  les projections sûres ou refusées, les tabulations, LF/CRLF/CR, les accords au même
+  offset, les caractères Unicode et l'idempotence.
+- `ScrollingTextChordProImportTest` couvre la couche pure utilisée par l'UI : priorité
+  de `**accord**` sur les lignes/blocs, suggestion unique, Convertir, Ignorer, nouvelle
+  proposition après modification ou nouvelle session, refus d'une source obsolète,
+  remappage du curseur, des sélections normales ou inversées et de la composition IME.
+- `ChordTranspositionTest` couvre le moteur commun : notes naturelles, dièses,
+  bémols, suffixes, slash chords, offsets positifs/négatifs, modulo douze et source
+  inchangée à zéro.
+- `PrompterTranspositionControlTest` couvre le formatage et les bornes `-11..+11` du
+  contrôle partagé. `TextPrompterDisplaySettingsStoreTest` couvre la persistance, les
+  valeurs par défaut, le clamp, la compatibilité des anciennes valeurs, les espaces
+  de clés distincts et la conservation de `syncPitchCompensation`.
+- `ChordProPrompterLayoutTest`, `PrompterTextPreparationTest` et
+  `SinglePrompterRenderLineTest` couvrent le rendu Prompteur, les ancres, les chemins
+  simples/enrichis, le wrapping, les lignes d'accords, la transposition visuelle et la
+  conservation du texte visible.
+- `AudioLyricsChordGridTest` couvre la Grille dérivée, les occurrences répétées, les
+  lignes non minutées, la transposition non destructive, la ligne active et le fallback
+  legacy. `LyricsAreaChordProIntegrationTest` couvre le parser/rendu partagé, la
+  transposition et la conservation du `timeMs` et de l'identité des `LrcLine`.
+  `LyricsEditorChordProTimingMergeTest` couvre la conservation des timings pendant
+  les éditions ChordPro. `DisplayedChordTranspositionTest` couvre la relation entre
+  accords affichés, pitch et `Sync Pitch` sans réécriture de la source.
+- `AudioLyricsChordProToolbarTest` couvre les décisions d'affichage de la palette et
+  les actions d'insertion de la barre Audio Lyrics.
 - `PrompterKeyMappingTest` couvre les touches du Prompteur, les bornes, le déplacement
   de 65 %, le chevauchement de 35 % et la durée d'animation de 300 ms.
 - `ChordProTextEditingTest` couvre le remplacement exact par ancres `parseChordPro`, les
@@ -59,6 +103,24 @@ Voir la [règle globale de sécurité](00_PROJECT_RULES.md#instrumented-tests-an
   avec la pédale testée et ne doit pas être présenté comme fonctionnalité stable.
 - La validation de reprise de l'auto-scroll du Prompteur, du focus matériel et du retour
   Player → playlist exige un essai manuel sur l'appareil concerné.
+
+### Tests ChordPro à prévoir
+
+Les points suivants sont recommandés mais ne doivent pas être présentés comme déjà
+couverts :
+
+- test Compose direct confirmant que le contrôle de transposition du Prompteur est
+  visible avec des accords et absent sans accord ;
+- test Compose ou instrumenté de la bannière réelle, de son unicité et de ses actions,
+  en complément des tests purs de `ScrollingTextChordProImportTest` ;
+- corpus progressif de faux positifs français, anglais et espagnols lorsqu'une couche
+  linguistique sera justifiée et implémentée ;
+- scénarios supplémentaires issus de copier-coller HTML ou d'autres sources ayant
+  perdu leurs espaces d'alignement.
+
+La future matrice FR/EN/ES testera uniquement un filtre d'ambiguïté séparé. Elle ne
+doit ni spécialiser ni dupliquer les tests du parser musical canonique selon la
+langue. Aucune couche linguistique n'est implémentée aujourd'hui.
 
 ## Quarantaine temporaire (QuickPlaylistsScreenTest)
 Si un device flaky casse le run global, tu peux isoler temporairement:

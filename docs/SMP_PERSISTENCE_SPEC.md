@@ -288,7 +288,7 @@ les deux représentations ; le fichier portable passe par `ConfigJsonAtomicFileI
 Cette double écriture est un constat de compatibilité historique, pas un modèle à
 reproduire pour une nouvelle fonctionnalité.
 
-#### Palette, alignement et transport
+#### Palette, réglages d'affichage et transport
 
 - La palette actuelle du Prompteur est une vue dérivée des accords reconnus dans le
   texte ChordPro. Elle n'est plus une donnée à enregistrer séparément : ordre et
@@ -297,18 +297,29 @@ reproduire pour une nouvelle fonctionnalité.
   stockage local de palette dans `text_prompter_chord_palette_prefs`. L'éditeur courant
   ne l'utilise pas comme source de vérité et il ne réutilise pas `ChordPaletteStore`
   des accords LRC.
-- `TextPrompterDisplaySettingsStore` conserve l'alignement global Gauche/Centré dans
-  `text_prompter_display_settings_prefs`, avec les mêmes espaces de clés. Gauche (`START`) est
-  la valeur de repli. Ce choix de présentation est une préférence locale.
-- Le réglage d'alignement est sauvegardé à la validation de l'éditeur puis rechargé à
-  sa réouverture. Il ne fait pas partie de la chaîne ChordPro ni du JSON du catalogue.
+- `TextPrompterDisplaySettingsStore` conserve dans
+  `text_prompter_display_settings_prefs` trois champs confirmés par le code :
+  `alignment`, `transposeSemitones` et `syncPitchCompensation`. L'alignement par défaut
+  est `START`, la transposition est bornée à `-11..+11` et la compensation est
+  normalisée modulo 12. Le champ de compensation décrit ici fait partie du schéma du
+  store ; cette mention ne lui attribue pas un comportement UI supplémentaire.
+- Les clés sont séparées par propriétaire : `text:<textSongId>` pour un texte du
+  catalogue, `audio-lyrics:<songId>` pour Audio Lyrics et `note:<noteId>` pour une
+  note historique. Elles reposent sur les identités stables concernées, jamais sur un
+  titre visible, un nom de fichier ou une URI.
+- L'alignement est sauvegardé à la validation de l'éditeur. La transposition du
+  Prompteur est sauvegardée lors de son changement et restaurée à la réouverture.
+  Ces réglages, ainsi que `syncPitchCompensation`, restent séparés de la chaîne
+  ChordPro et du JSON du catalogue : transposer l'affichage ne réécrit pas le texte
+  utilisateur.
 - La sauvegarde complète du catalogue écrit `prompters.json` avec `id`, `title`,
   `text` (`writeLibraryBackupPromptersToTree` dans `MoreScreen`). La restauration
   passe par `TextSongRepository.importOne` selon le mode Conserver/Remplacer.
   Les couleurs intégrées à la source suivent donc le texte transporté.
 - La palette automatique suit le texte transporté puisqu'elle est reconstruite depuis
-  celui-ci. L'alignement reste une préférence locale non transportée par ce fichier ;
-  le contrat actuel de sauvegarde de l'État global ne sérialise pas son store.
+  celui-ci. Les réglages de `TextPrompterDisplaySettingsStore` restent des préférences
+  locales non transportées par ce fichier ; le contrat actuel de sauvegarde de l'État
+  global ne sérialise pas ce store.
 - **Mettre à jour la bibliothèque** ne republie pas encore ce catalogue ; une
   sauvegarde complète reste nécessaire après modification de textes défilants.
   Leur transfert utilisateur par SMP Sync reste prévu plus tard.
@@ -316,6 +327,9 @@ reproduire pour une nouvelle fonctionnalité.
 Voir la [spécification ChordPro du Prompteur](CHORDPRO_PROMPTER_SPEC.md) pour la
 grammaire, les parcours d'édition et les limites ; ne pas confondre ce catalogue
 avec les contenus de prompteur transportés dans une Famille SongUnit.
+Les invariants communs séparant source ChordPro, transposition et données dérivées
+sont définis dans le
+[contrat transversal ChordPro](Features/FEATURE_CHORDPRO.md#17-persistance-et-propriété-des-données).
 
 ---
 
