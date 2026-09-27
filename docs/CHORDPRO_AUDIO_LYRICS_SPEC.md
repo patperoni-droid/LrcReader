@@ -1,5 +1,11 @@
 # CHORDPRO_AUDIO_LYRICS_SPEC.md
 
+> **Annexe spécialisée.** Le contrat transversal
+> [FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md) définit les invariants communs
+> ChordPro de MusiMio. Le présent document détaille uniquement Lyrics, Sync, Grid,
+> la synchronisation audio et les contraintes du Player. Après validation humaine,
+> le contrat transversal prévaut en cas de contradiction sur une règle commune.
+
 ## Objectif et statut
 
 MusiMio prend en charge ChordPro dans le Lecteur audio > `Lyrics` en réutilisant le moteur et les composants communs au Prompteur.
@@ -86,22 +92,20 @@ ChordPro ne modifie pas :
 * les variantes ;
 * la logique de playlist.
 
-La timeline audio existante reste la source de vérité.
+La timeline audio existante reste la source de vérité. ExoPlayer fournit le temps
+absolu ; le rendu ChordPro, son index de ligne et son état UI ne deviennent jamais
+une source temporelle.
 
 ## Moteur ChordPro commun
 
-Audio Lyrics réutilise les briques ChordPro déjà validées pour le Prompteur, notamment :
+Audio Lyrics réutilise le parser, la préparation utile et la transposition canoniques.
+Il n’existe pas de second parser propre au Lecteur audio. Les invariants partagés,
+la grammaire et la stratégie multilingue sont définis dans
+[FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md) ; les éventuels filtres
+linguistiques futurs restent séparés du parser musical.
 
-* `parseChordPro()` pour reconnaître les accords ;
-* la préparation et le rendu partagés d’une ligne ;
-* `ChordTransposition.kt` et `transposeChord()` pour la transposition ;
-* les commandes communes de formatage et d’édition.
-
-Il n’existe pas de second parser ChordPro propre au Lecteur audio.
-
-Principe :
-
-**un moteur ChordPro commun, deux contextes d’utilisation : Prompteur et Lecteur audio Lyrics.**
+Cette annexe décrit seulement l'application de ce moteur à des `LrcLine`, à leur
+timing et aux vues Lyrics et Grid.
 
 ## Palette d’accords automatique dans `Lyrics`
 
@@ -324,14 +328,19 @@ Exemple :
 
 Le texte est conservé dans `Lyrics` et interprété par le rendu et la Grille dérivée.
 
-La conversion automatique d’une présentation traditionnelle :
+L'import assisté avec bannière **Convertir / Ignorer** appartient actuellement à
+l'éditeur des Textes défilants. Il n'est pas intégré automatiquement à Audio Lyrics.
+L'éditeur Audio Lyrics ne convertit donc pas automatiquement une présentation
+traditionnelle telle que :
 
 ```text
 Am       G
 Hello darkness my old friend
 ```
 
-vers ChordPro n’est pas implémentée.
+vers ChordPro n’est donc pas implémentée. Le comportement commun de l'import assisté
+existant est documenté dans
+[FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md#11-import-de-balisage-accord).
 
 ## Compatibilité et stabilité live
 
@@ -364,12 +373,11 @@ Le chantier a été réalisé et validé par étapes :
 8. dérivation de la Grille du Lecteur avec fallback legacy ;
 9. validation fonctionnelle et visuelle sur appareil.
 
-## Fonctions hors périmètre actuel
+## Fonctions hors périmètre Audio Lyrics
 
-Les fonctions suivantes ne sont pas implémentées dans ce chantier :
+Les fonctions suivantes ne sont pas implémentées dans cette surface :
 
-* conversion automatique texte + accords vers ChordPro ;
-* reconnaissance intelligente d’accords copiés depuis Internet ;
+* import assisté Convertir / Ignorer de texte externe ;
 * synchronisation individuelle de chaque accord ;
 * modification automatique du fichier audio selon la transposition ;
 * migration destructive ou suppression automatique des anciennes grilles ;
@@ -384,3 +392,7 @@ MusiMio applique le principe suivant :
 * `Grille` est une vue de lecture dérivée automatiquement des accords ChordPro de `Lyrics`, avec un fallback temporaire pour les anciennes grilles.
 
 Cette architecture permet les paroles seules, les paroles avec accords, les accords seuls et le formatage riche sans double saisie, divergence de contenu ni duplication des timings.
+
+Voir aussi le [contrat transversal ChordPro](Features/FEATURE_CHORDPRO.md) et la
+[fiche Player](Features/FEATURE_PLAYER.md). Les détails propres au Prompteur autonome
+restent dans [CHORDPRO_PROMPTER_SPEC.md](CHORDPRO_PROMPTER_SPEC.md).

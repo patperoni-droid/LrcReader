@@ -1,12 +1,18 @@
 # MusiMio — ChordPro dans le Prompteur
 
+> **Annexe spécialisée.** Le contrat transversal
+> [FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md) définit les invariants communs
+> ChordPro de MusiMio. Le présent document détaille uniquement le Prompteur autonome,
+> son éditeur, son rendu et ses interactions. Après validation humaine, le contrat
+> transversal prévaut en cas de contradiction sur une règle commune.
+
 ## Statut et objectif
 
-État du code vérifié le **18 septembre 2026**, branche
-`feature/chordpro-audio-lyrics`. La navigation par portions d'écran et l'édition
-exacte d'un accord depuis la palette ont été validées sur appareil réel. Ce document
-actualise le cahier des charges initial : les comportements
-présents sont décrits ci-dessous, les intentions restantes sont regroupées en fin de document.
+État documentaire réconcilié le **27 septembre 2026**, branche
+`feature/chordpro-audio-lyrics`. La navigation par portions d'écran, l'édition
+exacte d'un accord depuis la palette et l'import assisté ont été validés séparément.
+Ce document actualise le cahier des charges initial : les comportements présents sont
+décrits ci-dessous, les intentions restantes sont regroupées en fin de document.
 Il ne constitue ni une certification complète de la bêta ni une annonce de publication.
 
 ChordPro a été introduit pour lire **paroles et accords ensemble**, sans horodatage,
@@ -31,19 +37,23 @@ du standard ChordPro.
 | Interface d'édition et panneaux partagés | `ui/ScrollingTextEditorDialog.kt` |
 | Conditions de visibilité téléphone/tablette | `ui/ScrollingTextEditorVisibility.kt` |
 | Insertion, remplacement et retrait de marqueurs | `ui/ChordProTextEditing.kt` |
+| Import assisté et remappage du brouillon | `core/ChordProImportNormalizer.kt`, `core/ChordLineImportNormalizer.kt`, `ui/ScrollingTextChordProImport.kt` |
 | Session d'édition Bibliothèque / crayon du Prompteur | `ui/EditScrollingTextDialog.kt` |
 | Création | `ui/CreateScrollingTextDialog.kt`, `ui/ScrollingTextCreation.kt` |
-| Texte et alignement | `core/TextSongRepository.kt`, `core/TextPrompterDisplaySettingsStore.kt` |
+| Texte et réglages d'affichage | `core/TextSongRepository.kt`, `core/TextPrompterDisplaySettingsStore.kt` |
 
 Le parcours principal concerne les textes autonomes du catalogue Bibliothèque,
 aussi référencés depuis les playlists. `TextPrompterScreen` sait également lire
 les anciennes entrées `NotesRepository` ; leur affichage utilise la même préparation,
 mais elles ne disposent pas du nouveau crayon direct du catalogue.
 
-Les paroles et accords **synchronisés du Lecteur** restent des contenus distincts.
-Leurs timestamps, éditeur Paroles/Accords/Synchro et moteur audio n'utilisent pas
-cette intégration. Le composant distinct `PrompterArea` affiche encore du texte
-simple : son nom ne signifie pas qu'il utilise le rendu ChordPro.
+Les paroles et accords **synchronisés du Lecteur** sont une intégration ChordPro
+existante mais restent des contenus, timings et parcours d'édition distincts. Les deux
+surfaces partagent le parser et la transposition définis par le contrat transversal ;
+les détails du Lecteur sont dans
+[CHORDPRO_AUDIO_LYRICS_SPEC.md](CHORDPRO_AUDIO_LYRICS_SPEC.md). Le composant distinct
+`PrompterArea` affiche encore du texte simple : son nom ne signifie pas qu'il utilise
+le rendu ChordPro.
 Aucune généralisation aux assets de prompteur d'une SongUnit ou au Deuxième écran
 ne doit être déduite de ce patch.
 
@@ -51,22 +61,11 @@ ne doit être déduite de ce patch.
 
 ### Accords
 
-Le parser parcourt chaque ligne et examine les groupes `[...]`. Un groupe reconnu
-devient un `ChordAnchor` ; les autres caractères forment `lyricText`.
-L'ancre conserve l'offset dans les paroles, la plage dans la source et un
-`ChordSymbol` structuré (symbole brut, fondamentale, altération, suffixe, basse).
-Les séparateurs LF, CRLF et CR sont reconnus.
-
-- Fondamentale **A à G majuscules**, suivie éventuellement de `#` ou `b`.
-- Suffixes composés des tokens `omit`, `maj`, `min`, `dim`, `aug`, `sus`, `add`,
-  `dom`, `alt`, `no`, `m`, `M`, de chiffres, de `+`, `-`, `°`, `ø`, `Δ`,
-  d'altérations `#`/`b` suivies d'un chiffre et de parenthèses équilibrées.
-- Une seule basse après `/`, de A à G, avec éventuellement `#` ou `b`.
-- Aucun espace à l'intérieur du symbole.
-
-Exemples : `[C]`, `[Am]`, `[F#m7]`, `[Bb]`, `[G7sus4]`, `[Dmaj7]`,
-`[C/E]`, `[C7(b9)]`. La reconnaissance est syntaxique : elle ne valide pas
-la pertinence harmonique de toutes les combinaisons de suffixes.
+Le Prompteur utilise exclusivement le parser et le validateur canoniques décrits dans
+[FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md#5-parser-et-validateur-canoniques).
+Un groupe `[...]` reconnu devient un `ChordAnchor` ; les autres caractères restent
+dans le texte visible. L'ancre conserve l'offset dans les paroles, la plage source et
+le symbole structuré nécessaires au rendu et à l'édition du Prompteur.
 
 `[Refrain]`, `[H]`, `[Am` ou un groupe invalide restent du texte visible.
 En revanche, `[C]` est reconnu même si l'auteur l'entendait comme une annotation.
@@ -184,6 +183,19 @@ Le défilement autonome utilise le `ScrollState` vertical et une animation liné
 vers sa limite mesurée. Les lignes n'ont pas de hauteur fixe supposée par le parser.
 Le Prompteur reste autonome : il n'utilise ni horodatage ChordPro ni ExoPlayer.
 
+### Transposition
+
+Le Prompteur transpose les accords affichés avec le moteur commun, dans la plage
+`-11..+11`. Le texte ChordPro source reste inchangé. La valeur est enregistrée dans
+`TextPrompterDisplaySettingsStore` avec l'identité stable du texte puis restaurée à
+la réouverture.
+
+Dans l'écran de lecture, le contrôle de transposition est affiché lorsque le document
+préparé contient au moins un accord reconnu. L'éditeur partagé reçoit la même valeur
+pour permettre son ajustement sans créer de second état musical. Les invariants de
+transposition sont définis dans
+[FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md#8-transposition-commune).
+
 La navigation manuelle précédente/suivante est commune aux deux boutons tactiles et
 aux commandes clavier Android. Elle déplace le texte de **65 % de la hauteur réellement
 visible**, conserve **35 % de chevauchement**, puis anime le déplacement avec un `tween`
@@ -225,6 +237,18 @@ La création et l'édition depuis une playlist réutilisent aussi
 et l'édition depuis une playlist exigent titre et contenu non vides ; l'édition
 Bibliothèque/Prompteur exige le titre non vide. ✓ valide et ferme, × annule la session.
 Il n'y a pas de sauvegarde automatique du brouillon dans ce dialogue.
+
+### Import assisté
+
+L'éditeur partagé analyse le brouillon et peut proposer une conversion ChordPro pour
+un balisage explicite `**accord**` ou pour des lignes et blocs d'accords placés avant
+des paroles. Une bannière unique demande **Convertir** ou **Ignorer** ; aucune
+conversion n'est silencieuse et une analyse calculée sur une ancienne version du
+texte est refusée.
+
+Les règles communes de validation token par token, de blocs de une à trois lignes,
+de projection, de faux positifs et d'évolution multilingue sont définies dans
+[FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md#11-import-de-balisage-accord).
 
 ### Palette d'accords
 
@@ -351,11 +375,11 @@ titre et au contenu. Les blancs et retours à la ligne aux extrémités ne sont 
 pas garantis ; le contenu intérieur et ses balises restent conservés.
 Le parser et les modèles de rendu sont des représentations dérivées en mémoire.
 
-L'alignement est enregistré séparément par identité et n'est pas encodé dans la source
-ChordPro. La palette affichée est dérivée du texte enregistré ; elle suit donc le contenu
-sans persistance parallèle. Le store historique de palette n'est pas la source de la
-palette automatique actuelle et reste distinct de `ChordPaletteStore` des accords
-synchronisés.
+L'alignement et la transposition sont enregistrés séparément par identité dans
+`TextPrompterDisplaySettingsStore` et ne sont pas encodés dans la source ChordPro.
+La palette affichée est dérivée du texte enregistré ; elle suit donc le contenu sans
+persistance parallèle. Le store historique de palette n'est pas la source de la palette
+automatique actuelle et reste distinct de `ChordPaletteStore` des accords synchronisés.
 
 Les formats physiques, la compatibilité historique et les limites de transport sont
 détaillés dans [SMP_PERSISTENCE_SPEC.md](SMP_PERSISTENCE_SPEC.md#36-textes-défilants-autonomes--implémentation-actuelle).
@@ -377,6 +401,8 @@ Les morceaux audio existants et leurs fichiers de paroles/accords ne sont pas mi
 - Crayon du Prompteur et éditeur commun avec Bibliothèque.
 - Repli de l'en-tête au focus, accords accessibles et panneaux indépendants.
 - Barre tablette unique horizontale, téléphone conservant sa disposition propre.
+- Transposition d'affichage persistée, sans réécriture de la source.
+- Import assisté `**accord**` et lignes/blocs, soumis à Convertir ou Ignorer.
 - Sauvegarde/rechargement du catalogue avec identité conservée.
 
 ### Partiellement fonctionnel / limites actuelles
@@ -398,18 +424,18 @@ Les morceaux audio existants et leurs fichiers de paroles/accords ne sont pas mi
 Intentions du cahier initial et pistes ergonomiques non livrées,
 **sans engagement de livraison ni nouvelle priorité** :
 
-- ChordPro dans les paroles synchronisées, affichage conjoint synchronisé et
-  éventuelle synchronisation accord par accord ;
 - import/export dédié de fichiers `.cho`, `.pro`, `.chopro` (le collage de texte
   existe déjà, mais ce n'est pas un import de fichier) ;
-- transposition automatique, capo et directives ChordPro avancées ;
+- capo et directives ChordPro avancées ;
+- éventuelle synchronisation individuelle de chaque accord dans Audio Lyrics ;
 - option afficher/masquer les accords et taille indépendante paroles/accords ;
 - zoom utilisateur dédié, suppression d'accord assistée et édition musicale complexe ;
 - extension du rendu ChordPro au Deuxième écran et aux autres parcours de texte ;
 - éventuelle palette verticale tablette : **non créée** par la compaction horizontale.
 
-Les priorités restent définies par [BACKLOG.md](BACKLOG.md). Ces pistes ne doivent
-pas être présentées comme une intégration déjà terminée dans le Lecteur audio.
+Les priorités restent définies par [BACKLOG.md](BACKLOG.md). Audio Lyrics est déjà
+intégré ; ses propres fonctions livrées et limites sont décrites dans
+[CHORDPRO_AUDIO_LYRICS_SPEC.md](CHORDPRO_AUDIO_LYRICS_SPEC.md).
 
 ## 8. Validation et repères historiques
 
@@ -424,7 +450,12 @@ Tests JVM existants à consulter, sans les confondre avec des captures Compose :
 - `PrompterColorPersistenceTest` : sauvegarde dans un dossier temporaire, vidage du
   cache, relecture du catalogue et vérification des couleurs paroles/accords ;
 - `TextPrompterChordPaletteStoreTest`, `TextPrompterDisplaySettingsStoreTest`,
-  `ScrollingTextEditorVisibilityTest` : stores et règles de visibilité.
+  `ScrollingTextEditorVisibilityTest` : stores et règles de visibilité ;
+- `ChordTranspositionTest` et `DisplayedChordTranspositionTest` : transposition commune
+  et rendu ;
+- `ChordProImportNormalizerTest`, `ChordLineImportNormalizerTest` et
+  `ScrollingTextChordProImportTest` : import explicite, lignes/blocs, priorité,
+  remappage et protection des sources obsolètes.
 
 Cet audit documentaire lit ces preuves sans modifier ni relancer les tests.
 Les validations utilisateur rapportées portent sur les patchs d'édition et de
@@ -447,4 +478,6 @@ ce séquencement ne prouve ni la clôture de toute validation terrain, ni une re
 
 Voir aussi le [manuel des textes défilants](user-guide/12-textes-defilants.md),
 la [fiche Bibliothèque](Features/FEATURE_LIBRARY.md) et la
-[fiche Player](Features/FEATURE_PLAYER.md).
+[fiche Player](Features/FEATURE_PLAYER.md). La reconnaissance est multilingue par
+conception ; les éventuels filtres linguistiques restent séparés du parser musical,
+conformément au [contrat transversal](Features/FEATURE_CHORDPRO.md#16-évolution-multilingue).
