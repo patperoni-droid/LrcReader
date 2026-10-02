@@ -101,7 +101,36 @@ Playback must ALWAYS use:
 
 👉 The timeline system depends on this stability
 
-Current Player details: synchronized ChordPro content is edited in `Lyrics`; `Grid` is a read-only chord view derived from it, with legacy chords as fallback. On phone the live Player stays in `Lyrics`; the tablet toolbar offers `Lyrics` and `Grid`. Display transposition is per song (`-11..+11` semitones) and does not rewrite the source. Audio pitch is a separate per-track adjustment (`-6..+6` semitones); playback speed is `0.5..2.0`. `Sync Pitch` links explicit live adjustments of pitch and displayed chords without a recursive state-observer loop. Disabling it resets active audio pitch to zero. Non-neutral pitch or speed uses the sequential playback transition guard.
+Current ChordPro Player details:
+- Lyrics owns synchronized text and recognized `[chord]` tags; Sync owns line
+  timestamps. The former separate Chords editor tab is absent.
+- MusiMio supports a chord-focused ChordPro subset, not the full standard.
+  Non-musical groups remain text.
+- Grid derives chord lines from Lyrics with their timestamps; legacy lines remain
+  a fallback returned unchanged, without the derived Grid's chord transposition.
+- Phone is forced to Lyrics without live Lyrics/Grid buttons. Tablet offers both
+  views, subject to edition restrictions.
+- **Transpo accords** changes displayed chords (`-11..+11`), locally per `songId`,
+  without rewriting source. **Pitch audio** changes heard pitch (`-6..+6`).
+  Audio speed (`0.5..2.0`) is separate.
+- **Sync Pitch** is a global device preference, off by default. Explicit live
+  Transpo actions add their variation to audio pitch, then clamp it to ±6.
+  Activation alone does not realign values; permanent equality is not guaranteed.
+- Disabling Sync Pitch resets active audio pitch to zero. Live Transpo while it
+  is off also requests zero. Live reset while it is on resets both values.
+  Coupled live actions, reset included, are blocked when HQ is unavailable.
+- Loading through `runtimePitchSemi()` uses zero audio pitch when Sync Pitch is off,
+  not pitch computed from Transpo accords. Lyrics-editor Transpo updates display
+  only; no inverse audio-pitch observer automatically recalculates displayed chords.
+- Standalone Prompter Transpo accords is local per text (`-11..+11`), independent
+  of audio pitch and Sync Pitch. Play/Pause controls scrolling.
+- Local display settings are separate from transported source content.
+- Second Screen receives line text and timing, with plain-text rendering, not
+  the local ChordPro rendering or chord-display transposition.
+- Non-neutral audio pitch or speed uses the sequential playback transition guard.
+
+See [ChordPro Audio Lyrics](CHORDPRO_AUDIO_LYRICS_SPEC.md) and
+[ChordPro Prompter](CHORDPRO_PROMPTER_SPEC.md) for the specialized contracts.
 
 Track Console currently exposes LEVEL and SPEED plus a static five-band EQ drawing. The EQ has no audio effect, callback or persistence. Background Sound and DJ use their own playback paths and remain subject to the central audio coordination rules; this paragraph does not change their existing priority contract.
 

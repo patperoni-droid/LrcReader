@@ -43,6 +43,17 @@ Le récepteur recherche une session compatible et s’y connecte. Le morceau cou
 
 La version actuelle a été validée pour le parcours principal. Des améliorations d’appairage explicite et de synchronisation plus robuste sont encore prévues ; elles ne doivent pas être supposées disponibles.
 
+## Limites ChordPro et Transpo accords
+
+Le Deuxième écran reçoit le texte des lignes et leurs timings. Son rendu actuel
+est un texte simple : il ne reproduit pas les accords ChordPro au-dessus des paroles
+ni la mise en forme riche du Lecteur. Des tags comme `[Am]` peuvent rester visibles.
+
+La valeur locale **Transpo accords** du diffuseur n'est pas transmise ; ne supposez
+pas que les accords seront transposés de la même façon sur l'autre appareil.
+Sync Pitch concerne le pitch audio principal, pas une copie distante du rendu
+Lyrics ou du Prompteur.
+
 ## Options avancées
 
 Le mode manuel par adresse IP et port reste disponible comme solution de secours et outil de diagnostic. Les actions d’envoi du morceau courant ou d’un morceau test peuvent également y apparaître.

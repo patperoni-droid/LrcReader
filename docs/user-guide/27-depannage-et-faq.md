@@ -36,18 +36,32 @@ Réduisez le gain du morceau, puis le bus concerné. Vérifiez ensuite LEVELS. U
 
 1. revenez au début du morceau ;
 2. vérifiez que les paroles appartiennent à la bonne variante ;
-3. contrôlez les horodatages dans l’éditeur Synchro ;
+3. contrôlez les horodatages dans l’éditeur Sync ;
 4. testez après un déplacement dans la barre de progression.
 
 Après un Arrangement, la chronologie du parent peut ne plus correspondre à la variante.
 
-## Les accords affichés ou la hauteur sonore ne correspondent pas
+## Les accords affichés ou le pitch audio ne correspondent pas
 
-- Si **seuls les accords affichés** semblent décalés, regardez la valeur **Transpo** dans le Lecteur. Touchez cette valeur pour remettre les accords à `0`, puis vérifiez les accords ChordPro du bon morceau.
-- Si **le son** semble trop haut ou trop bas, vérifiez l’état de **Sync Pitch**. Une transposition des accords avec Sync Pitch activé peut aussi changer la hauteur sonore, dans une plage plus limitée.
-- Désactiver Sync Pitch, ou utiliser Transpo lorsqu’il est désactivé, peut ramener la hauteur sonore à sa valeur neutre. Écoutez le morceau après ce changement ; ne vous fiez pas seulement à la valeur des accords.
+- Vérifiez **Transpo accords** du bon morceau : cette valeur d'affichage (`−11..+11`)
+  n'indique pas directement le pitch audio (`−6..+6`).
+- **Sync Pitch** ajoute au pitch audio la variation d'une action live Transpo.
+  Son activation seule ne réaligne pas les valeurs. Des valeurs différentes
+  sont aussi possibles à cause des limites.
+- Le reset Transpo de la barre live avec Sync Pitch activé remet les deux à `0`.
+  Si HQ est indisponible, les actions couplées, reset compris, sont bloquées.
+- Désactiver Sync Pitch ou utiliser Transpo live lorsqu'il est désactivé remet
+  le pitch audio actif à `0`. Dans ce mode, un ancien pitch audio mémorisé n'est
+  pas appliqué au lancement du titre.
+- Transpo dans l'éditeur Lyrics ou dans le Prompteur change l'affichage des accords
+  sans modifier le pitch audio.
 
-La valeur Transpo indique les accords à l’écran, pas directement le pitch audio. Consultez [Afficher les paroles et les accords](10-paroles-et-accords.md) pour distinguer les deux réglages.
+Une ancienne Grid peut rester inchangée : seule la Grid dérivée de Lyrics reçoit
+cette transposition des accords. Les tags visibles sur le Deuxième écran viennent
+de son rendu texte simple, sans rendu ChordPro local ni transposition des accords transmise.
+
+Écoutez le résultat après chaque changement. Consultez
+[Afficher les paroles et les accords](10-paroles-et-accords.md) pour les exemples.
 
 ## Le morceau commence ou finit au mauvais endroit
 

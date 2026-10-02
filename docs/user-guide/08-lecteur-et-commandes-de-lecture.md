@@ -84,9 +84,21 @@ La Track Console donne accès à :
 
 Le bloc EQ cinq bandes visible n’agit pas encore sur le son. Il n’y a plus de commande PITCH ni de VU dans Track Console. LEVEL et SPEED ne modifient pas le fichier audio d’origine.
 
-## Transpo et Sync Pitch
+## Transpo accords et Sync Pitch
 
-Dans la barre live du Lecteur, appuyez sur **−** ou **+** dans le bloc **Transpo** pour changer les accords affichés ; touchez la valeur centrale pour revenir à `0`. Activez **Sync Pitch** si vous voulez que ces actions changent aussi la hauteur sonore du morceau. La transposition des accords et le pitch audio sont deux réglages distincts, avec des limites différentes. Quand Sync Pitch est désactivé, la hauteur sonore courante peut revenir à `0`. Voir [Afficher les paroles et les accords](10-paroles-et-accords.md) avant de préparer une tonalité pour la scène.
+Dans la barre live, **Transpo − / valeur / +** change les accords affichés de
+`−11` à `+11` demi-tons ; toucher la valeur revient à `0`.
+Le **pitch audio** change la hauteur entendue de `−6` à `+6`.
+
+Avec **Sync Pitch** activé, chaque action live Transpo ajoute sa variation au
+pitch audio, dans cette plage. L'activation seule ne réaligne pas les valeurs :
+elles peuvent rester différentes. Le reset live les remet toutes deux à `0`.
+Si HQ est indisponible, les actions couplées, reset compris, sont bloquées.
+
+Désactiver Sync Pitch remet le pitch audio actif à `0`. Une action live Transpo
+lorsqu'il est désactivé fait de même. La vitesse reste séparée. Consultez
+[Afficher les paroles et les accords](10-paroles-et-accords.md) pour les exemples,
+la mémorisation et la différence avec Transpo dans l'éditeur.
 
 ## Points IN et OUT
 
@@ -150,7 +162,7 @@ Vérifiez le gain enregistré pour chacun et préparez leurs niveaux avant le co
 
 ### Les paroles ne suivent plus après un déplacement
 
-Revenez au début, puis vérifiez les horodatages dans l’éditeur Synchro.
+Revenez au début, puis vérifiez les horodatages dans l’éditeur Sync.
 
 ### Une transition ne fait pas de chevauchement
 

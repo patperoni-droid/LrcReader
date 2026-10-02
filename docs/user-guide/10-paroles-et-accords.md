@@ -1,6 +1,6 @@
 # Afficher les paroles et les accords
 
-Le Lecteur suit la position du morceau dans les paroles. Les accords ChordPro peuvent apparaître avec ces paroles et, sur tablette, dans une grille séparée lorsqu’ils sont disponibles. Leur transposition à l’écran ne réécrit ni les paroles ni le fichier audio.
+Le Lecteur suit la position du morceau dans les paroles. Les accords ChordPro peuvent apparaître avec ces paroles et, sur tablette, dans une grille séparée lorsqu’ils sont disponibles. La transposition des accords à l’écran ne réécrit ni les paroles ni le fichier audio.
 
 ## Ouvrir l’affichage synchronisé
 
@@ -15,17 +15,49 @@ Sur tablette en mode partagé, la destination **Paroles** affiche le contenu syn
 - Sur téléphone, le Lecteur reste en vue **Lyrics** : il n’y a plus de boutons Lyrics/Grid dans la barre live.
 - Sur tablette, **Lyrics** affiche les paroles et **Grid** affiche la grille d’accords synchronisée lorsqu’elle est disponible.
 
-La grille peut être construite à partir des accords ChordPro saisis avec les paroles. Si le morceau ne contient pas d’accords utilisables, elle peut rester vide ou indisponible. Changer de vue sur tablette ne modifie pas la lecture audio.
+Grid est une vue de lecture dérivée : chaque ligne Lyrics contenant des accords
+reconnus produit une ligne Grid avec le même timing, l'ordre et les répétitions.
+Une ligne sans accord ne produit pas de ligne Grid. En l'absence d'accords reconnus
+dans Lyrics, une ancienne grille séparée peut rester affichée. Ce fallback ne reçoit
+pas la transposition des accords de la Grid dérivée. Sans l'une ou l'autre source,
+Grid reste vide. Changer de vue sur tablette ne modifie pas la lecture audio.
 
-## Transpo : accords affichés et hauteur sonore
+MusiMio reconnaît les tags tels que `[Am]` et `[G/B]`. Les crochets non musicaux
+restent du texte. Il prend en charge un sous-ensemble ChordPro, pas tout le standard
+ni toutes ses directives.
 
-Dans la barre live, utilisez **Transpo −** ou **+** pour abaisser ou monter les accords affichés d’un demi-ton. La valeur centrale indique la transposition ; touchez-la pour revenir à `0`. La plage des accords va de `−11` à `+11` demi-tons.
+## Transpo accords, pitch audio et Sync Pitch
+
+Dans la barre live, utilisez **Transpo −** ou **+** pour abaisser ou monter les accords affichés d’un demi-ton. La valeur centrale indique la transposition des accords ; touchez-la pour revenir à `0`. La plage des accords va de `−11` à `+11` demi-tons.
 
 La **transposition des accords** désigne la valeur appliquée à leur affichage. Le **pitch audio** change la hauteur entendue du morceau ; sa plage est de `−6` à `+6` demi-tons. Ces deux valeurs peuvent donc différer, notamment près de leurs limites.
 
-Activez **Sync Pitch** dans cette même barre pour que les actions Transpo ajustent également le pitch audio, dans sa propre plage. Avec Sync Pitch désactivé, les actions Transpo changent les accords affichés et ramènent le pitch audio à `0` s’il était modifié ; désactiver Sync Pitch remet également la hauteur sonore courante à sa valeur neutre. N’utilisez donc pas ce mode en supposant que le pitch audio précédent sera conservé.
+Avec **Sync Pitch** activé, une action live **Transpo accords** ajoute sa variation
+au pitch audio courant, puis limite celui-ci à `−6..+6`. Activer Sync Pitch seul
+ne réaligne pas les valeurs et ne garantit pas leur égalité permanente.
 
-La transposition des accords et l’état de Sync Pitch sont conservés par l’application. Les accords transposés ne sont pas enregistrés dans le texte source du morceau. Vérifiez toujours à l’oreille le résultat audio avant de jouer en public.
+Exemple : accords à `+2`, pitch audio à `0` ; activer Sync Pitch ne change rien.
+Un appui live sur **+** donne ensuite accords `+3` et pitch audio `+1`.
+Aux limites, le pitch audio peut aussi s'arrêter alors que les accords continuent
+de monter ou descendre. Le reset Transpo de la barre live avec Sync Pitch activé
+remet les deux valeurs à `0`.
+
+Désactiver Sync Pitch remet le pitch audio actif à `0`. Avec Sync Pitch désactivé,
+une action live Transpo demande aussi un pitch audio à `0`. Au lancement ou au
+rechargement du titre dans ce mode, un ancien pitch audio stocké n'est pas appliqué.
+Ne supposez donc pas que le pitch audio précédent sera conservé.
+
+Si HQ est indisponible, les actions live Transpo couplées au pitch audio, reset
+compris, sont bloquées. Transpo dans l'éditeur Lyrics change seulement l'affichage
+des accords, sans ce couplage live. La vitesse audio reste séparée et ne transpose
+pas les accords.
+
+La transposition des accords est mémorisée localement par morceau. Sync Pitch est
+conservé pour l'appareil, pas séparément pour chaque titre ; il est désactivé par
+défaut. Le pitch audio possède ses propres réglages par titre, selon l'édition.
+Ces mémorisations ne réalignent pas les valeurs. Les accords transposés ne remplacent
+pas la source enregistrée et le réglage visuel local n'est pas transporté avec elle.
+Vérifiez toujours à l'oreille le résultat audio avant de jouer en public.
 
 ## Ligne active et ligne suivante
 
@@ -117,7 +149,7 @@ Le Prompteur des textes défilants possède son propre éditeur ChordPro et sa p
 
 ### Les lignes changent au mauvais moment
 
-Corrigez les horodatages dans l’onglet **Synchro**.
+Corrigez les horodatages dans l’onglet **Sync**.
 
 ### Les dernières modifications ne sont pas visibles
 

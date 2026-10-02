@@ -49,7 +49,7 @@ mais elles ne disposent pas du nouveau crayon direct du catalogue.
 
 Les paroles et accords **synchronisés du Lecteur** sont une intégration ChordPro
 existante mais restent des contenus, timings et parcours d'édition distincts. Les deux
-surfaces partagent le parser et la transposition définis par le contrat transversal ;
+surfaces partagent le parser et la transposition des accords définis par le contrat transversal ;
 les détails du Lecteur sont dans
 [CHORDPRO_AUDIO_LYRICS_SPEC.md](CHORDPRO_AUDIO_LYRICS_SPEC.md). Le composant distinct
 `PrompterArea` affiche encore du texte simple : son nom ne signifie pas qu'il utilise
@@ -183,18 +183,20 @@ Le défilement autonome utilise le `ScrollState` vertical et une animation liné
 vers sa limite mesurée. Les lignes n'ont pas de hauteur fixe supposée par le parser.
 Le Prompteur reste autonome : il n'utilise ni horodatage ChordPro ni ExoPlayer.
 
-### Transposition
+### Transposition des accords
 
 Le Prompteur transpose les accords affichés avec le moteur commun, dans la plage
 `-11..+11`. Le texte ChordPro source reste inchangé. La valeur est enregistrée dans
 `TextPrompterDisplaySettingsStore` avec l'identité stable du texte puis restaurée à
-la réouverture.
+la réouverture. Ce réglage est local au texte sur cet appareil, distinct de Transpo
+accords d'Audio Lyrics. Il ne modifie aucun pitch audio et n'utilise pas Sync Pitch.
+Play/Pause pilote le défilement, pas une lecture musicale synchronisée.
 
-Dans l'écran de lecture, le contrôle de transposition est affiché lorsque le document
+Dans l'écran de lecture, le contrôle de transposition des accords est affiché lorsque le document
 préparé contient au moins un accord reconnu. L'éditeur partagé reçoit la même valeur
 pour permettre son ajustement sans créer de second état musical. Les invariants de
-transposition sont définis dans
-[FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md#8-transposition-commune).
+transposition des accords sont définis dans
+[FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md#8-transposition-des-accords-commune).
 
 La navigation manuelle précédente/suivante est commune aux deux boutons tactiles et
 aux commandes clavier Android. Elle déplace le texte de **65 % de la hauteur réellement
@@ -375,8 +377,11 @@ titre et au contenu. Les blancs et retours à la ligne aux extrémités ne sont 
 pas garantis ; le contenu intérieur et ses balises restent conservés.
 Le parser et les modèles de rendu sont des représentations dérivées en mémoire.
 
-L'alignement et la transposition sont enregistrés séparément par identité dans
-`TextPrompterDisplaySettingsStore` et ne sont pas encodés dans la source ChordPro.
+L'alignement et la transposition des accords sont mémorisés localement par identité
+dans `TextPrompterDisplaySettingsStore` : `text:<textSongId>` pour le catalogue,
+`audio-lyrics:<songId>` pour Audio Lyrics. Ils ne sont pas encodés dans la source
+ChordPro et ne sont pas transportés avec le texte. Le champ de compatibilité
+`syncPitchCompensation` n'implique aucun couplage au pitch audio dans le Prompteur.
 La palette affichée est dérivée du texte enregistré ; elle suit donc le contenu sans
 persistance parallèle. Le store historique de palette n'est pas la source de la palette
 automatique actuelle et reste distinct de `ChordPaletteStore` des accords synchronisés.
@@ -401,7 +406,7 @@ Les morceaux audio existants et leurs fichiers de paroles/accords ne sont pas mi
 - Crayon du Prompteur et éditeur commun avec Bibliothèque.
 - Repli de l'en-tête au focus, accords accessibles et panneaux indépendants.
 - Barre tablette unique horizontale, téléphone conservant sa disposition propre.
-- Transposition d'affichage persistée, sans réécriture de la source.
+- Transposition des accords persistée localement, sans réécriture de la source.
 - Import assisté `**accord**` et lignes/blocs, soumis à Convertir ou Ignorer.
 - Sauvegarde/rechargement du catalogue avec identité conservée.
 
@@ -451,7 +456,7 @@ Tests JVM existants à consulter, sans les confondre avec des captures Compose :
   cache, relecture du catalogue et vérification des couleurs paroles/accords ;
 - `TextPrompterChordPaletteStoreTest`, `TextPrompterDisplaySettingsStoreTest`,
   `ScrollingTextEditorVisibilityTest` : stores et règles de visibilité ;
-- `ChordTranspositionTest` et `DisplayedChordTranspositionTest` : transposition commune
+- `ChordTranspositionTest` et `DisplayedChordTranspositionTest` : transposition des accords commune
   et rendu ;
 - `ChordProImportNormalizerTest`, `ChordLineImportNormalizerTest` et
   `ScrollingTextChordProImportTest` : import explicite, lignes/blocs, priorité,

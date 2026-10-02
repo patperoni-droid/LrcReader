@@ -52,6 +52,22 @@ Si son parent est absent, l’archive installe d’abord le parent transporté, 
 
 Un conflit d’identité incohérent peut provoquer un refus d’import afin de protéger la Bibliothèque.
 
+## ChordPro et réglages transportés
+
+Les tags ChordPro et la mise en forme intégrée suivent Lyrics ou le texte autonome
+lorsque ce contenu est transporté par le parcours choisi. Les accords affichés
+transposés ne remplacent jamais la source enregistrée.
+
+**Transpo accords** et l'alignement du store d'affichage sont des préférences
+locales : leurs valeurs ne suivent pas l'export du contenu. Le **pitch audio**
+appartient aux réglages de morceau pris en charge par le transport, selon l'édition.
+L'état **Sync Pitch** reste une préférence de l'appareil ; importer un titre ne
+garantit ni le même état Sync Pitch ni le même résultat audio au lancement.
+Vérifiez les réglages et écoutez le titre sur l'appareil destinataire.
+
+Le collage de texte ChordPro existe, mais aucun import/export complet dédié de
+fichiers `.cho` n'est proposé dans ces parcours.
+
 ## Partage Android
 
 Le sélecteur Android peut proposer messagerie, courrier, stockage en ligne ou application de fichiers. MusiMio prépare le fichier, mais la réussite de l’envoi dépend ensuite de l’application choisie.

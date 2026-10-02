@@ -98,7 +98,7 @@ une source temporelle.
 
 ## Moteur ChordPro commun
 
-Audio Lyrics réutilise le parser, la préparation utile et la transposition canoniques.
+Audio Lyrics réutilise le parser, la préparation utile et la transposition des accords canoniques.
 Il n’existe pas de second parser propre au Lecteur audio. Les invariants partagés,
 la grammaire et la stratégie multilingue sont définis dans
 [FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md) ; les éventuels filtres
@@ -171,7 +171,7 @@ La barre regroupe les fonctions d’édition retenues pour Audio Lyrics :
 * italique ;
 * insertion ou remplacement d’un accord ChordPro ;
 * couleur riche ;
-* contrôle de transposition `− valeur +`.
+* contrôle de transposition des accords `− valeur +`.
 
 Sur les largeurs les plus contraintes, les commandes de formatage peuvent être regroupées dans un menu compact afin de préserver les zones tactiles et la hauteur du champ Lyrics.
 
@@ -193,23 +193,62 @@ L’aperçu riche intermédiaire précédemment affiché sous la barre a été s
 
 Le texte source et ses balises restent visibles dans le champ d’édition. Le rendu riche reste disponible pendant la lecture dans la vue `Lyrics`.
 
-## Transposition et persistance
+## Transpo accords, pitch audio et Sync Pitch
 
-La barre compacte contient le contrôle `− 0 +`, dans la plage `-11` à `+11` demi-tons.
+La **transposition des accords** est un réglage d'affichage borné à `-11..+11`
+demi-tons. Le contrôle `− valeur +` utilise `ChordTransposition.kt` sans réécrire
+les tags ChordPro, Lyrics, le fichier audio ou les timestamps. La palette continue
+de représenter les accords source, indépendamment de leur transposition affichée.
 
-La transposition :
+Le **pitch audio** change la hauteur entendue et reste borné à `-6..+6` demi-tons
+dans les commandes applicatives concernées. La vitesse audio (`0,5` à `2,0`)
+est séparée et ne transpose pas les accords.
 
-* affecte l’affichage des accords ChordPro ; si `Sync Pitch` est actif, une action live `Transpo` met aussi à jour le pitch audio dans ses propres bornes ;
-* utilise le moteur commun `ChordTransposition.kt` ;
-* est persistée par morceau avec l’identité stable du morceau ;
-* est restaurée lorsque l’utilisateur revient sur le morceau ;
-* ne modifie jamais le texte Lyrics source, le fichier audio ou les timestamps.
+### Actions de la barre live
 
-Le réglage d’affichage des accords est borné de `-11` à `+11` demi-tons. Le pitch audio est un réglage distinct, borné de `-6` à `+6` demi-tons. `Sync Pitch` désactivé, les commandes `Transpo` n’agissent que sur l’affichage ; le pitch audio n’est pas couplé aux accords. `Sync Pitch` activé, les actions explicites de `Transpo` ajustent les deux réglages dans leurs bornes respectives ; le pitch audio modifié depuis ses propres commandes est aussi reflété dans les accords affichés. Une action de remise à zéro de `Transpo` remet les deux à zéro quand la synchronisation est active. Désactiver `Sync Pitch` remet le pitch audio actif à zéro. La liaison est pilotée par les actions utilisateur, sans observateurs récursifs entre les deux états.
+**Sync Pitch** couple les actions live **Transpo accords** au pitch audio par
+variation ; il ne garantit pas une égalité permanente des deux valeurs.
 
-L’état `Sync Pitch` et la transposition d’affichage par morceau sont persistés par leurs réglages existants ; le pitch audio conserve sa persistance par titre. Aucun de ces réglages ne réécrit le contenu ChordPro ou les octets du fichier audio. La vitesse de lecture reste un réglage audio séparé (`0,5` à `2,0`) et ne transpose pas les accords.
+| Action | Transpo accords | Pitch audio actif |
+|---|---|---|
+| Activer Sync Pitch seul | Conservée | Conservé, sans réalignement |
+| Transpo live, Sync Pitch activé | Valeur demandée, bornée à ±11 | Ancien pitch + variation de Transpo, borné à ±6 |
+| Reset Transpo live, Sync Pitch activé | 0 | 0 |
+| Désactiver Sync Pitch | Conservée | 0 |
+| Transpo live, Sync Pitch désactivé, reset compris | Valeur demandée | 0 |
 
-La palette automatique continue de représenter les accords source du morceau, indépendamment de la valeur transposée affichée.
+`planLiveChordPitchChange()` applique :
+`nouveauPitch = clamp(ancienPitch + nouvelleTranspo - ancienneTranspo, -6, +6)`.
+Exemple : accords à `+2`, pitch audio à `0` ; activer Sync Pitch conserve ces valeurs.
+Un appui live sur `+` donne ensuite accords `+3` et pitch audio `+1`.
+Le plafonnement du pitch audio peut aussi maintenir un écart ; quitter une borne
+ne restaure pas automatiquement l'égalité.
+
+Avec Sync Pitch activé et HQ indisponible, les actions live Transpo, reset compris,
+sont bloquées. L'activation seule ne constitue pas une opération de réalignement.
+
+Le contrôle Transpo accords de **l'éditeur Lyrics** met uniquement à jour l'affichage ;
+il ne passe pas par le couplage live, même si Sync Pitch est activé. Le rendu utilise
+cette valeur visuelle : aucun observateur ne recalcule automatiquement les accords
+depuis le pitch audio.
+
+### Persistance et lancement
+
+- Transpo accords est locale par `songId` dans `TextPrompterDisplaySettingsStore`,
+  clé `audio-lyrics:<songId>`, et restaurée au retour sur le morceau.
+- Sync Pitch est une préférence globale de l'appareil dans `DisplayPrefs`,
+  désactivée par défaut, pas une option propre à chaque morceau.
+- Le pitch audio utilise les réglages par titre existants, selon les droits de
+  mémorisation de l'édition. Au chargement et au lancement par `runtimePitchSemi()`,
+  Sync Pitch désactivé impose `0` même si un pitch différent est stocké ; activé,
+  il autorise la valeur stockée. Le pitch n'est pas calculé depuis Transpo accords.
+- Les préférences du store d'affichage sont locales, séparées des contenus
+  transportés ; elles ne sont pas sérialisées avec le texte ChordPro.
+- `syncPitchCompensation` est un champ de compatibilité du store. Le rendu courant
+  ne l'utilise pas pour compenser automatiquement le pitch audio.
+
+Ces règles décrivent le code revérifié pour cette correction documentaire ;
+elles ne constituent pas une nouvelle validation audio sur appareil.
 
 ## Rendu synchronisé dans `Lyrics`
 
@@ -223,7 +262,7 @@ est rendue comme une ligne ChordPro complète. Le texte visible, les accords, le
 
 Une `LrcLine` reste toujours un seul item synchronisé. Son timestamp, son index, son clic, son seek, son état actif et son défilement restent attachés au même item.
 
-Les lignes réellement simples continuent d’utiliser le chemin de rendu historique. La préparation ChordPro et riche dépend du contenu des paroles et de la transposition ; elle n’est pas recalculée dans la boucle de suivi audio.
+Les lignes réellement simples continuent d’utiliser le chemin de rendu historique. La préparation ChordPro et riche dépend du contenu des paroles et de la transposition des accords ; elle n’est pas recalculée dans la boucle de suivi audio.
 
 Les paroles sans ChordPro conservent leur rendu et leur comportement historiques.
 
@@ -273,9 +312,10 @@ Une ligne Lyrics contenant des accords avec `timeMs = 0` peut rester visible dan
 
 Elle ne participe pas au calcul de la ligne active. Si la Grille ne contient aucune ligne réellement minutée, aucune ligne n’est déclarée active par la synchronisation dérivée.
 
-### Transposition de la Grille
+### Transposition des accords de la Grille
 
-La Grille utilise la même valeur de transposition Audio Lyrics que le rendu Lyrics.
+La Grille **dérivée de Lyrics** utilise la même valeur de transposition des accords
+que Lyrics. Cette règle ne s'étend pas au fallback historique.
 
 Chaque accord est transposé pour l’affichage avec `transposeChord()`. La source ChordPro originale n’est jamais réécrite.
 
@@ -283,7 +323,7 @@ Exemple :
 
 ```text
 Source Lyrics : [Am] [F]
-Transposition : +2
+Transposition des accords : +2
 Grille affichée : Bm   G
 ```
 
@@ -300,6 +340,17 @@ La sélection de la source suit cette règle :
 Lorsqu’une Grille dérivée existe, son affichage ne crée pas inutilement de nouveau fichier d’accords legacy.
 
 Cette compatibilité permet aux anciens morceaux de conserver leur Grille sans réintroduire un second éditeur d’accords.
+Le résolveur renvoie le fallback tel quel : ce chemin ne lui applique pas la
+transposition des accords de la Grille dérivée.
+
+## Deuxième écran : limites ChordPro
+
+LocalLink transmet le texte des lignes et leur `timeMs`, sans valeur de Transpo
+accords. Le récepteur courant affiche ces chaînes avec des composants `Text`
+simples, sans le rendu ChordPro/riche de Lyrics. Les tags peuvent rester visibles.
+Ne pas annoncer les accords au-dessus des paroles, le formatage riche ou la
+transposition des accords locale du diffuseur comme reproduits sur le Deuxième écran.
+Voir le [manuel du Deuxième écran](user-guide/22-deuxieme-ecran.md).
 
 ## Téléphone et tablette
 
@@ -308,7 +359,7 @@ La logique fonctionnelle est identique sur téléphone et tablette :
 * même source Lyrics ;
 * même parser ChordPro ;
 * même insertion intelligente ;
-* même transposition ;
+* même transposition des accords ;
 * même dérivation de la Grille ;
 * même fallback legacy.
 
@@ -338,7 +389,9 @@ Am       G
 Hello darkness my old friend
 ```
 
-vers ChordPro n’est donc pas implémentée. Le comportement commun de l'import assisté
+La conversion assistée de cette présentation vers ChordPro n'est donc pas
+implémentée dans Audio Lyrics. Aucun import complet dédié de fichiers `.cho`
+n'est proposé par cette surface. Le comportement commun de l'import assisté
 existant est documenté dans
 [FEATURE_CHORDPRO.md](Features/FEATURE_CHORDPRO.md#11-import-de-balisage-accord).
 
@@ -367,7 +420,7 @@ Le chantier a été réalisé et validé par étapes :
 2. conservation des timestamps lors des modifications ChordPro ;
 3. extraction du rendu partagé d’une ligne ;
 4. rendu ChordPro et riche dans les paroles synchronisées ;
-5. transposition persistée par morceau ;
+5. transposition des accords persistée localement par morceau ;
 6. barre d’édition, couleur riche et palette automatique ;
 7. suppression de l’ancien onglet d’édition Grille ;
 8. dérivation de la Grille du Lecteur avec fallback legacy ;
@@ -379,7 +432,7 @@ Les fonctions suivantes ne sont pas implémentées dans cette surface :
 
 * import assisté Convertir / Ignorer de texte externe ;
 * synchronisation individuelle de chaque accord ;
-* modification automatique du fichier audio selon la transposition ;
+* modification automatique du fichier audio selon la transposition des accords ;
 * migration destructive ou suppression automatique des anciennes grilles ;
 * refonte générale du Lecteur audio.
 

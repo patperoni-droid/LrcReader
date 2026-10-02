@@ -3,7 +3,7 @@
 ## 1. Statut et objectif produit
 
 Ce document est le contrat transversal ChordPro de MusiMio. Il définit les règles
-communes au parser musical, au rendu, à la transposition, à l'import assisté et aux
+communes au parser musical, au rendu, à la transposition des accords, à l'import assisté et aux
 différentes surfaces qui utilisent des accords ChordPro.
 
 Les documents suivants restent des annexes spécialisées :
@@ -37,7 +37,11 @@ Dans MusiMio :
   données ;
 - un **normaliseur d'import** analyse une photographie de texte et décrit des
   remplacements possibles sans écrire dans le stockage ;
-- la **transposition** modifie les accords affichés, jamais la source ChordPro.
+- la **Transpo accords**, ou **transposition des accords**, modifie leur affichage,
+  jamais la source ChordPro ;
+- le **pitch audio** modifie la hauteur entendue du morceau ;
+- **Sync Pitch** couple les actions live Transpo accords au pitch audio par
+  variation, sans garantir une égalité permanente.
 
 MusiMio prend en charge un sous-ensemble ChordPro centré sur les accords. Il ne doit
 pas être présenté comme un interpréteur complet du standard ChordPro.
@@ -56,8 +60,8 @@ Les invariants suivants sont absolus :
 - les moteurs core restent purs, déterministes et testables ;
 - les normaliseurs core ne dépendent ni de Compose, ni d'un `TextFieldValue`, ni du
   presse-papiers Android, ni d'un repository ou d'un stockage ;
-- la transposition réutilise le moteur commun et reste séparée de la source ;
-- la source ChordPro n'est jamais réécrite par une transposition d'affichage ;
+- la transposition des accords réutilise le moteur commun et reste séparée de la source ;
+- la source ChordPro n'est jamais réécrite par une transposition des accords ;
 - toute conversion issue d'un texte externe nécessite une confirmation utilisateur ;
 - toute nouvelle chaîne UI existe en français, anglais et espagnol ;
 - la compatibilité ascendante est obligatoire ;
@@ -100,7 +104,7 @@ Application au même brouillon uniquement
 Les composants canoniques actuels sont notamment :
 
 - `core/ChordProParser.kt` pour le parsing et la validation ;
-- `core/ChordTransposition.kt` pour la transposition ;
+- `core/ChordTransposition.kt` pour la transposition des accords ;
 - `core/ChordProImportNormalizer.kt` pour `**accord**` ;
 - `core/ChordLineImportNormalizer.kt` pour les lignes et blocs d'accords ;
 - `ui/ScrollingTextChordProImport.kt` pour la sélection de la proposition et le
@@ -175,7 +179,7 @@ Le Prompteur et Audio Lyrics partagent la reconnaissance et les fonctions de
 préparation utiles, tout en conservant des modèles d'affichage et des contraintes
 de navigation distincts.
 
-## 8. Transposition commune
+## 8. Transposition des accords commune
 
 `ChordTransposition.kt` et `transposeChord()` constituent le moteur partagé. La
 fondamentale et la basse éventuelle sont transposées ; le suffixe reconnu est conservé.
@@ -183,7 +187,7 @@ Les altérations explicites conservent leur orientation bémol ou dièse, tandis
 notes naturelles utilisent une représentation dièse déterministe lorsqu'une
 altération devient nécessaire.
 
-La plage d'affichage actuelle est de `-11` à `+11` demi-tons. Une transposition
+La plage d'affichage actuelle est de `-11` à `+11` demi-tons. Une transposition des accords
 équivalente à zéro restitue exactement l'écriture source. La valeur est un réglage
 séparé et persistable par identité stable ; elle ne modifie ni les tags ChordPro, ni
 les paroles, ni les timestamps, ni les octets audio.
@@ -197,9 +201,11 @@ spécialisées.
 Le Prompteur autonome :
 
 - affiche ensemble paroles et accords reconnus ;
-- utilise le parser et le moteur de transposition communs ;
+- utilise le parser et le moteur de transposition des accords communs ;
 - conserve un seul texte source, sans modèle musical parallèle ;
-- dispose d'une transposition d'affichage persistée selon l'identité du texte ;
+- dispose d'une transposition des accords de `-11..+11`, mémorisée localement
+  par texte, sans modification du pitch audio ;
+- utilise Play/Pause pour le défilement, sans lecture musicale synchronisée ;
 - propose l'import assisté dans l'éditeur partagé des Textes défilants ;
 - reste indépendant d'une timeline ou d'un fichier audio.
 
@@ -212,10 +218,15 @@ Les détails de rendu, de scrolling, de palette, de sélection et de layout sont
 
 Audio Lyrics :
 
-- réutilise le parser et la transposition communs ;
+- réutilise le parser et la transposition des accords communs ;
 - conserve Lyrics comme source éditable du contenu musical textuel ;
 - conserve Sync comme source des timings ;
-- dérive Grid des accords reconnus dans Lyrics, avec le fallback historique prévu ;
+- dérive Grid des lignes Lyrics contenant des accords avec leurs timings ;
+- conserve le fallback Grid historique tel quel, sans lui appliquer la
+  transposition des accords de la Grid dérivée ;
+- impose Lyrics sur téléphone sans boutons live Lyrics/Grid ; expose le
+  sélecteur tablette selon l'édition ;
+- ne propose plus d'onglet Accords séparé dans l'éditeur courant ;
 - ne réécrit pas Lyrics lorsque l'affichage est transposé ;
 - ne modifie pas la timeline audio à partir du rendu ChordPro.
 
@@ -399,8 +410,10 @@ La source ChordPro et les réglages d'affichage ont des propriétaires distincts
 
 - les tags `[accord]` restent dans le contenu textuel possédé par le catalogue ou la
   SongUnit concernée ;
-- la transposition est un réglage séparé, associé à une identité stable par les
-  stores existants ;
+- la transposition des accords est une préférence locale séparée, associée à une
+  identité stable par les stores existants, sans transport avec la source ;
+- Sync Pitch est une préférence globale de l'appareil, distincte du pitch audio
+  mémorisé parmi les réglages du morceau ;
 - le Prompteur autonome et Audio Lyrics utilisent des espaces de clés distincts ;
 - les palettes et modèles de rendu sont dérivés et ne deviennent pas des sources
   persistantes parallèles.
@@ -420,7 +433,7 @@ Les règles live restent prioritaires :
 - aucune I/O sur le thread principal ;
 - aucune lecture de zip au runtime live ;
 - les modèles ChordPro nécessaires sont préparés avant leur utilisation sensible ;
-- les recalculs dépendent du contenu ou de la transposition, pas de chaque tick audio ;
+- les recalculs dépendent du contenu ou de la transposition des accords, pas de chaque tick audio ;
 - ExoPlayer fournit le temps absolu côté audio ;
 - le rendu ChordPro, une position visuelle ou un index de ligne ne devient jamais une
   source temporelle.
@@ -466,7 +479,7 @@ Les familles de tests nécessaires sont :
 - remappage du curseur, de la sélection et de la composition IME ;
 - nouvelle session et changement de texte.
 
-### Transposition et rendu
+### Transposition des accords et rendu
 
 - notes naturelles, dièses, bémols et basses slash ;
 - bornes `-11..+11` ;

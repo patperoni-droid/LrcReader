@@ -200,25 +200,45 @@ If uncertainty exists:
 
 # LYRICS & CHORDS
 
-Lyrics is the editable source for synchronized ChordPro lines. The tablet `Grid` is derived from
-recognized chords in those lines; separate legacy chords data remains a fallback. Both displays
-follow the song timestamps, and changing the tablet view must not reload audio.
+Lyrics is the single editable source for synchronized text and recognized `[chord]`
+tags; Sync edits line timestamps. The former separate Chords editor tab is absent.
+MusiMio supports a chord-focused ChordPro subset, not the complete standard.
+Non-musical bracket groups remain text.
+
+Phone is forced to Lyrics without live Lyrics/Grid view buttons. Tablet offers
+both views, subject to edition restrictions. Grid extracts recognized chords from
+Lyrics: one source line containing chords produces one Grid line with its timestamp,
+preserving order and repetitions. Switching the tablet view does not reload audio.
+If no derived chords exist, legacy separate chord lines are returned unchanged
+as a read-only fallback, without derived Grid's chord-display transposition.
 
 Current live toolbar:
-- phone stays in `Lyrics`; its `Lyrics` / `Grid` view buttons are hidden;
-- tablet exposes `Lyrics` and `Grid` in the Player toolbar;
-- both layouts expose `Transpo − / value / +` and `Sync Pitch` when the live toolbar is shown;
-- `Transpo` changes displayed chords without rewriting the ChordPro source;
-- with `Sync Pitch` enabled, a Transpo action also updates audio pitch within its own bounds.
+- **Transpo accords** changes displayed chords (`-11..+11` semitones), without
+  rewriting the source or timestamps;
+- **pitch audio** changes heard pitch (`-6..+6` semitones);
+- **Sync Pitch** adds the variation of an explicit live Transpo action to current
+  audio pitch, then clamps it to ±6; it does not guarantee permanent equality;
+- enabling Sync Pitch alone does not realign the values;
+- live Transpo reset with Sync Pitch on resets both values to zero;
+- disabling Sync Pitch resets active audio pitch to zero;
+- live Transpo actions while it is off also request zero audio pitch;
+- with Sync Pitch on and HQ unavailable, coupled live actions, reset included,
+  are blocked;
+- Transpo in the Lyrics editor updates display only, without this live coupling.
 
-Chord display transposition is clamped to `-11..+11` semitones; audio pitch is clamped to
-`-6..+6` semitones. Turning Sync Pitch off resets active audio pitch to neutral. A Transpo
-action while it is off also requests neutral audio pitch. Sync Pitch state and per-song display
-transposition are persisted; audio pitch and speed use the existing per-track settings.
-The pitch/speed transition guard still selects sequential playback when either track uses
-non-neutral pitch or speed.
+Chord-display transposition is local per `songId`. Sync Pitch is a global device
+preference, off by default. Audio pitch uses existing per-track settings with
+edition-dependent persistence. Loading through `runtimePitchSemi()` uses zero
+audio pitch when Sync Pitch is off, even if another pitch is stored. It does not
+derive pitch from displayed chords. No inverse audio-pitch observer recalculates
+the displayed chords. Local display preferences are not transported source content.
 
-⸻
+Audio speed (`0.5..2.0`) is separate and does not transpose chords.
+The pitch/speed transition guard still selects sequential playback when either
+track uses non-neutral audio pitch or speed.
+
+See [CHORDPRO_AUDIO_LYRICS_SPEC.md](../CHORDPRO_AUDIO_LYRICS_SPEC.md) for the
+action table, example, persistence and Second Screen rendering limits.
 
 # STANDALONE SCROLLING-TEXT PROMPTER
 
@@ -247,6 +267,13 @@ to it. Its existing scrolling animation captures the measured scroll extent at
 launch; editing or resizing during scrolling does not provide semantic position
 anchoring. See [CHORDPRO_PROMPTER_SPEC.md](../CHORDPRO_PROMPTER_SPEC.md) for exact
 syntax, size/scroll limits, focus rules and future scope.
+
+The standalone Prompter has its own **Transpo accords** (`-11..+11`), stored
+locally by text identity and restored on reopening. It never rewrites the source,
+changes audio pitch or invokes Sync Pitch. Play/Pause controls autonomous scrolling,
+not synchronized musical playback. The scrolling-text editor's Convert/Ignore
+assistance must not be attributed to Audio Lyrics or described as complete
+dedicated `.cho` file import.
 
 Prompter controls:
 
@@ -500,7 +527,7 @@ In tablet split only, the lyrics editor may enter a focus editing mode while the
 - the Playlist remains visible on the left
 - the right pane keeps the lyrics editor active
 - the SMP top bar may be temporarily hidden
-- the `Paroles / Synchro` tabs may be temporarily hidden
+- the `Lyrics / Sync` tabs may be temporarily hidden
 - secondary controls such as `Afficher les timings` may be temporarily hidden
 - the text editor and lyric list remain available
 
@@ -511,7 +538,7 @@ Focus mode rules:
 - restoring the chrome must not close the editor
 - user text must not be lost when focus mode changes
 - save/close request tokens must be consumed once and must not replay after recomposition
-- Synchro behavior must not regress while fixing the text edit tab
+- Sync behavior must not regress while fixing the text edit tab
 
 Purpose:
 give the performer enough usable text-editing space on tablet without changing the stable phone editor.
@@ -865,7 +892,7 @@ Rules:
 - lyrics text saved without matching color metadata
 - line colors keyed differently between save and load
 - relying only on `file://audio.mp3` when `songId` exists
-- breaking Chords editor while fixing Lyrics editor
+- altering legacy Grid fallback data while editing the current Lyrics source
 
 👉 All must be tested carefully.
 
@@ -876,7 +903,7 @@ Rules:
 Test at least:
 
 - single-track playback
-- Lyrics ↔ Chords switch during playback
+- tablet Lyrics ↔ Grid switch during playback and phone Lyrics-only display
 - readability mode toggle during playback
 - next-line anticipation rendering
 - Define Next during playback
@@ -901,8 +928,8 @@ Test at least:
 - lyric color persistence after app restart
 - Player refresh immediately after leaving lyrics editor
 - long-press deselection
-- compact Synchro line edit dialog
-- compact Synchro color palette
+- compact Sync line edit dialog
+- compact Sync color palette
 - readability mode under outdoor conditions
 - preserve blank lines and spacing after changing editor tabs, saving, reopening and completing an
   SMP export/import round-trip

@@ -131,6 +131,29 @@ occurrences exactes dans ce morceau. Par exemple, remplacer `G` par `G7` ne modi
 `Gm`, `G7`, `Gmaj7`, `G/B` ou `G#`. Si `G7` est déjà présent, la palette recalculée ne
 conserve qu'un seul bouton `G7`. Annuler l'un des dialogues laisse le texte inchangé.
 
+## Transposer les accords du Prompteur
+
+Lorsqu'un accord au moins est reconnu, **− / valeur / +** règle la **Transpo
+accords**, de `−11` à `+11` demi-tons. Touchez la valeur pour revenir à `0`.
+L'éditeur ouvert depuis le Prompteur peut ajuster la même valeur.
+
+La transposition des accords est mémorisée localement par texte et restaurée à
+sa réouverture sur l'appareil. Elle ne réécrit pas la source, ne modifie aucun
+pitch audio et n'utilise pas Sync Pitch. **Play / Pause** pilote le défilement,
+pas une lecture musicale synchronisée.
+
+## Convertir un texte collé
+
+Dans l'éditeur Textes défilants, une bannière **Convertir / Ignorer** peut proposer
+de convertir des accords écrits en `**accord**` ou des lignes d'accords placées
+juste avant les paroles. Convertir modifie le brouillon ; Ignorer conserve le
+texte. Enregistrez ensuite par le parcours habituel.
+
+L'aide accepte certains blocs de une à trois lignes d'accords selon leur contenu
+et leur placement ; quatre lignes ou plus sont refusées. Ce n'est ni le standard
+ChordPro complet, ni un import dédié de fichiers `.cho`, ni une assistance intégrée
+à l'éditeur Audio Lyrics.
+
 ## Mettre en forme et colorer
 
 L'icône de texte souligné ouvre **Texte et couleur**. Les commandes disponibles sont :
@@ -188,11 +211,12 @@ Accords, mise en forme et couleurs restent dans le texte enregistré. Les espace
 et lignes vides aux extrémités peuvent être retirés lors de l'enregistrement ; les
 espaces et retours à la ligne à l'intérieur du texte sont conservés.
 Une sauvegarde complète protège le contenu du catalogue, couleurs et accords compris.
-La palette est reconstruite depuis ce texte ; le choix d'alignement reste un réglage séparé.
+La palette est reconstruite depuis ce texte. L'alignement et la transposition des
+accords restent des préférences locales séparées, non transportées avec le contenu.
 
-Cette intégration ne synchronise pas les accords avec l'audio. Elle ne propose pas
-encore de transposition, de capo, d'import/export dédié de fichiers ChordPro, de
-masquage des accords ou de zoom propre au Prompteur. Le réglage de taille des paroles
+Cette intégration ne synchronise pas les accords avec l'audio. La transposition
+des accords est disponible ; le capo, l'import/export dédié de fichiers ChordPro,
+le masquage des accords et le zoom propre au Prompteur ne le sont pas. Le réglage de taille des paroles
 du Lecteur concerne les paroles synchronisées. Les mots très longs et les accords
 très serrés peuvent demander une mise en page manuelle.
 

@@ -50,11 +50,29 @@ Les tailles proposées sont :
 
 Choisissez la taille depuis la distance réelle de lecture. Une taille plus grande affiche moins de lignes et peut modifier votre anticipation visuelle.
 
-## Sync Pitch dans le Lecteur
+## Transpo accords et Sync Pitch dans le Lecteur
 
-Le bouton **Sync Pitch** se trouve dans la barre live du Lecteur, à côté de **Transpo** ; ce n’est pas un réglage de Track Console. Son état activé ou désactivé est conservé lorsque vous revenez dans l’application.
+**Transpo accords** règle l'affichage de `−11` à `+11` demi-tons et est mémorisée
+localement par morceau. **Sync Pitch**, à côté de Transpo dans la barre live, est
+une préférence globale de l'appareil, désactivée par défaut ; ce n'est pas une
+commande de Track Console.
 
-Quand il est activé, une action Transpo peut changer à la fois les accords affichés et la hauteur sonore, chacun dans sa plage. Le désactiver remet la hauteur sonore courante à `0`. Consultez [Afficher les paroles et les accords](10-paroles-et-accords.md) avant de changer de tonalité pendant une prestation.
+Le **pitch audio** change la hauteur entendue de `−6` à `+6` demi-tons. Avec Sync
+Pitch activé, une action live Transpo ajoute sa variation au pitch audio puis
+le borne. Activer Sync Pitch seul ne réaligne pas les valeurs. Le reset live
+les remet toutes deux à `0`. Si HQ est indisponible, les actions live couplées,
+reset compris, sont bloquées.
+
+Désactiver Sync Pitch remet le pitch audio actif à `0`. Une action live Transpo
+dans ce mode demande aussi `0` ; les lancements n'appliquent pas un ancien pitch
+audio stocké. Transpo dans l'éditeur Lyrics modifie seulement l'affichage.
+La vitesse audio reste séparée et ne transpose pas les accords.
+
+Le Prompteur autonome mémorise sa propre transposition des accords par texte,
+sans pitch audio ni Sync Pitch. Ces préférences visuelles locales ne sont pas
+transportées avec la source. Consultez
+[Afficher les paroles et les accords](10-paroles-et-accords.md) et
+[Textes défilants](12-textes-defilants.md).
 
 ## Couleurs de lecture guidée
 
