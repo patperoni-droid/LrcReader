@@ -90,7 +90,10 @@ android {
     }
 
     buildTypes {
-        getByName("debug") { /* rien */ }
+        getByName("debug") {
+            // Keep Sound Pads development installs separate from every release flavor.
+            applicationIdSuffix = ".soundpads.debug"
+        }
         getByName("release") {
             if (releaseKeystoreFile.isFile && hasReleaseSigningSecrets) {
                 signingConfig = signingConfigs.getByName("release")
