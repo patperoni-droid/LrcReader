@@ -105,6 +105,7 @@ fun FillerSoundScreen(
         }.getOrElse { u }
     }
 
+    var startDelaySeconds by remember { mutableIntStateOf(FillerSoundPrefs.getStartDelaySeconds()) }
     var isEnabled by remember { mutableStateOf(FillerSoundPrefs.isEnabled(context)) }
     var isUsingCustomSource by remember { mutableStateOf(FillerSoundPrefs.isUsingCustomFolder(context)) }
     var fillerUri by remember { mutableStateOf(FillerSoundPrefs.getActiveFillerFolder(context)) }
@@ -363,7 +364,44 @@ fun FillerSoundScreen(
                     )
                 }
 
-                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(Modifier.padding(vertical = 10.dp), color = MusicControlBorder)
+
+                Text(stringResource(R.string.filler_start_delay), color = onBg, fontSize = 14.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.filler_delay_minutes, startDelaySeconds / 60),
+                        color = onBg, modifier = Modifier.width(64.dp)
+                    )
+                    ThinMusicSlider(
+                        value = (startDelaySeconds / 60).toFloat(),
+                        onValueChange = { minutes ->
+                            startDelaySeconds = (minutes.toInt() * 60 + startDelaySeconds % 60)
+                                .coerceAtMost(FillerSoundPrefs.MAX_START_DELAY_SECONDS)
+                        },
+                        onValueChangeFinished = {
+                            FillerSoundPrefs.saveStartDelaySeconds(context, startDelaySeconds)
+                        },
+                        valueRange = 0f..10f, steps = 9, modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.filler_delay_seconds, startDelaySeconds % 60),
+                        color = onBg, modifier = Modifier.width(64.dp)
+                    )
+                    ThinMusicSlider(
+                        value = (startDelaySeconds % 60).toFloat(),
+                        onValueChange = { seconds ->
+                            startDelaySeconds = startDelaySeconds / 60 * 60 + seconds.toInt()
+                        },
+                        onValueChangeFinished = {
+                            FillerSoundPrefs.saveStartDelaySeconds(context, startDelaySeconds)
+                        },
+                        enabled = startDelaySeconds < FillerSoundPrefs.MAX_START_DELAY_SECONDS,
+                        valueRange = 0f..59f, steps = 58, modifier = Modifier.weight(1f)
+                    )
+                }
+                HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MusicControlBorder)
 
                 val realDisplay = uiToRealVolume(uiFillerVolume)
                 Row(

@@ -13,6 +13,9 @@ object FillerSoundPrefs {
     private const val KEY_USE_CUSTOM_FOLDER = "filler_use_custom_folder"
     private const val KEY_VOLUME = "filler_volume"  // 0f..1f
     private const val KEY_ENABLED = "filler_enabled" // NEW
+    private const val KEY_START_DELAY_SECONDS = "filler_start_delay_seconds"
+    const val MAX_START_DELAY_SECONDS = 600
+    @Volatile private var cachedStartDelaySeconds = 0
     @Volatile
     private var cachedEnabled: Boolean? = null
 
@@ -100,6 +103,8 @@ object FillerSoundPrefs {
     fun warmCache(context: Context): Boolean {
         val enabled = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .getBoolean(KEY_ENABLED, true)
+        cachedStartDelaySeconds = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt(KEY_START_DELAY_SECONDS, 0).coerceIn(0, MAX_START_DELAY_SECONDS)
         cachedEnabled = enabled
         Log.d(TAG, "warmCache enabled=$enabled")
         return enabled
@@ -110,7 +115,18 @@ object FillerSoundPrefs {
         return cachedEnabled ?: true
     }
 
+    fun getStartDelaySeconds(): Int = cachedStartDelaySeconds
+
+    fun saveStartDelaySeconds(context: Context, seconds: Int) {
+        val bounded = seconds.coerceIn(0, MAX_START_DELAY_SECONDS)
+        FillerSoundManager.cancelScheduledStart()
+        cachedStartDelaySeconds = bounded
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_START_DELAY_SECONDS, bounded).apply()
+    }
+
     fun setEnabled(context: Context, enabled: Boolean) {
+        if (!enabled) FillerSoundManager.cancelScheduledStart()
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putBoolean(KEY_ENABLED, enabled)

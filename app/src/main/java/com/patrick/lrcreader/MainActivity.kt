@@ -2047,8 +2047,13 @@ class MainActivity : AppCompatActivity() {
                             !isChaining &&
                             FillerSoundPrefs.isEnabled(ctx)
                     if (shouldStartFiller) {
-                        PlaybackCoordinator.onFillerStart()
-                        runCatching { FillerSoundManager.startIfConfigured(ctx) }
+                        runCatching {
+                            FillerSoundManager.scheduleStartAfterPlayerStop(ctx, scope) {
+                                PlaybackCoordinator.peekNextTrack() == null && !isChaining && !isPlaying
+                            }
+                        }
+                    } else {
+                        FillerSoundManager.cancelScheduledStart()
                     }
                 }
 

@@ -72,6 +72,7 @@ object PlaybackCoordinator {
     fun setNextTrack(uri: String, title: String, playlist: String?) {
         val cleanUri = uri.trim()
         if (cleanUri.isEmpty()) return
+        FillerSoundManager.cancelScheduledStart()
         val cleanTitle = title.ifBlank { cleanUri }
         _nextTrack.value = NextTrack(
             uri = cleanUri,
@@ -100,6 +101,7 @@ object PlaybackCoordinator {
 
     @Synchronized
     fun onPlayerStart() {
+        FillerSoundManager.cancelScheduledStart()
         // le lecteur devient maître → coupe DJ + filler
         if (currentSource == Source.Dj) {
             stopDj?.invoke()
@@ -123,6 +125,7 @@ object PlaybackCoordinator {
 
     @Synchronized
     fun onDjStart() {
+        FillerSoundManager.cancelScheduledStart()
         // le DJ devient maître → coupe lecteur + filler
         if (currentSource == Source.Player) {
             stopPlayer?.invoke()
@@ -146,6 +149,7 @@ object PlaybackCoordinator {
 
     @Synchronized
     fun onFillerStart() {
+        FillerSoundManager.cancelScheduledStart()
         // le filler ne doit JAMAIS se lancer par-dessus un titre principal
         when (currentSource) {
             Source.Player -> stopPlayer?.invoke()

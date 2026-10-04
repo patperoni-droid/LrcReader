@@ -1294,6 +1294,10 @@ No olvides guardar 😉</string>
     <string name="open_beta_send_feedback">Enviar comentarios</string>
     <string name="open_beta_welcome_thanks">Gracias por formar parte de la aventura 🎵</string>
 
+    <string name="filler_start_delay">Retraso antes del inicio</string>
+    <string name="filler_delay_minutes">%1$d min</string>
+    <string name="filler_delay_seconds">%1$d s</string>
+
     <!-- Sound Pads debug diagnostic and durable bank management -->
     <string name="soundpads_prototype_title">Sound Pads — prueba de audio</string>
     <string name="soundpads_prototype_description">Banco de pads persistente. Los otros reproductores continúan. Los sonidos se copian al almacenamiento interno.</string>

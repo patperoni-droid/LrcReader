@@ -35,16 +35,46 @@ object FillerSoundManager {
     private var player: MediaPlayer? = null
     private var nextPlayer: MediaPlayer? = null
     private var fadeJob: Job? = null
+    private var scheduledStartJob: Job? = null
     private val startScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var startJob: Job? = null
     // Cancellation cannot interrupt an in-flight provider query. Keep scans serialized.
     private val folderScanMutex = Mutex()
 
     fun cancelScheduledStart() {
+        scheduledStartJob?.cancel()
+        scheduledStartJob = null
         startJob?.cancel()
         startJob = null
     }
 
+    fun scheduleStartAfterPlayerStop(
+        context: Context,
+        scope: CoroutineScope,
+        isAllowed: () -> Boolean
+    ) {
+        cancelScheduledStart()
+        fun canStart(): Boolean = FillerSoundPrefs.isEnabled(context) &&
+            !PlaybackCoordinator.isMainPlaying && isAllowed()
+        if (!canStart()) return
+        val waitSeconds = FillerSoundPrefs.getStartDelaySeconds()
+        if (waitSeconds == 0) {
+            PlaybackCoordinator.onFillerStart()
+            startIfConfigured(context)
+            return
+        }
+        val appContext = context.applicationContext
+        scheduledStartJob = scope.launch(Dispatchers.Main.immediate) {
+            delay(waitSeconds * 1000L)
+            scheduledStartJob = null
+            if (canStart()) {
+                runCatching {
+                    PlaybackCoordinator.onFillerStart()
+                    startIfConfigured(appContext)
+                }.onFailure { Log.e("FillerSoundManager", "Delayed start failed", it) }
+            }
+        }
+    }
     private var currentVolume: Float = DEFAULT_VOLUME
     private var fillerMeterVisualizer: Visualizer? = null
     private var fillerMeterSessionId: Int = 0
