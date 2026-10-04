@@ -38,6 +38,10 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -2940,6 +2944,22 @@ class MainActivity : AppCompatActivity() {
                     persistCurrentUiSession(reason = reason, tabOverride = safeTab)
                 }
 
+                fun openSoundPads() {
+                    isTabletShortcutMoreOpen = false
+                    textPrompterId = null
+                    isNotesOpen = false
+                    isFillerSettingsOpen = false
+                    isGlobalMixOpen = false
+                    isSearchOpen = false
+                    isMixerPreviewOpen = false
+                    isMoreMenuOpen = false
+                    isTabletCockpitDestinationOpen = false
+                    if (adaptiveTokens.tabletMode && tabletExperimentalModeEnabled) {
+                        setTabAndPersist(BottomTab.Player, reason = "soundPadsCockpit")
+                    }
+                    isSoundPadsPrototypeOpen = true
+                }
+
                 fun setQuickPlaylistAndPersist(name: String?, reason: String) {
                     selectedQuickPlaylist = name
                     persistCurrentUiSession(reason = reason)
@@ -4606,17 +4626,21 @@ class MainActivity : AppCompatActivity() {
                     containerColor = Color.Black,
                     bottomBar = {
                         if (
-                            !shouldHideBottomBarForPlayerIme &&
+                            (!shouldHideBottomBarForPlayerIme || isSoundPadsPrototypeOpen) &&
                             !shouldHideBottomBarForTabletSplit &&
-                            !shouldShowTabletCockpitDestinationChrome &&
-                            !isSoundPadsPrototypeOpen
+                            !shouldShowTabletCockpitDestinationChrome
                         ) {
                             BottomTabsBar(
-                                selected = selectedTab,
+                                selected = if (isSoundPadsPrototypeOpen) BottomTab.SoundPads else selectedTab,
                                 showMainBusTab = showMainBusTab,
                                 showDjTab = showDjTab,
                                 activeAudioSource = activeAudioSource,
                                 onSelected = { tab ->
+                                    if (tab is BottomTab.SoundPads) {
+                                        openSoundPads()
+                                        return@BottomTabsBar
+                                    }
+                                    isSoundPadsPrototypeOpen = false
 
                                     // ✅ fermer les overlays quand on change d'onglet
                                     if (tab !is BottomTab.Filler) isFillerSettingsOpen = false
@@ -4637,6 +4661,7 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 },
                                 onSearchClick = {
+                                    isSoundPadsPrototypeOpen = false
                                     // ✅ fermer ce qui doit se fermer quand on ouvre la recherche
                                     textPrompterId = null
                                     isNotesOpen = false
@@ -4670,11 +4695,13 @@ class MainActivity : AppCompatActivity() {
                                     isSearchOpen = true
                                 },
                                 onMoreClick = {
+                                    isSoundPadsPrototypeOpen = false
                                     textPrompterId = null
                                     isNotesOpen = false
                                     isMoreMenuOpen = true
                                 },
                                 onPlayerReselect = {
+                                    isSoundPadsPrototypeOpen = false
                                     // ✅ C'EST ICI LE FIX :
                                     // même si selectedTab est déjà Player, on demande explicitement au PlayerScreen
                                     // de fermer Track Console et revenir à l'écran lecteur.
@@ -4895,6 +4922,7 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 }
                                 fun prepareTabletSplitMenuNavigation() {
+                                    isSoundPadsPrototypeOpen = false
                                     isTabletShortcutMoreOpen = false
                                     textPrompterId = null
                                     isNotesOpen = false
@@ -5120,6 +5148,21 @@ class MainActivity : AppCompatActivity() {
                                                 tint = Color.White.copy(alpha = 0.78f)
                                             )
                                         }
+                                        if (BuildConfig.DEBUG) {
+                                            val padsLabel = stringResource(R.string.soundpads_title)
+                                            IconButton(
+                                                modifier = Modifier.size(48.dp).semantics {
+                                                    contentDescription = padsLabel
+                                                    selected = isSoundPadsPrototypeOpen
+                                                },
+                                                onClick = ::openSoundPads
+                                            ) {
+                                                com.patrick.lrcreader.ui.SoundPadsNavigationIcon(
+                                                    tint = if (isSoundPadsPrototypeOpen) Color(0xFFFFC107)
+                                                        else Color.White.copy(alpha = 0.78f)
+                                                )
+                                            }
+                                        }
                                         Box {
                                             IconButton(
                                                 modifier = Modifier.size(48.dp),
@@ -5140,7 +5183,7 @@ class MainActivity : AppCompatActivity() {
                                                         text = { Text(stringResource(R.string.soundpads_prototype_title)) },
                                                         onClick = {
                                                             isTabletShortcutMoreOpen = false
-                                                            isSoundPadsPrototypeOpen = true
+                                                            openSoundPads()
                                                         }
                                                     )
                                                 }
@@ -6158,29 +6201,110 @@ class MainActivity : AppCompatActivity() {
                                                     .weight(1f)
                                                     .fillMaxHeight()
                                             ) {
-                                                when (tabletRightPanel) {
-                                                    TabletSplitRightPanel.LYRICS -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            if (
-                                                                textPrompterId != null ||
-                                                                tabletPlayerFocusMode != TabletPlayerFocusMode.LYRICS
-                                                            ) {
-                                                                TabletSplitTopNavigationShortcuts()
+                                                Box(Modifier.fillMaxSize().then(
+                                                    if (isSoundPadsPrototypeOpen) Modifier.clearAndSetSemantics { }
+                                                    else Modifier
+                                                )) {
+                                                    when (tabletRightPanel) {
+                                                        TabletSplitRightPanel.LYRICS -> {
+                                                            Column(Modifier.fillMaxSize()) {
+                                                                if (BuildConfig.DEBUG || textPrompterId != null ||
+                                                                    tabletPlayerFocusMode != TabletPlayerFocusMode.LYRICS
+                                                                ) {
+                                                                    TabletSplitTopNavigationShortcuts()
+                                                                }
+                                                                val tabletPrompterId = textPrompterId
+                                                                if (tabletPrompterId != null) {
+                                                                    TextPrompterScreen(
+                                                                        modifier = Modifier
+                                                                            .weight(1f)
+                                                                            .fillMaxWidth(),
+                                                                        songId = tabletPrompterId,
+                                                                        onClose = { textPrompterId = null },
+                                                                        hardwareActionToken = prompterHardwareActionToken,
+                                                                        hardwareAction = prompterHardwareAction,
+                                                                        tabletSplitLayout = true
+                                                                    )
+                                                                } else {
+                                                                    playerPane(
+                                                                        Modifier
+                                                                            .weight(1f)
+                                                                            .fillMaxWidth()
+                                                                    )
+                                                                }
                                                             }
-                                                            val tabletPrompterId = textPrompterId
-                                                            if (tabletPrompterId != null) {
-                                                                TextPrompterScreen(
-                                                                    modifier = Modifier
+                                                        }
+
+                                                        TabletSplitRightPanel.LIBRARY -> {
+                                                            Column(Modifier.fillMaxSize()) {
+                                                                TabletSplitTopNavigationShortcuts()
+                                                                libraryPane(
+                                                                    Modifier
                                                                         .weight(1f)
-                                                                        .fillMaxWidth(),
-                                                                    songId = tabletPrompterId,
-                                                                    onClose = { textPrompterId = null },
-                                                                    hardwareActionToken = prompterHardwareActionToken,
-                                                                    hardwareAction = prompterHardwareAction,
-                                                                    tabletSplitLayout = true
+                                                                        .fillMaxWidth()
                                                                 )
-                                                            } else {
-                                                                playerPane(
+                                                            }
+                                                        }
+
+                                                        TabletSplitRightPanel.SETTINGS -> {
+                                                            Column(Modifier.fillMaxSize()) {
+                                                                TabletSplitTopNavigationShortcuts()
+                                                                settingsPane(
+                                                                    Modifier
+                                                                        .weight(1f)
+                                                                        .fillMaxWidth()
+                                                                )
+                                                            }
+                                                        }
+
+                                                        TabletSplitRightPanel.BACKGROUND_SOUND -> {
+                                                            Column(Modifier.fillMaxSize()) {
+                                                                TabletSplitTopNavigationShortcuts()
+                                                                backgroundSoundPane(
+                                                                    Modifier
+                                                                        .weight(1f)
+                                                                        .fillMaxWidth()
+                                                                )
+                                                            }
+                                                        }
+
+                                                        TabletSplitRightPanel.DJ -> {
+                                                            Column(Modifier.fillMaxSize()) {
+                                                                TabletSplitTopNavigationShortcuts()
+                                                                djPane(
+                                                                    Modifier
+                                                                        .weight(1f)
+                                                                        .fillMaxWidth()
+                                                                )
+                                                            }
+                                                        }
+
+                                                        TabletSplitRightPanel.MAIN_BUS -> {
+                                                            Column(Modifier.fillMaxSize()) {
+                                                                TabletSplitTopNavigationShortcuts()
+                                                                mainBusPane(
+                                                                    Modifier
+                                                                        .weight(1f)
+                                                                        .fillMaxWidth()
+                                                                )
+                                                            }
+                                                        }
+
+                                                        TabletSplitRightPanel.TUNER -> {
+                                                            Column(Modifier.fillMaxSize()) {
+                                                                TabletSplitTopNavigationShortcuts()
+                                                                tunerPane(
+                                                                    Modifier
+                                                                        .weight(1f)
+                                                                        .fillMaxWidth()
+                                                                )
+                                                            }
+                                                        }
+
+                                                        TabletSplitRightPanel.WAVEFORM -> {
+                                                            Column(Modifier.fillMaxSize()) {
+                                                                TabletSplitTopNavigationShortcuts()
+                                                                waveformPane(
                                                                     Modifier
                                                                         .weight(1f)
                                                                         .fillMaxWidth()
@@ -6188,82 +6312,14 @@ class MainActivity : AppCompatActivity() {
                                                             }
                                                         }
                                                     }
-
-                                                    TabletSplitRightPanel.LIBRARY -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            TabletSplitTopNavigationShortcuts()
-                                                            libraryPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
-                                                    }
-
-                                                    TabletSplitRightPanel.SETTINGS -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            TabletSplitTopNavigationShortcuts()
-                                                            settingsPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
-                                                    }
-
-                                                    TabletSplitRightPanel.BACKGROUND_SOUND -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            TabletSplitTopNavigationShortcuts()
-                                                            backgroundSoundPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
-                                                    }
-
-                                                    TabletSplitRightPanel.DJ -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            TabletSplitTopNavigationShortcuts()
-                                                            djPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
-                                                    }
-
-                                                    TabletSplitRightPanel.MAIN_BUS -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            TabletSplitTopNavigationShortcuts()
-                                                            mainBusPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
-                                                    }
-
-                                                    TabletSplitRightPanel.TUNER -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            TabletSplitTopNavigationShortcuts()
-                                                            tunerPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
-                                                    }
-
-                                                    TabletSplitRightPanel.WAVEFORM -> {
-                                                        Column(Modifier.fillMaxSize()) {
-                                                            TabletSplitTopNavigationShortcuts()
-                                                            waveformPane(
-                                                                Modifier
-                                                                    .weight(1f)
-                                                                    .fillMaxWidth()
-                                                            )
-                                                        }
+                                                }
+                                                if (BuildConfig.DEBUG && isSoundPadsPrototypeOpen) {
+                                                    Column(Modifier.fillMaxSize().background(Color.Black)) {
+                                                        TabletSplitTopNavigationShortcuts()
+                                                        com.patrick.lrcreader.ui.soundpads.SoundPadsScreen(
+                                                            onClose = { isSoundPadsPrototypeOpen = false },
+                                                            modifier = Modifier.weight(1f).fillMaxWidth()
+                                                        )
                                                     }
                                                 }
                                             }
@@ -7256,7 +7312,10 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    if (BuildConfig.DEBUG && isSoundPadsPrototypeOpen) {
+                    if (BuildConfig.DEBUG && isSoundPadsPrototypeOpen &&
+                        !(adaptiveTokens.tabletMode && tabletExperimentalModeEnabled &&
+                            (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists))
+                    ) {
                         com.patrick.lrcreader.ui.soundpads.SoundPadsScreen(
                             onClose = { isSoundPadsPrototypeOpen = false },
                             modifier = scaffoldContentModifier.consumeWindowInsets(innerPadding)
@@ -7274,7 +7333,7 @@ class MainActivity : AppCompatActivity() {
                                 text = { Text(stringResource(R.string.soundpads_prototype_title)) },
                                 onClick = {
                                     isMoreMenuOpen = false
-                                    isSoundPadsPrototypeOpen = true
+                                    openSoundPads()
                                 }
                             )
                         }
@@ -7544,6 +7603,7 @@ private fun tabKeyOf(tab: BottomTab): String = when (tab) {
     is BottomTab.Tuner -> TAB_TUNER
     is BottomTab.Filler -> TAB_FILLER
     is BottomTab.Search -> TAB_SEARCH
+    is BottomTab.SoundPads -> "soundpads"
 }
 
 private fun sanitizeTab(tab: BottomTab, showDjTab: Boolean, showMainBusTab: Boolean): BottomTab = when (tab) {

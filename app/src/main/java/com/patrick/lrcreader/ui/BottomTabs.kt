@@ -8,8 +8,16 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.drawscope.Stroke
+import com.patrick.lrcreader.exo.BuildConfig
 import androidx.compose.runtime.Composable
 import androidx.compose.material3.*
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,6 +54,10 @@ sealed class BottomTab(val id: String, val labelRes: Int) {
     object Dj : BottomTab("dj", R.string.tab_dj) {
         @Composable override fun Icon() =
             Icon(Icons.Filled.Headset, contentDescription = null)
+    }
+
+    object SoundPads : BottomTab("soundpads", R.string.soundpads_title) {
+        @Composable override fun Icon() = SoundPadsNavigationIcon()
     }
 
     // 🔍 Action (overlay)
@@ -101,6 +113,7 @@ fun BottomTabsBar(
         if (showDjTab) {
             add(BottomTab.Dj)
         }
+        if (BuildConfig.DEBUG) add(BottomTab.SoundPads)
         add(BottomTab.Library)
         add(BottomTab.Search)
         add(BottomTab.More)
@@ -116,6 +129,7 @@ fun BottomTabsBar(
                 else -> false
             }
 
+            val label = stringResource(tab.labelRes)
             NavigationBarItem(
                 selected = isSelected,
                 onClick = {
@@ -128,6 +142,7 @@ fun BottomTabsBar(
                     }
                 },
                 alwaysShowLabel = false,
+                modifier = Modifier.semantics { contentDescription = label },
                 icon = {
                     Box(
                         modifier = Modifier
@@ -145,6 +160,24 @@ fun BottomTabsBar(
                         if (isActiveAudioSource) Color(0xFFFFC107) else Color.White.copy(alpha = 0.4f),
                     indicatorColor = Color.Transparent
                 )
+            )
+        }
+    }
+}
+
+/** Shared sampler glyph, using the surrounding navigation tint. */
+@Composable
+fun SoundPadsNavigationIcon(modifier: Modifier = Modifier, tint: Color = LocalContentColor.current) {
+    Canvas(modifier.size(22.dp)) {
+        val gap = 3.dp.toPx()
+        val edge = (size.minDimension - gap) / 2f
+        repeat(4) { index ->
+            drawRoundRect(
+                color = tint,
+                topLeft = Offset((index % 2) * (edge + gap), (index / 2) * (edge + gap)),
+                size = Size(edge, edge),
+                cornerRadius = CornerRadius(2.dp.toPx()),
+                style = Stroke(1.6.dp.toPx())
             )
         }
     }
