@@ -36,16 +36,21 @@ class SoundPadsStore(context: Context, private val root: File = File(context.fil
         read().also { cleanup(it) }
     }
 
-    suspend fun add(name: String): List<SoundPad> = transaction {
-        val pads = read() + SoundPad(UUID.randomUUID().toString(), name.trim())
+    suspend fun add(name: String): List<SoundPad> = add(listOf(name))
+
+    /** Reserve preceding empty slots in one transaction when a later visible slot is chosen. */
+    suspend fun add(names: List<String>): List<SoundPad> = transaction {
+        require(names.isNotEmpty())
+        val pads = read() + names.map { SoundPad(UUID.randomUUID().toString(), it.trim()) }
         write(pads)
         pads
     }
 
-    suspend fun update(id: String, name: String, inMs: Long, outMs: Long?, volume: Float): List<SoundPad> = transaction {
+    suspend fun update(id: String, name: String, inMs: Long, outMs: Long?, volume: Float, colorArgb: Long? = null): List<SoundPad> = transaction {
         val pads = read()
         val previous = pads.single { it.padId == id }
-        val next = previous.copy(name = name.trim(), inMs = inMs, outMs = outMs, volume = volume)
+        val next = previous.copy(name = name.trim(), inMs = inMs, outMs = outMs, volume = volume,
+            colorArgb = colorArgb ?: previous.colorArgb)
         if (next.audioPath.isNotEmpty()) {
             val duration = SoundPadsPrototypeFiles.audioDurationMs(File(next.audioPath))
             require(inMs < duration && (outMs == null || outMs <= duration))

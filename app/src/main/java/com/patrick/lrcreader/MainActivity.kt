@@ -1914,7 +1914,7 @@ class MainActivity : AppCompatActivity() {
                 var trackPitchPersistJob by remember { mutableStateOf<Job?>(null) }
                 var pendingPitchPersistRequest by remember { mutableStateOf<Pair<String, Int>?>(null) }
                 var isMoreMenuOpen by remember { mutableStateOf(false) }
-                var isSoundPadsPrototypeOpen by remember { mutableStateOf(false) }
+                var isSoundPadsPrototypeOpen by rememberSaveable { mutableStateOf(false) }
                 var openNotesSignal by remember { mutableStateOf(0) }
                 var openPrompterSignal by remember { mutableIntStateOf(0) }
                 var chainQueue by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -4498,6 +4498,7 @@ class MainActivity : AppCompatActivity() {
                         currentPlayingPlaylist = currentPlayingPlaylist
                     )
                     activeHardwareInputRoute = when {
+                        isSoundPadsPrototypeOpen -> HardwareInputRoute.NONE
                         isSearchOpen -> HardwareInputRoute.NONE
                         textPrompterId != null -> HardwareInputRoute.PROMPTER
                         adaptiveTokens.tabletMode && tabletExperimentalModeEnabled &&
@@ -4607,7 +4608,8 @@ class MainActivity : AppCompatActivity() {
                         if (
                             !shouldHideBottomBarForPlayerIme &&
                             !shouldHideBottomBarForTabletSplit &&
-                            !shouldShowTabletCockpitDestinationChrome
+                            !shouldShowTabletCockpitDestinationChrome &&
+                            !isSoundPadsPrototypeOpen
                         ) {
                             BottomTabsBar(
                                 selected = selectedTab,
@@ -7166,7 +7168,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    if (shouldShowTabletCockpitDestinationChrome) {
+                    if (shouldShowTabletCockpitDestinationChrome && !isSoundPadsPrototypeOpen) {
                         Box(
                             modifier = contentModifier
                                 .fillMaxWidth()
@@ -7255,8 +7257,9 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     if (BuildConfig.DEBUG && isSoundPadsPrototypeOpen) {
-                        com.patrick.lrcreader.ui.soundpads.SoundPadsPrototypeDialog(
-                            onClose = { isSoundPadsPrototypeOpen = false }
+                        com.patrick.lrcreader.ui.soundpads.SoundPadsScreen(
+                            onClose = { isSoundPadsPrototypeOpen = false },
+                            modifier = scaffoldContentModifier.consumeWindowInsets(innerPadding)
                         )
                     }
 

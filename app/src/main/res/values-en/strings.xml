@@ -1410,4 +1410,26 @@ Don’t forget to save 😉</string>
     <string name="soundpads_volume">Individual volume</string>
     <string name="soundpads_to_end">IN %1$d ms / OUT end of file</string>
     <string name="soundpads_operation_error">Operation failed. Check the file, storage and IN/OUT points; previous data is preserved.</string>
+    <string name="soundpads_title">Sound Pads</string>
+    <string name="soundpads_title_short">Pads</string>
+    <string name="soundpads_back">Back to MusiMio</string>
+    <string name="soundpads_stop_short">Stop</string>
+    <string name="soundpads_settings">Pad settings</string>
+    <string name="soundpads_free">Free</string>
+    <string name="soundpads_playing">Playing</string>
+    <string name="soundpads_available">Available slot</string>
+    <string name="soundpads_ready">Ready</string>
+    <string name="soundpads_replace">Replace sound</string>
+    <string name="soundpads_test">Test sound</string>
+    <string name="soundpads_out_short">OUT (ms)</string>
+    <string name="soundpads_out_hint">Blank OUT = end of file</string>
+    <string name="soundpads_color">Color</string>
+    <string name="soundpads_red">Red</string>
+    <string name="soundpads_amber">Amber</string>
+    <string name="soundpads_blue">Blue</string>
+    <string name="soundpads_purple">Purple</string>
+    <string name="soundpads_green">Green</string>
+    <string name="soundpads_pink">Pink</string>
+    <string name="soundpads_cyan">Cyan</string>
+    <string name="soundpads_orange">Orange</string>
 </resources>

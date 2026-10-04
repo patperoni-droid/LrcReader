@@ -102,6 +102,8 @@ class SoundPadsStoreInstrumentedTest {
         bankFile.writeText(json.toString())
         val restored = SoundPadsStore(context, root).load()
         assertEquals(0xFF336699L, restored.first().colorArgb)
+        store.update(first, "Still colored", 0L, pad.outMs, 0.5f)
+        assertEquals(0xFF336699L, store.load().first().colorArgb)
         store.delete(first)
         assertTrue(File(pad.audioPath).exists())
         val bankBytes = bankFile.readBytes()
