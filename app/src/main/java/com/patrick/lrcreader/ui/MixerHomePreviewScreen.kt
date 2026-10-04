@@ -12,6 +12,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.res.stringResource
 import com.patrick.lrcreader.exo.R
+import com.patrick.lrcreader.exo.BuildConfig
+import com.patrick.lrcreader.core.PadsBusController
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.*
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import com.patrick.lrcreader.core.PlaybackCoordinator   // pour stopPlayer et stopDj et stopFiller
 import com.patrick.lrcreader.core.FillerSoundManager    // pour fadeOutAndStop du fond sonore
@@ -51,7 +56,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.patrick.lrcreader.core.DjBusController
@@ -95,6 +99,10 @@ fun MixerHomePreviewScreen(
 ) {
 
     val context = LocalContext.current
+    val padsUiLevel by PadsBusController.uiLevel.collectAsState()
+    val padsBusReady by PadsBusController.ready.collectAsState()
+    val activePadId by PlaybackCoordinator.activePadId.collectAsState()
+    LaunchedEffect(Unit) { if (BuildConfig.DEBUG) PadsBusController.initialize(context) }
     var hasMicPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -348,7 +356,7 @@ fun MixerHomePreviewScreen(
 
                     Spacer(Modifier.height(18.dp))
 
-                    // ---- LES 3 TRANCHES ----
+                    // ---- TRANCHES DU BUS ----
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -359,6 +367,8 @@ fun MixerHomePreviewScreen(
                         // LECTEUR = STOP DU LECTEUR
                         MixerChannelColumn(
                             label = stringResource(R.string.mixer_channel_player),
+                            modifier = if (BuildConfig.DEBUG) Modifier.weight(1f) else Modifier.width(88.dp),
+                            adaptiveHeight = BuildConfig.DEBUG,
                             subtitle = stringResource(R.string.mixer_channel_player_subtitle),
                             icon = Icons.Filled.MusicNote,
                             faderColor = Color(0xFF81C784),
@@ -379,6 +389,8 @@ fun MixerHomePreviewScreen(
                         // FOND = STOP DU FOND SONORE
                         MixerChannelColumn(
                             label = stringResource(R.string.mixer_channel_fond),
+                            modifier = if (BuildConfig.DEBUG) Modifier.weight(1f) else Modifier.width(88.dp),
+                            adaptiveHeight = BuildConfig.DEBUG,
                             subtitle = stringResource(R.string.mixer_channel_fond_subtitle),
                             icon = Icons.Filled.LibraryMusic,
                             faderColor = Color(0xFFFFC107),
@@ -403,6 +415,8 @@ fun MixerHomePreviewScreen(
                         // DJ = STOP DU DJ
                         MixerChannelColumn(
                             label = stringResource(R.string.mixer_channel_dj),
+                            modifier = if (BuildConfig.DEBUG) Modifier.weight(1f) else Modifier.width(88.dp),
+                            adaptiveHeight = BuildConfig.DEBUG,
                             subtitle = stringResource(R.string.mixer_channel_dj_subtitle),
                             icon = Icons.Filled.Headphones,
                             faderColor = Color(0xFF64B5F6),
@@ -416,6 +430,30 @@ fun MixerHomePreviewScreen(
                             useDecorativeMeter = !hasFreshDjPcm
                         ) { uiLevel ->
                             DjBusController.setUiLevel(uiLevel)
+                        }
+
+                        if (BuildConfig.DEBUG) {
+                            MixerChannelColumn(
+                                label = stringResource(R.string.mixer_channel_pads),
+                                subtitle = stringResource(R.string.mixer_channel_pads_subtitle),
+                                icon = Icons.Filled.MusicNote,
+                                iconContent = { SoundPadsNavigationIcon(tint = Color(0xFF80DEEA)) },
+                                iconDescription = stringResource(R.string.soundpads_bus_stop),
+                                faderDescription = stringResource(R.string.soundpads_bus_volume),
+                                faderModifier = Modifier.testTag("pads-bus-fader"),
+                                modifier = Modifier.weight(1f).testTag("pads-bus-channel"),
+                                adaptiveHeight = true,
+                                enabled = padsBusReady,
+                                faderColor = Color(0xFF80DEEA),
+                                meterColor = Color(0xFF4DD0E1),
+                                onClick = PadsBusController::stopAll,
+                                initialLevel = padsUiLevel,
+                                // Activity indicator only, not a fabricated audio/PCM level meter.
+                                meterLevel = if (activePadId != null) 1f else 0f,
+                                showMeterReadout = false,
+                                useDecorativeMeter = false,
+                                activityOnly = true
+                            ) { PadsBusController.setUiLevel(context, it) }
                         }
                     }
                 }
@@ -506,189 +544,230 @@ private fun MixerChannelColumn(
     initialLevel: Float = 0.75f,
     meterLevel: Float = 0f,
     useDecorativeMeter: Boolean = false,
+    modifier: Modifier = Modifier.width(88.dp),
+    adaptiveHeight: Boolean = false,
+    enabled: Boolean = true,
+    iconContent: (@Composable () -> Unit)? = null,
+    iconDescription: String? = null,
+    faderDescription: String = label,
+    faderModifier: Modifier = Modifier,
+    showMeterReadout: Boolean = true,
+    activityOnly: Boolean = false,
     onLevelChange: (Float) -> Unit = {}
 ) {
     // IMPORTANT : lié à initialLevel pour pouvoir se resynchroniser
     var level by remember(initialLevel) { mutableFloatStateOf(initialLevel.coerceIn(0f, 1f)) }
-    val infinite = rememberInfiniteTransition(label)
-    val decorativeMeter by infinite.animateFloat(
-        initialValue = 0.1f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            tween(durationMillis = 1400 + (0..600).random(), easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
+    val decorativeMeter = if (useDecorativeMeter) {
+        val infinite = rememberInfiniteTransition(label)
+        val animated by infinite.animateFloat(
+            initialValue = 0.1f, targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                tween(durationMillis = 1400 + (0..600).random(), easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            )
         )
-    )
+        animated
+    } else 0f
     val meter = if (useDecorativeMeter) decorativeMeter.coerceIn(0f, 1f) else meterLevel.coerceIn(0f, 1f)
     val meterText = "%.2f".format(Locale.US, meter)
 
-    Column(
-        modifier = Modifier
-            .width(88.dp)
-            .fillMaxHeight(),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-
-        // Titres — police réduite
-        Text(
-            text = label,
-            color = Color(0xFFFFF3E0),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = subtitle,
-            color = Color(0xFFB0BEC5),
-            fontSize = 9.sp
-        )
-        Text(
-            text = meterText,
-            color = Color(0xFF78909C),
-            fontSize = 8.sp
-        )
-
-        Spacer(Modifier.height(10.dp))
-
-        // VU-mètre
-        Box(
-            modifier = Modifier
-                .height(90.dp)
-                .width(28.dp)
-                .background(Color(0xFF050505), RoundedCornerShape(12.dp))
-                .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
-                .padding(3.dp),
-            contentAlignment = Alignment.BottomCenter
+    BoxWithConstraints(modifier.fillMaxHeight()) {
+        val meterHeight = if (adaptiveHeight) minOf(90.dp, maxHeight * 0.2f) else 90.dp
+        val faderHeight = if (adaptiveHeight) minOf(310.dp, (maxHeight - meterHeight - 150.dp).coerceAtLeast(64.dp)) else 310.dp
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween
-            ) {
-                repeat(10) { index ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(4.dp)
-                            .background(
-                                if (index >= 7) Color(0x55FF5252)
-                                else Color(0x33555555),
-                                RoundedCornerShape(2.dp)
-                            )
-                    )
+            // Titres — police réduite
+            Text(
+                text = label,
+                color = Color(0xFFFFF3E0),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = subtitle,
+                color = Color(0xFFB0BEC5),
+                fontSize = 9.sp
+            )
+            Text(
+                // Reserve the same header height without inventing a Pads meter reading.
+                text = if (showMeterReadout) meterText else "",
+                color = Color(0xFF78909C),
+                fontSize = 8.sp
+            )
+
+            Spacer(Modifier.height(10.dp))
+
+            if (activityOnly) {
+                Column(Modifier.height(meterHeight).fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center) {
+                    Box(Modifier.size(8.dp).background(
+                        if (meterLevel > 0f) meterColor else Color(0xFF454545), RoundedCornerShape(50)))
+                    Spacer(Modifier.height(6.dp))
+                    Text(stringResource(if (meterLevel > 0f) R.string.soundpads_playing else R.string.soundpads_ready),
+                        color = Color(0xFFB0BEC5), fontSize = 9.sp,
+                        modifier = Modifier.testTag("pads-bus-status"))
                 }
-            }
-
+            } else {
+            // VU-mètre
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .fillMaxHeight(meter)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                meterColor.copy(alpha = 0.1f),
-                                meterColor,
-                                Color(0xFFFF5252)
-                            )
-                        ),
-                        RoundedCornerShape(6.dp)
-                    )
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        // FADER ANALOGIQUE — VERSION LONGUE (doux au toucher)
-        val dragRangePx = 720f   // grande course => plus progressif
-
-        Box(
-            modifier = Modifier
-                .height(310.dp)
-                .width(40.dp)
-                .draggable(
-                    orientation = Orientation.Vertical,
-                    state = rememberDraggableState { delta ->
-                        // delta > 0 = doigt vers le bas => on baisse le niveau
-                        val fraction = -delta / dragRangePx
-                        val newLevel = (level + fraction).coerceIn(0f, 1f)
-                        level = newLevel
-
-                        // On remonte la valeur pour que le parent fasse ce qu’il veut
-                        onLevelChange(newLevel)
-                    }
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-
-            // Gorge
-            Box(
-                modifier = Modifier
-                    .width(18.dp)
-                    .fillMaxHeight()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color(0xFF050608), Color(0xFF15171B))
-                        ),
-                        RoundedCornerShape(999.dp)
-                    )
-            )
-
-            // Curseur (avec fix pour éviter weight(0f))
-            Column(
-                modifier = Modifier.fillMaxHeight(),
-                verticalArrangement = Arrangement.Top,
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .height(meterHeight)
+                    .width(28.dp)
+                    .background(Color(0xFF050505), RoundedCornerShape(12.dp))
+                    .border(1.dp, Color(0x33FFFFFF), RoundedCornerShape(12.dp))
+                    .padding(3.dp),
+                contentAlignment = Alignment.BottomCenter
             ) {
-                val clamped = level.coerceIn(0f, 1f)
 
-                val topWeight = (1f - clamped).coerceAtLeast(0.0001f)
-                val bottomWeight = clamped.coerceAtLeast(0.0001f)
-
-                Spacer(Modifier.weight(topWeight))
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    repeat(10) { index ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .background(
+                                    if (index >= 7) Color(0x55FF5252)
+                                    else Color(0x33555555),
+                                    RoundedCornerShape(2.dp)
+                                )
+                        )
+                    }
+                }
 
                 Box(
                     modifier = Modifier
-                        .width(32.dp)
-                        .height(30.dp)
+                        .fillMaxWidth()
+                        .fillMaxHeight(meter)
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color(0xFFE0E0E0),
-                                    Color(0xFFBDBDBD)
+                                    meterColor.copy(alpha = 0.1f),
+                                    meterColor,
+                                    Color(0xFFFF5252)
                                 )
                             ),
                             RoundedCornerShape(6.dp)
                         )
-                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                )
+            }
+
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            // FADER ANALOGIQUE — VERSION LONGUE (doux au toucher)
+            val dragRangePx = 720f   // grande course => plus progressif
+
+            Box(
+                modifier = faderModifier
+                    .semantics {
+                        contentDescription = faderDescription
+                        progressBarRangeInfo = ProgressBarRangeInfo(level, 0f..1f)
+                        if (enabled) setProgress { value ->
+                            if (value.isFinite()) {
+                                level = value.coerceIn(0f, 1f)
+                                onLevelChange(level)
+                                true
+                            } else false
+                        }
+                    }
+                    .height(faderHeight)
+                    .width(40.dp)
+                    .draggable(
+                        orientation = Orientation.Vertical,
+                        enabled = enabled,
+                        state = rememberDraggableState { delta ->
+                            // delta > 0 = doigt vers le bas => on baisse le niveau
+                            val fraction = -delta / dragRangePx
+                            val newLevel = (level + fraction).coerceIn(0f, 1f)
+                            level = newLevel
+
+                            // On remonte la valeur pour que le parent fasse ce qu’il veut
+                            onLevelChange(newLevel)
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+
+                // Gorge
+                Box(
+                    modifier = Modifier
+                        .width(18.dp)
+                        .fillMaxHeight()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color(0xFF050608), Color(0xFF15171B))
+                            ),
+                            RoundedCornerShape(999.dp)
+                        )
+                )
+
+                // Curseur (avec fix pour éviter weight(0f))
+                Column(
+                    modifier = Modifier.fillMaxHeight(),
+                    verticalArrangement = Arrangement.Top,
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
+                    val clamped = level.coerceIn(0f, 1f)
+
+                    val topWeight = (1f - clamped).coerceAtLeast(0.0001f)
+                    val bottomWeight = clamped.coerceAtLeast(0.0001f)
+
+                    Spacer(Modifier.weight(topWeight))
+
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp)
-                            .background(faderColor, RoundedCornerShape(999.dp))
-                            .align(Alignment.Center)
-                    )
+                            .width(32.dp)
+                            .height(30.dp)
+                            .background(
+                                Brush.verticalGradient(
+                                    listOf(
+                                        Color(0xFFE0E0E0),
+                                        Color(0xFFBDBDBD)
+                                    )
+                                ),
+                                RoundedCornerShape(6.dp)
+                            )
+                            .padding(horizontal = 4.dp, vertical = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                                .background(faderColor, RoundedCornerShape(999.dp))
+                                .align(Alignment.Center)
+                        )
+                    }
+
+                    Spacer(Modifier.weight(bottomWeight))
                 }
-
-                Spacer(Modifier.weight(bottomWeight))
             }
-        }
 
-        Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(12.dp))
 
-        // STOP rapide discret
-        IconButton(
-            onClick = onClick,
-            modifier = Modifier
-                .size(38.dp)
-                .background(Color(0xFF2A2725), RoundedCornerShape(10.dp))
-                .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = faderColor,
-                modifier = Modifier.size(20.dp)
-            )
+            // STOP rapide discret
+            IconButton(
+                onClick = onClick,
+                modifier = Modifier
+                    .semantics { iconDescription?.let { contentDescription = it } }
+                    .size(38.dp)
+                    .background(Color(0xFF2A2725), RoundedCornerShape(10.dp))
+                    .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(10.dp))
+            ) {
+                if (iconContent != null) iconContent() else Icon(
+                    imageVector = icon,
+                    contentDescription = iconDescription,
+                    tint = faderColor,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }

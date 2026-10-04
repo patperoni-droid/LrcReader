@@ -15,6 +15,7 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import com.patrick.lrcreader.core.PlaybackCoordinator
+import com.patrick.lrcreader.core.PadsBusController
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
@@ -39,7 +40,7 @@ class SoundPadsPrototypeEngine(context: Context) {
     val state = mutableState.asStateFlow()
     private var sequence = 0L
     private var request: Request? = null
-    private var globalUi = 0.5f // conservative prototype default; not the final bus preference
+    private val appContext = context.applicationContext
     private var released = false
     private val player = ExoPlayer.Builder(context.applicationContext).build().apply {
         // This overlay must not take audio focus away from Player, DJ or Filler.
@@ -50,6 +51,7 @@ class SoundPadsPrototypeEngine(context: Context) {
     }
 
     init {
+        PadsBusController.attachEngine(this)
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 val current = currentRequest() ?: return
@@ -116,20 +118,26 @@ class SoundPadsPrototypeEngine(context: Context) {
         val media = MediaItem.Builder().setMediaId(current.mediaId)
             .setUri(Uri.fromFile(File(pad.audioPath)))
             .setClippingConfiguration(clip.build()).build()
-        log("TRIGGER", current, "inMs=${pad.inMs} outMs=${pad.outMs} gain=${padsEffectiveGain(pad.volume, globalUi)}")
-        player.volume = padsEffectiveGain(pad.volume, globalUi)
+        log("TRIGGER", current, "inMs=${pad.inMs} outMs=${pad.outMs} gain=${padsEffectiveGain(pad.volume, PadsBusController.uiLevel.value)}")
+        player.volume = padsEffectiveGain(pad.volume, PadsBusController.uiLevel.value)
         // Always reset the media, including rapid retriggers. No asynchronous callback calls play().
         player.setMediaItem(media, true)
         player.prepare()
         player.play()
     }
 
-    fun setGlobalUiLevel(level: Float) {
+    /** Compatibility entry point; this is the same persistent bus, never a parallel level. */
+    fun setGlobalUiLevel(level: Float) = PadsBusController.setUiLevel(appContext, level)
+
+    internal fun applyBusVolume() {
         checkMainThread()
-        if (released || !level.isFinite()) return
-        globalUi = level.coerceIn(0f, 1f)
-        request?.let { player.volume = padsEffectiveGain(it.pad.volume, globalUi) }
+        if (!released) request?.let {
+            player.volume = padsEffectiveGain(it.pad.volume, PadsBusController.uiLevel.value)
+        }
     }
+
+    internal val outputVolume: Float
+        get() { checkMainThread(); return player.volume }
 
     fun stopAll() {
         checkMainThread()
@@ -150,6 +158,7 @@ class SoundPadsPrototypeEngine(context: Context) {
         stopAll()
         player.release()
         released = true
+        PadsBusController.detachEngine(this)
     }
 
     private fun currentRequest(): Request? = request?.takeIf { player.currentMediaItem?.mediaId == it.mediaId }

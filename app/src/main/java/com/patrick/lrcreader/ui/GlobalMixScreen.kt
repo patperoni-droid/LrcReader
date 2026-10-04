@@ -1,6 +1,13 @@
 package com.patrick.lrcreader.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.patrick.lrcreader.core.PadsBusController
+import com.patrick.lrcreader.exo.BuildConfig
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
@@ -23,7 +30,7 @@ import com.patrick.lrcreader.core.PlayerBusController
 
 /**
  * Écran de mixage global :
- * - 3 faders : Lecteur, DJ, Fond sonore.
+ * - Lecteur, DJ, Fond sonore, plus Pads dans la V1 debug.
  * - Les volumes sont liés aux écrans correspondants.
  */
 @Composable
@@ -39,6 +46,9 @@ fun GlobalMixScreen(
     showBackButton: Boolean = true
 ) {
     val context = LocalContext.current
+    val padsUiLevel by PadsBusController.uiLevel.collectAsState()
+    val padsBusReady by PadsBusController.ready.collectAsState()
+    LaunchedEffect(Unit) { if (BuildConfig.DEBUG) PadsBusController.initialize(context) }
 
     //---------------------------------------------------------
     // MAPPING doux (même logique que dans FillerSoundScreen)
@@ -81,6 +91,7 @@ fun GlobalMixScreen(
         Column(
             modifier = modifier
                 .fillMaxSize()
+                .then(if (BuildConfig.DEBUG) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
             // HEADER
@@ -99,14 +110,14 @@ fun GlobalMixScreen(
             )
 
             Text(
-                text = stringResource(R.string.global_mix_subtitle),
+                text = stringResource(if (BuildConfig.DEBUG) R.string.global_mix_subtitle_pads else R.string.global_mix_subtitle),
                 color = sub,
                 fontSize = 12.sp
             )
 
             Spacer(Modifier.height(16.dp))
 
-            // CARTES DES 3 FADERS
+            // CARTES DES FADERS
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -161,6 +172,18 @@ fun GlobalMixScreen(
                         FillerSoundManager.setVolume(real)
                     }
                 )
+                if (BuildConfig.DEBUG) {
+                    MixFader(
+                        title = stringResource(R.string.soundpads_title_short),
+                        subtitle = stringResource(R.string.mixer_channel_pads_subtitle),
+                        value = padsUiLevel,
+                        enabled = padsBusReady,
+                        modifier = Modifier.testTag("pads-globalmix-fader").semantics {
+                            contentDescription = context.getString(R.string.soundpads_bus_volume)
+                        },
+                        onValueChange = { PadsBusController.setUiLevel(context, it) }
+                    )
+                }
             }
 
             Spacer(Modifier.height(16.dp))
@@ -182,7 +205,9 @@ private fun MixFader(
     title: String,
     subtitle: String,
     value: Float,
-    onValueChange: (Float) -> Unit
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
 ) {
     val onBg = Color(0xFFEEEEEE)
     val sub = Color(0xFFB9B9B9)
@@ -195,9 +220,10 @@ private fun MixFader(
 
         Slider(
             value = value,
+            enabled = enabled,
             onValueChange = { v -> onValueChange(v.coerceIn(0f, 1f)) },
             valueRange = 0f..1f,
-            modifier = Modifier.fillMaxWidth()
+            modifier = modifier.fillMaxWidth()
         )
 
         val percent = (value * 100).toInt()

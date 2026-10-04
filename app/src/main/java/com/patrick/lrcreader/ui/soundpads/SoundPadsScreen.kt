@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.patrick.lrcreader.core.PadsBusController
 import com.patrick.lrcreader.core.soundpads.SoundPad
 import com.patrick.lrcreader.core.soundpads.SoundPadsPrototypeEngine
 import com.patrick.lrcreader.core.soundpads.SoundPadsStore
@@ -38,15 +39,16 @@ import com.patrick.lrcreader.ui.adaptive.rememberSmpAdaptiveTokens
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Full-screen destination; the underlying MusiMio route keeps its live audio and UI state. */
+/** Cockpit destination; the host-owned Pads player survives navigation to the sound bus. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SoundPadsScreen(onClose: () -> Unit, modifier: Modifier = Modifier, tabletMode: Boolean? = null) {
+fun SoundPadsScreen(onClose: () -> Unit, modifier: Modifier = Modifier, tabletMode: Boolean? = null,
+                    sharedEngine: SoundPadsPrototypeEngine? = null) {
     val context = LocalContext.current
     val tablet = tabletMode ?: rememberSmpAdaptiveTokens().tabletMode
     val scope = rememberCoroutineScope()
     val store = remember { SoundPadsStore(context) }
-    val engine = remember { SoundPadsPrototypeEngine(context) }
+    val engine = sharedEngine ?: remember { SoundPadsPrototypeEngine(context) }
     val audio by engine.state.collectAsState()
     var pads by remember { mutableStateOf<List<SoundPad>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
@@ -61,11 +63,13 @@ fun SoundPadsScreen(onClose: () -> Unit, modifier: Modifier = Modifier, tabletMo
     val lifecycle = LocalLifecycleOwner.current
     DisposableEffect(engine, lifecycle) {
         val observer = LifecycleEventObserver { _, event -> if (event == Lifecycle.Event.ON_STOP) engine.stopAll() }
-        lifecycle.lifecycle.addObserver(observer)
-        onDispose { lifecycle.lifecycle.removeObserver(observer); engine.release() }
+        if (sharedEngine == null) lifecycle.lifecycle.addObserver(observer)
+        onDispose {
+            if (sharedEngine == null) { lifecycle.lifecycle.removeObserver(observer); engine.release() }
+        }
     }
     LaunchedEffect(Unit) {
-        try { pads = store.load(); loaded = true }
+        try { PadsBusController.initialize(context); pads = store.load(); loaded = true }
         catch (cancelled: CancellationException) { throw cancelled }
         catch (_: Exception) { error = true }
         finally { operations-- }

@@ -26,6 +26,7 @@ class SoundPadsPrototypeInstrumentedTest {
     private lateinit var pads: List<SoundPad>
     private lateinit var engine: SoundPadsPrototypeEngine
     private var main: ExoPlayer? = null
+    private var previousBusLevel = 0.5f
 
     private fun onMain(action: () -> Unit) = instrumentation.runOnMainSync(action)
     private fun waitFor(message: String, condition: () -> Boolean) = runBlocking {
@@ -35,8 +36,13 @@ class SoundPadsPrototypeInstrumentedTest {
         assertTrue(message, condition())
     }
     @Before fun setup() {
-        pads = runBlocking { SoundPadsPrototypeFiles.defaults(context) }
+        pads = runBlocking {
+            PadsBusController.initialize(context)
+            SoundPadsPrototypeFiles.defaults(context)
+        }
+        previousBusLevel = PadsBusController.uiLevel.value
         onMain {
+            PadsBusController.setUiLevel(context, 0.5f)
             PlaybackCoordinator.onPadsStop()
             engine = SoundPadsPrototypeEngine(context)
             PlaybackCoordinator.stopPlayer = { main?.pause() }
@@ -49,6 +55,7 @@ class SoundPadsPrototypeInstrumentedTest {
     @After fun cleanup() {
         onMain {
             engine.release()
+            PadsBusController.setUiLevel(context, previousBusLevel)
             AudioEngine.release()
             DjEngine.release()
             FillerSoundManager.fadeOutAndStop(0)

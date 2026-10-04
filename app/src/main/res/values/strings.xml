@@ -1438,4 +1438,11 @@ N’oubliez pas d’enregistrer 😉</string>
     <string name="soundpads_pink">Rose</string>
     <string name="soundpads_cyan">Cyan</string>
     <string name="soundpads_orange">Orange</string>
+
+    <!-- Sound Pads V1 sound bus -->
+    <string name="mixer_channel_pads">PADS</string>
+    <string name="mixer_channel_pads_subtitle">Sound Pads</string>
+    <string name="soundpads_bus_volume">Volume global Pads</string>
+    <string name="soundpads_bus_stop">Arrêter les Pads</string>
+    <string name="global_mix_subtitle_pads">Réglage des niveaux : Lecteur, DJ, Fond sonore, Pads.</string>
 </resources>

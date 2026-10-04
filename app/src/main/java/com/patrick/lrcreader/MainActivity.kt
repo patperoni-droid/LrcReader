@@ -1919,6 +1919,22 @@ class MainActivity : AppCompatActivity() {
                 var pendingPitchPersistRequest by remember { mutableStateOf<Pair<String, Int>?>(null) }
                 var isMoreMenuOpen by remember { mutableStateOf(false) }
                 var isSoundPadsPrototypeOpen by rememberSaveable { mutableStateOf(false) }
+                val soundPadsEngine = remember {
+                    if (BuildConfig.DEBUG) com.patrick.lrcreader.core.soundpads.SoundPadsPrototypeEngine(ctx) else null
+                }
+                LaunchedEffect(Unit) {
+                    if (BuildConfig.DEBUG) com.patrick.lrcreader.core.PadsBusController.initialize(ctx)
+                }
+                DisposableEffect(soundPadsEngine) {
+                    val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                        if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) soundPadsEngine?.stopAll()
+                    }
+                    this@MainActivity.lifecycle.addObserver(observer)
+                    onDispose {
+                        this@MainActivity.lifecycle.removeObserver(observer)
+                        soundPadsEngine?.release()
+                    }
+                }
                 var openNotesSignal by remember { mutableStateOf(0) }
                 var openPrompterSignal by remember { mutableIntStateOf(0) }
                 var chainQueue by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -5178,15 +5194,6 @@ class MainActivity : AppCompatActivity() {
                                                 expanded = isTabletShortcutMoreOpen,
                                                 onDismissRequest = { isTabletShortcutMoreOpen = false }
                                             ) {
-                                                if (BuildConfig.DEBUG) {
-                                                    DropdownMenuItem(
-                                                        text = { Text(stringResource(R.string.soundpads_prototype_title)) },
-                                                        onClick = {
-                                                            isTabletShortcutMoreOpen = false
-                                                            openSoundPads()
-                                                        }
-                                                    )
-                                                }
                                                 DropdownMenuItem(
                                                     text = { Text(stringResource(R.string.main_menu_notes)) },
                                                     onClick = ::openTabletShortcutNotes
@@ -6317,6 +6324,7 @@ class MainActivity : AppCompatActivity() {
                                                     Column(Modifier.fillMaxSize().background(Color.Black)) {
                                                         TabletSplitTopNavigationShortcuts()
                                                         com.patrick.lrcreader.ui.soundpads.SoundPadsScreen(
+                                                            sharedEngine = soundPadsEngine,
                                                             onClose = { isSoundPadsPrototypeOpen = false },
                                                             modifier = Modifier.weight(1f).fillMaxWidth()
                                                         )
@@ -7317,6 +7325,7 @@ class MainActivity : AppCompatActivity() {
                             (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists))
                     ) {
                         com.patrick.lrcreader.ui.soundpads.SoundPadsScreen(
+                            sharedEngine = soundPadsEngine,
                             onClose = { isSoundPadsPrototypeOpen = false },
                             modifier = scaffoldContentModifier.consumeWindowInsets(innerPadding)
                         )
@@ -7328,15 +7337,6 @@ class MainActivity : AppCompatActivity() {
                         onDismissRequest = { isMoreMenuOpen = false }
 
                     ) {
-                        if (BuildConfig.DEBUG) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.soundpads_prototype_title)) },
-                                onClick = {
-                                    isMoreMenuOpen = false
-                                    openSoundPads()
-                                }
-                            )
-                        }
                         DropdownMenuItem(
                             text = { Text(stringResource(R.string.main_menu_notes)) },
                             onClick = {
