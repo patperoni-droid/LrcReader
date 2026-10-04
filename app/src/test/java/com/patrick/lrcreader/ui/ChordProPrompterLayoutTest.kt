@@ -125,9 +125,26 @@ class ChordProPrompterLayoutTest {
 
     @Test
     fun adjacentChords_shareTheSameRunWithoutLoss() {
-        val line = render("[C][G]Bonjour").single()
+        val source = "[C][G][Fm]Bonjour"
+        val document = parseChordPro(source)
+        val line = buildChordProPrompterLines(document)!!.single()
 
-        assertEquals(listOf("C", "G"), line.words.single().runs.single().chords)
+        assertEquals(source, document.source)
+        assertEquals(listOf("C", "G", "Fm"), line.words.single().runs.single().chords)
+        assertEquals("Bonjour", line.renderedLyrics())
+    }
+
+    @Test
+    fun adjacentLongChords_remainDistinctAfterTransposition() {
+        val source = "[Cmaj7][F#sus4][Am/F#]Bonjour"
+        val document = parseChordPro(source)
+        val line = buildChordProPrompterLines(document, transposeSemitones = 2)!!.single()
+
+        assertEquals(source, document.source)
+        assertEquals(
+            listOf("Dmaj7", "G#sus4", "Bm/G#"),
+            line.words.single().runs.single().chords
+        )
         assertEquals("Bonjour", line.renderedLyrics())
     }
 

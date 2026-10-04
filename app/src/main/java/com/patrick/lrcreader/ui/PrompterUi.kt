@@ -451,7 +451,7 @@ internal fun SinglePrompterRenderLine(
                         Column {
                             Row(
                                 modifier = Modifier.height(chordBandHeight),
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.Bottom
                             ) {
                                 run.chords.forEachIndexed { chordIndex, chord ->
