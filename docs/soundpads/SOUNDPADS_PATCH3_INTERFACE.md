@@ -176,3 +176,16 @@ Captures finales natives (fixtures isolées, locale anglaise, dimensions Compose
 La validation physique de la réactivité, du mixage audible et des gestes/orientations reste au Créateur, selon la recette ci-dessus. Le test JVM de couleurs de l’Arrangement doit être traité séparément avant un gate global entièrement vert. Sound Pads reste debug-only à ce stade ; aucune disponibilité production implicite.
 
 Comme les autres préférences du Bus, `apply()` écrit sur disque de façon asynchrone. Un arrêt forcé brutal immédiatement après le dernier déplacement, avant la fin de cette écriture, peut perdre ce dernier réglage ; le test de redémarrage attend l’écriture effective, et la recette utilisateur inclut une fermeture normale. Pas d’écriture synchrone sur le thread audio/UI.
+
+
+### Correction tactile et validation finale (4 octobre 2026)
+
+Cause démontrée : le conteneur racine consommait les événements à la passe `PointerEventPass.Final`. Dès un léger mouvement du doigt, cette consommation annulait le geste `combinedClickable` du pad, y compris les maintiens. La protection contre les touches traversant l’écran est désormais un composant frère placé derrière le contenu : elle protège uniquement les zones vides et ne consomme plus les gestes des pads. Aucun changement du moteur audio ou du stockage.
+
+Fichiers : `SoundPadsScreen.kt`, `SoundPadTile.kt`, nouveau `SoundPadsTouchTrace.kt`, nouveau `SoundPadsTouchTest.kt`. La trace debug `SoundPadsTouch`, désactivée par défaut, distingue ACTION_DOWN, TAP, LONG_PRESS et AUDIO_CALLBACK sans consommer les événements.
+
+Avant correction : cinq des six tests tactiles échouaient. Après correction : 27 tests instrumentés réussis, dont 20 pressions avec léger déplacement sur téléphone, tablette paysage et tablette portrait ; appuis longs fiables sans déclenchement audio ; scroll et protection des zones vides. Les six tests tactiles passent aussi avec instrumentation désactivée. Les compilations laboDebug/concertDebug réussissent ; le seul échec JVM reste celui des anciennes couleurs Arrangement décrit ci-dessus.
+
+Le Créateur confirme explicitement la validation de la V1 et de la correction tactile sur appareil réel et autorise les commits et l’intégration. Cette confirmation remplace le statut « recette physique à effectuer » des rapports précédents. Elle ne signifie pas qu’une release a été publiée.
+
+Finalisation Git : le Bus Pads est enregistré dans `b9097ad1`. La fusion reste en attente de clarification de la cible : `stable` pointe sur `636d18ec` (17 mars 2026), et la branche feature contient 1 071 commits supplémentaires avant finalisation. Une fusion complète entraînerait aussi l’historique des autres évolutions MusiMio ; aucun changement de la branche stable ni push n’est effectué sans résolution de ce point. Les modifications locales hors Sound Pads restent exclues des commits.

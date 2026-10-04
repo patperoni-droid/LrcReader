@@ -20,6 +20,9 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
@@ -55,8 +58,23 @@ internal fun SoundPadTile(
             ambientColor = color.copy(alpha = 0.25f), spotColor = color.copy(alpha = 0.25f))
             .clip(shape).background(Color(0xFF171A1E))
             .border(if (active) 2.dp else 1.dp, if (active) color else Color.White.copy(alpha = 0.10f), shape)
+            .then(if (SoundPadsTouchTrace.enabled) Modifier.pointerInput(pad?.padId, slot, enabled) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.changes.any { it.changedToDownIgnoreConsumed() })
+                            SoundPadsTouchTrace.event("ACTION_DOWN", pad?.padId, slot, "enabled=$enabled")
+                    }
+                }
+            } else Modifier)
             .combinedClickable(enabled = enabled, role = Role.Button,
-                onClick = onTrigger, onLongClickLabel = editLabel, onLongClick = onEdit)
+                onClick = {
+                    SoundPadsTouchTrace.event("TAP", pad?.padId, slot)
+                    onTrigger()
+                }, onLongClickLabel = editLabel, onLongClick = {
+                    SoundPadsTouchTrace.event("LONG_PRESS", pad?.padId, slot)
+                    onEdit()
+                })
             .testTag(if (pad == null) "soundpad-empty-$slot" else "soundpad-${pad.padId}")
             .semantics { stateDescription = status }
             .padding(5.dp)

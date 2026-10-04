@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -111,12 +110,14 @@ fun SoundPadsScreen(onClose: () -> Unit, modifier: Modifier = Modifier, tabletMo
         CompositionLocalProvider(LocalContentColor provides colors.onSurface) {
             BoxWithConstraints(modifier.fillMaxSize().testTag("soundpads-screen")
                 .background(Brush.verticalGradient(listOf(Color(0xFF171717), Color(0xFF101010), Color(0xFF101112))))
-                // Intercept unhandled touches so controls in the previous route cannot fire through the screen.
-                .pointerInput(Unit) {
+                ) {
+                // A sibling behind the content catches only blank-area touches. Consuming on an
+                // ancestor's Final pass cancels combinedClickable as soon as a finger moves.
+                Box(Modifier.matchParentSize().pointerInput(Unit) {
                     awaitPointerEventScope {
-                        while (true) awaitPointerEvent(PointerEventPass.Final).changes.forEach { it.consume() }
+                        while (true) awaitPointerEvent().changes.forEach { it.consume() }
                     }
-                }) {
+                })
                 val landscape = maxWidth > maxHeight
                 val screenHeight = maxHeight
                 val screenWidth = maxWidth
@@ -151,7 +152,10 @@ fun SoundPadsScreen(onClose: () -> Unit, modifier: Modifier = Modifier, tabletMo
                             onTrigger = { pad, slot ->
                                 if (pad == null) add(slot)
                                 else if (pad.audioPath.isEmpty()) { error = false; editingId = pad.padId }
-                                else engine.trigger(pad)
+                                else {
+                                    SoundPadsTouchTrace.event("AUDIO_CALLBACK", pad.padId, slot)
+                                    engine.trigger(pad)
+                                }
                             },
                             onEdit = { pad, slot ->
                                 error = false
