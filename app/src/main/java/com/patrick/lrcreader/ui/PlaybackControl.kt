@@ -27,7 +27,8 @@ fun PlaybackControl(
     showProgress: Boolean = true,
     onStructureSegmentSelected: (String) -> Unit = {},
     onStructureSegmentLongPressed: (String) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    refinedStyle: Boolean = false
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         if (showProgress) {
@@ -41,7 +42,8 @@ fun PlaybackControl(
                 onStructureSegmentSelected = onStructureSegmentSelected,
                 onStructureSegmentLongPressed = onStructureSegmentLongPressed,
                 isPlaying = isPlaying,
-                compact = compact
+                compact = compact,
+                refinedStyle = refinedStyle
             )
         }
 
@@ -55,7 +57,8 @@ fun PlaybackControl(
             compact = compact,
             liveConsoleMode = liveConsoleMode,
             liveSelectionInSync = liveSelectionInSync,
-            onLivePlay = onLivePlay
+            onLivePlay = onLivePlay,
+            refinedStyle = refinedStyle
         )
     }
 }

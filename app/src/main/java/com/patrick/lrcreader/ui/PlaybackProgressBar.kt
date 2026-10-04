@@ -99,7 +99,8 @@ fun PlaybackProgressBar(
     onStructureSegmentSelected: (String) -> Unit = {},
     onStructureSegmentLongPressed: (String) -> Unit = {},
     isPlaying: Boolean = false,
-    compact: Boolean = false
+    compact: Boolean = false,
+    refinedStyle: Boolean = false
 ) {
     var previewPositionMs by remember { mutableIntStateOf(positionMs) }
     var isDragging by remember { mutableStateOf(false) }
@@ -127,6 +128,23 @@ fun PlaybackProgressBar(
     val onProgressChangeFinished: () -> Unit = {
         isDragging = false
         onSeekCommit(previewPositionMs)
+    }
+
+    if (refinedStyle && mode !is PlaybackProgressMode.Structure) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(state.positionText, color = Color.LightGray, fontSize = 11.sp)
+            ThinMusicSlider(
+                value = state.progressFraction,
+                onValueChange = onProgressChange,
+                onValueChangeFinished = onProgressChangeFinished,
+                enabled = state.isEnabled,
+                accent = state.highlightColor,
+                thumbSize = 10.dp,
+                modifier = Modifier.weight(1f).padding(horizontal = 8.dp)
+            )
+            Text(state.durationText, color = Color.LightGray, fontSize = 11.sp)
+        }
+        return
     }
 
     when (mode) {

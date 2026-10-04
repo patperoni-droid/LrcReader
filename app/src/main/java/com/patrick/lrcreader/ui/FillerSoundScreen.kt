@@ -14,6 +14,17 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -78,14 +89,14 @@ fun FillerSoundScreen(
         listOf(
             Color(0xFF171717),
             Color(0xFF101010),
-            Color(0xFF181410)
+            Color(0xFF101112)
         )
     )
 
-    val onBg = Color(0xFFFFF8E1)
-    val sub = Color(0xFFB0BEC5)
-    val card = Color(0xFF1B1B1B)
-    val accent = Color(0xFFFFC107)
+    val onBg = Color(0xFFF2F1ED)
+    val sub = Color(0xFF9C9FA3)
+    val card = Color(0xFF1A1C1E)
+    val accent = MusicControlAccent
     val customFolderAvailable = EditionConfig.isPro
     val sCustomFolderProDialogTitle = stringResource(R.string.filler_custom_folder_pro_dialog_title)
     val sCustomFolderProDialogMessage = stringResource(R.string.filler_custom_folder_pro_dialog_message)
@@ -274,7 +285,9 @@ fun FillerSoundScreen(
     // ─────────────────────────────────────────────────────────────
     //  UI
     // ─────────────────────────────────────────────────────────────
-    Box(
+    val density = LocalDensity.current
+    var transportHeight by remember { mutableStateOf(0.dp) }
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundBrush)
@@ -289,7 +302,7 @@ fun FillerSoundScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(bottom = 210.dp)
+                .padding(bottom = transportHeight + 12.dp)
         ) {
             Spacer(Modifier.height(10.dp))
 
@@ -297,39 +310,29 @@ fun FillerSoundScreen(
         Card(
             colors = CardDefaults.cardColors(containerColor = card),
             shape = RoundedCornerShape(16.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            border = androidx.compose.foundation.BorderStroke(1.dp, MusicControlBorder),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Column(Modifier.padding(12.dp)) {
 
-                // Bandeau façon console
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 10.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-                    elevation = CardDefaults.cardElevation(0.dp)
+                Surface(
+                    color = accent.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, accent.copy(alpha = 0.35f)),
+                    modifier = Modifier.padding(bottom = 12.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .background(
-                                Brush.horizontalGradient(
-                                    listOf(
-                                        Color(0xFF3A2C24),
-                                        Color(0xFF4B372A),
-                                        Color(0xFF3A2C24)
-                                    )
-                                ),
-                                shape = RoundedCornerShape(10.dp)
-                            )
-                            .padding(vertical = 6.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        Icon(Icons.Filled.GraphicEq, null, tint = accent, modifier = Modifier.size(20.dp))
                         Text(
                             text = stringResource(R.string.filler_bus_title),
-                            color = Color(0xFFFFECB3),
-                            fontSize = 13.sp,
-                            letterSpacing = 2.sp
+                            color = accent,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            letterSpacing = 1.5.sp
                         )
                     }
                 }
@@ -348,6 +351,17 @@ fun FillerSoundScreen(
                         )
                     }
                     Switch(
+                        modifier = Modifier.drawWithContent {
+                            scale(0.82f) { this@drawWithContent.drawContent() }
+                        },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = accent,
+                            checkedTrackColor = accent.copy(alpha = 0.20f),
+                            checkedBorderColor = accent.copy(alpha = 0.7f),
+                            uncheckedThumbColor = sub,
+                            uncheckedTrackColor = Color(0xFF25272A),
+                            uncheckedBorderColor = Color(0xFF55585D)
+                        ),
                         checked = isEnabled,
                         onCheckedChange = { checked ->
                             isEnabled = checked
@@ -409,25 +423,27 @@ fun FillerSoundScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Slider(
+                    Icon(Icons.Filled.VolumeUp, null, tint = sub, modifier = Modifier.size(20.dp))
+                    ThinMusicSlider(
                         value = uiFillerVolume,
                         onValueChange = { v ->
                             setFillerVolumeReal(uiToRealVolume(v))
                         },
                         valueRange = 0f..1f,
                         enabled = isEnabled,
-                        modifier = Modifier.weight(1f),
-                        colors = SliderDefaults.colors(
-                            activeTrackColor = accent,
-                            inactiveTrackColor = Color(0xFF424242),
-                            thumbColor = accent
-                        )
+                        modifier = Modifier.weight(1f)
                     )
                     Text(
                         text = stringResource(R.string.filler_percent, (realDisplay * 100).toInt()),
                         color = onBg,
-                        fontSize = 11.sp,
-                        modifier = Modifier.width(48.dp)
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier
+                            .width(52.dp)
+                            .background(Color.White.copy(alpha = 0.04f), RoundedCornerShape(8.dp))
+                            .border(1.dp, MusicControlBorder, RoundedCornerShape(8.dp))
+                            .padding(vertical = 8.dp),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
 
@@ -455,7 +471,8 @@ fun FillerSoundScreen(
 
         Card(
             colors = CardDefaults.cardColors(containerColor = card),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MusicControlBorder)
         ) {
             Column(Modifier.padding(12.dp)) {
                 val isDefaultSource = !customFolderAvailable || !isUsingCustomSource
@@ -513,11 +530,18 @@ fun FillerSoundScreen(
                 }
                 if (customFolderAvailable) {
                     Spacer(Modifier.height(10.dp))
-                    TextButton(
+                    OutlinedButton(
                         onClick = { pickFillerFolderLauncher.launch(initialDocumentsUri) },
-                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MusicControlBorder),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color.White.copy(alpha = 0.03f)),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp)
                     ) {
-                        Text(stringResource(R.string.filler_choose_custom_folder), color = onBg)
+                        Icon(Icons.Filled.Folder, null, tint = accent, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(12.dp))
+                        Text(stringResource(R.string.filler_choose_custom_folder), color = onBg, modifier = Modifier.weight(1f))
+                        Icon(Icons.Filled.ChevronRight, null, tint = sub, modifier = Modifier.size(20.dp))
                     }
                 }
             }
@@ -565,6 +589,11 @@ fun FillerSoundScreen(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
+                .heightIn(max = maxHeight * 0.60f)
+                .onSizeChanged { transportHeight = with(density) { it.height.toDp() } }
+                .background(Color(0xFF101112), RoundedCornerShape(16.dp))
+                .verticalScroll(rememberScrollState())
+                .padding(top = 8.dp, bottom = 4.dp)
         ) {
             FillerLocalPlaybackControls(
                 positionMs = if (playbackDragging) playbackDragPositionMs else playbackPositionMs,
@@ -613,6 +642,7 @@ fun FillerSoundScreen(
                     seekMainToMs(safe.toLong())
                 },
                 highlightColor = accent,
+                refinedStyle = true,
                 isPlaying = isMainPlaybackPlaying,
                 onPlayPause = onMainPlaybackPlayPause,
                 onPrev = {
@@ -647,18 +677,18 @@ private fun FillerLocalPlaybackControls(
     onStop: () -> Unit,
     onPrev: () -> Unit
 ) {
-    val panelShape = RoundedCornerShape(10.dp)
-    val buttonShape = RoundedCornerShape(6.dp)
-    val controlButtonSize = 44.dp
-    val controlIconSize = 28.dp
-    val fillerAccent = Color(0xFF90A4AE)
-    val fillerPanel = Color(0xFF171C1F)
-    val fillerBorder = Color(0xFF78909C).copy(alpha = 0.30f)
-    val playButtonColor = Color(0xFF455A64)
-    val stopButtonColor = Color(0xFF5D4037)
+    val panelShape = RoundedCornerShape(14.dp)
+    val buttonShape = RoundedCornerShape(10.dp)
+    val controlButtonSize = 48.dp
+    val controlIconSize = 24.dp
+    val fillerAccent = MusicControlAccent
+    val fillerPanel = Color(0xFF1A1C1E)
+    val fillerBorder = MusicControlBorder
+    val playButtonColor = MusicControlAccent.copy(alpha = 0.16f)
+    val stopButtonColor = Color.White.copy(alpha = 0.07f)
     val disabledButtonColor = Color.White.copy(alpha = 0.08f)
     val disabledIconColor = Color.White.copy(alpha = 0.42f)
-    val controlBorder = Color.White.copy(alpha = 0.18f)
+    val controlBorder = MusicControlBorder
 
     Column(
         modifier = Modifier
@@ -673,7 +703,8 @@ private fun FillerLocalPlaybackControls(
             durationMs = durationMs,
             onSeekLivePreview = onSeekLivePreview,
             onSeekCommit = onSeekCommit,
-            highlightColor = fillerAccent
+            highlightColor = fillerAccent,
+            refinedStyle = true
         )
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -682,7 +713,7 @@ private fun FillerLocalPlaybackControls(
         ) {
             Box(
                 modifier = Modifier
-                    .size(controlButtonSize)
+                    .width(76.dp).height(controlButtonSize)
                     .background(if (isStarting) disabledButtonColor else playButtonColor, buttonShape)
                     .border(1.dp, controlBorder, buttonShape)
                     .clickable(enabled = !isStarting && !isPlaying, onClick = onPlay),
@@ -691,7 +722,7 @@ private fun FillerLocalPlaybackControls(
                 Icon(
                     imageVector = Icons.Filled.PlayArrow,
                     contentDescription = stringResource(R.string.player_cd_play),
-                    tint = if (isStarting) disabledIconColor else Color.White,
+                    tint = if (isStarting) disabledIconColor else MusicControlAccent,
                     modifier = Modifier.size(controlIconSize)
                 )
             }
@@ -754,26 +785,20 @@ private fun SourceOptionRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.Top
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .heightIn(min = 48.dp)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
-                .padding(top = 2.dp, end = 10.dp)
-                .size(14.dp)
-                .background(
-                    color = if (selected) activeColor else Color.Transparent,
-                    shape = RoundedCornerShape(3.dp)
-                )
+                .padding(end = 12.dp)
+                .size(20.dp)
+                .border(1.5.dp, if (selected) activeColor else subtitleColor, CircleShape),
+            contentAlignment = Alignment.Center
         ) {
-            if (!selected) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(1.dp)
-                        .background(Color(0xFF505050), RoundedCornerShape(3.dp))
-                )
+            if (selected) {
+                Box(Modifier.size(10.dp).background(activeColor, CircleShape))
             }
         }
         Column(modifier = Modifier.weight(1f)) {

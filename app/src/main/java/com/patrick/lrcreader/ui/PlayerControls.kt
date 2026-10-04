@@ -1,5 +1,9 @@
 package com.patrick.lrcreader.ui
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -41,18 +45,19 @@ fun PlayerControls(
     compact: Boolean = false,
     liveConsoleMode: Boolean = false,
     liveSelectionInSync: Boolean = true,
-    onLivePlay: (() -> Unit)? = null
+    onLivePlay: (() -> Unit)? = null,
+    refinedStyle: Boolean = false
 ) {
     val controlButtonSize = if (compact) 48.dp else 48.dp
-    val controlIconSize = if (compact) 34.dp else 36.dp
-    val primaryButtonWidth = if (compact) 144.dp else 126.dp
-    val primaryButtonHeight = if (compact) 50.dp else 50.dp
+    val controlIconSize = if (refinedStyle) 24.dp else if (compact) 34.dp else 36.dp
+    val primaryButtonWidth = if (refinedStyle) 96.dp else if (compact) 144.dp else 126.dp
+    val primaryButtonHeight = if (refinedStyle) 48.dp else if (compact) 50.dp else 50.dp
     val primaryIconSize = if (compact) 25.dp else 27.dp
-    val gainButtonSize = if (compact) 36.dp else 36.dp
+    val gainButtonSize = if (refinedStyle) 48.dp else if (compact) 36.dp else 36.dp
     val verticalPadding = 0.dp
-    val itemSpacing = if (compact) 14.dp else 8.dp
-    val buttonShape = RoundedCornerShape(7.dp)
-    val consoleGreen = Color(0xFF18B857)
+    val itemSpacing = if (refinedStyle) 6.dp else if (compact) 14.dp else 8.dp
+    val buttonShape = RoundedCornerShape(if (refinedStyle) 10.dp else 7.dp)
+    val consoleGreen = if (refinedStyle) Color(0xFF299D48) else Color(0xFF18B857)
     val consoleYellow = Color(0xFFFFC247)
     val consoleRed = Color(0xFFD93636)
     val primaryButtonColor = when {
@@ -63,111 +68,122 @@ fun PlayerControls(
     }
     val pauseButtonColor = if (isPlaying) consoleRed else Color.White.copy(alpha = 0.08f)
     val pauseIconColor = if (isPlaying) Color.White else Color.White.copy(alpha = 0.42f)
-    val gainButtonBackground = Color.White.copy(alpha = 0.10f)
-    val controlBorder = Color.White.copy(alpha = 0.22f)
+    val gainButtonBackground = Color.White.copy(alpha = if (refinedStyle) 0.04f else 0.10f)
+    val controlBorder = Color.White.copy(alpha = if (refinedStyle) 0.12f else 0.22f)
     val primaryClick = if (liveConsoleMode) {
         onLivePlay ?: onPlayPause
     } else {
         onPlayPause
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = verticalPadding),
-        horizontalArrangement = Arrangement.spacedBy(itemSpacing, Alignment.Start),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .width(primaryButtonWidth)
-                .height(primaryButtonHeight)
-                .background(primaryButtonColor, buttonShape)
-                .border(1.dp, controlBorder, buttonShape)
-                .clickable(onClick = primaryClick),
-            contentAlignment = Alignment.Center
+    val controlsRow: @Composable (Modifier) -> Unit = { rowModifier ->
+        Row(
+            modifier = rowModifier.padding(vertical = verticalPadding),
+            horizontalArrangement = Arrangement.spacedBy(itemSpacing, Alignment.Start),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = if (liveConsoleMode || !isPlaying) Icons.Filled.PlayArrow else Icons.Filled.Pause,
-                contentDescription = stringResource(
-                    if (liveConsoleMode) R.string.player_cd_play else R.string.player_cd_play_pause
-                ),
-                tint = Color.White,
-                modifier = Modifier.size(primaryIconSize)
-            )
-        }
-
-        if (liveConsoleMode) {
             Box(
                 modifier = Modifier
-                    .size(controlButtonSize)
-                    .background(pauseButtonColor, buttonShape)
+                    .then(if (refinedStyle) Modifier.weight(1f, fill = false).widthIn(min = 48.dp, max = 144.dp) else Modifier.width(primaryButtonWidth))
+                    .height(primaryButtonHeight)
+                    .background(primaryButtonColor, buttonShape)
                     .border(1.dp, controlBorder, buttonShape)
-                    .clickable(enabled = isPlaying) { onPlayPause() },
+                    .clickable(onClick = primaryClick),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Pause,
-                    contentDescription = stringResource(R.string.player_cd_pause),
-                    tint = pauseIconColor,
+                    imageVector = if (liveConsoleMode || !isPlaying) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                    contentDescription = stringResource(
+                        if (liveConsoleMode) R.string.player_cd_play else R.string.player_cd_play_pause
+                    ),
+                    tint = Color.White,
+                    modifier = Modifier.size(primaryIconSize)
+                )
+            }
+
+            if (liveConsoleMode) {
+                Box(
+                    modifier = Modifier
+                        .size(controlButtonSize)
+                        .background(pauseButtonColor, buttonShape)
+                        .border(1.dp, controlBorder, buttonShape)
+                        .clickable(enabled = isPlaying) { onPlayPause() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Pause,
+                        contentDescription = stringResource(R.string.player_cd_pause),
+                        tint = pauseIconColor,
+                        modifier = Modifier.size(controlIconSize)
+                    )
+                }
+            }
+
+            IconButton(
+                onClick = onPrev,
+                modifier = Modifier.size(controlButtonSize)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.SkipPrevious,
+                    contentDescription = stringResource(R.string.player_cd_prev),
+                    tint = Color.White,
                     modifier = Modifier.size(controlIconSize)
                 )
             }
-        }
 
-        IconButton(
-            onClick = onPrev,
-            modifier = Modifier.size(controlButtonSize)
-        ) {
-            Icon(
-                imageVector = Icons.Filled.SkipPrevious,
-                contentDescription = stringResource(R.string.player_cd_prev),
-                tint = Color.White,
-                modifier = Modifier.size(controlIconSize)
-            )
-        }
+            Box(
+                modifier = Modifier
+                    .size(gainButtonSize)
+                    .background(gainButtonBackground, buttonShape)
+                    .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
+                    .clickable { onGainDelta(-1) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.playback_control_gain_decrease),
+                    color = Color.White,
+                    fontSize = if (compact) 18.sp else 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
 
-        Box(
-            modifier = Modifier
-                .size(gainButtonSize)
-                .background(gainButtonBackground, buttonShape)
-                .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
-                .clickable { onGainDelta(-1) },
-            contentAlignment = Alignment.Center
-        ) {
             Text(
-                text = stringResource(R.string.playback_control_gain_decrease),
+                text = stringResource(R.string.library_lufs_db_value, gainDb),
                 color = Color.White,
-                fontSize = if (compact) 18.sp else 20.sp,
-                fontWeight = FontWeight.SemiBold
+                fontSize = if (compact) 13.sp else 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = if (refinedStyle) 1 else Int.MAX_VALUE,
+                modifier = if (refinedStyle) Modifier.width(56.dp) else Modifier,
+                textAlign = if (refinedStyle) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Unspecified
             )
-        }
 
-        Text(
-            text = stringResource(R.string.library_lufs_db_value, gainDb),
-            color = Color.White,
-            fontSize = if (compact) 13.sp else 15.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+            Box(
+                modifier = Modifier
+                    .size(gainButtonSize)
+                    .background(gainButtonBackground, buttonShape)
+                    .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
+                    .clickable { onGainDelta(1) },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = stringResource(R.string.playback_control_gain_increase),
+                    color = Color.White,
+                    fontSize = if (compact) 18.sp else 20.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
 
-        Box(
-            modifier = Modifier
-                .size(gainButtonSize)
-                .background(gainButtonBackground, buttonShape)
-                .border(1.dp, controlBorder.copy(alpha = 0.45f), buttonShape)
-                .clickable { onGainDelta(1) },
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = stringResource(R.string.playback_control_gain_increase),
-                color = Color.White,
-                fontSize = if (compact) 18.sp else 20.sp,
-                fontWeight = FontWeight.SemiBold
-            )
+            if (compact && !refinedStyle) {
+                Spacer(modifier = Modifier.weight(1f))
+            }
         }
-
-        if (compact) {
-            Spacer(modifier = Modifier.weight(1f))
+    }
+    if (refinedStyle) {
+        BoxWithConstraints {
+            val rowWidth = maxWidth.coerceAtLeast(if (liveConsoleMode) 326.dp else 272.dp)
+            controlsRow(Modifier.horizontalScroll(rememberScrollState()).width(rowWidth))
         }
+    } else {
+        controlsRow(Modifier.fillMaxWidth())
     }
 }
