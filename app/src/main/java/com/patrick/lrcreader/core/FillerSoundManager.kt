@@ -10,6 +10,13 @@ import android.util.Log
 import android.widget.Toast
 import androidx.documentfile.provider.DocumentFile
 import com.patrick.lrcreader.exo.BuildConfig
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,6 +35,16 @@ object FillerSoundManager {
     private var player: MediaPlayer? = null
     private var nextPlayer: MediaPlayer? = null
     private var fadeJob: Job? = null
+    private val startScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var startJob: Job? = null
+    // Cancellation cannot interrupt an in-flight provider query. Keep scans serialized.
+    private val folderScanMutex = Mutex()
+
+    fun cancelScheduledStart() {
+        startJob?.cancel()
+        startJob = null
+    }
+
     private var currentVolume: Float = DEFAULT_VOLUME
     private var fillerMeterVisualizer: Visualizer? = null
     private var fillerMeterSessionId: Int = 0
@@ -61,22 +78,55 @@ object FillerSoundManager {
             fadeOutAndStop(0)
             return
         }
-        internalStart(context)
+        requestStart(context)
     }
 
-    fun startFromUi(context: Context) {
+    suspend fun startFromUi(context: Context) {
+        cancelScheduledStart()
         if (!FillerSoundPrefs.isEnabled(context)) {
             FillerSoundPrefs.setEnabled(context, true)
         }
-        internalStart(context)
+        requestStart(context).join()
     }
 
-    private fun internalStart(context: Context) {
-        currentVolume = FillerSoundPrefs.getFillerVolume(context)
+    private fun requestStart(
+        context: Context,
+        start: suspend (Context) -> Unit = { internalStart(it) }
+    ): Job {
+        startJob?.takeIf { it.isActive }?.let { return it }
+        val appContext = context.applicationContext
+        return startScope.launch {
+            try {
+                start(appContext)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                Log.e("FillerSoundManager", "Start failed", error)
+            }
+        }.also { startJob = it }
+    }
 
-        val folderUri = FillerSoundPrefs.getActiveFillerFolder(context)
+    private suspend fun internalStart(context: Context) {
+        val (volume, folderUri) = withContext(Dispatchers.IO) {
+            FillerSoundPrefs.getFillerVolume(context) to FillerSoundPrefs.getActiveFillerFolder(context)
+        }
+        currentVolume = volume
         if (folderUri != null) {
-            if (!isFolderUriReadable(context, folderUri)) {
+            val cachedPlaylist = folderPlaylist.takeIf {
+                it.isNotEmpty() && currentFolderUri == folderUri
+            }
+            val (readable, preparedPlaylist) = withContext(Dispatchers.IO) {
+                folderScanMutex.withLock {
+                    val readable = isFolderUriReadable(context, folderUri)
+                    readable to if (readable) {
+                        cachedPlaylist ?: buildPlaylistFromFolderDirect(context, folderUri)
+                    } else emptyList()
+                }
+            }
+            // Discard a result if the source changed while the provider was busy.
+            if (withContext(Dispatchers.IO) { FillerSoundPrefs.getActiveFillerFolder(context) } != folderUri) return
+            if (!FillerSoundPrefs.isEnabled(context) || PlaybackCoordinator.isMainPlaying) return
+            if (!readable) {
                 folderPlaylist = emptyList()
                 currentFolderUri = null
                 advanceOnNextStart = false
@@ -90,7 +140,7 @@ object FillerSoundManager {
                 ) {
                     folderPlaylist
                 } else {
-                    val fresh = buildPlaylistFromFolderDirect(context, folderUri)
+                    val fresh = preparedPlaylist
                     if (fresh.isEmpty()) {
                         advanceOnNextStart = false
                         Toast.makeText(context, "Aucun MP3/WAV trouvé dans ce dossier", Toast.LENGTH_SHORT).show()
@@ -110,6 +160,7 @@ object FillerSoundManager {
                 val folderStartSucceeded = runCatching {
                     startFromFolderIndex(context, folderIndex)
                 }.onFailure { error ->
+                    if (error is CancellationException) throw error
                     error.printStackTrace()
                     folderPlaylist = emptyList()
                     currentFolderUri = null
@@ -122,9 +173,9 @@ object FillerSoundManager {
             }
         }
 
-        val fileUri = FillerSoundPrefs.getFillerUri(context)
+        val fileUri = withContext(Dispatchers.IO) { FillerSoundPrefs.getFillerUri(context) }
         if (fileUri == null) {
-            val assetPlaylist = buildDefaultAssetPlaylist(context)
+            val assetPlaylist = withContext(Dispatchers.IO) { buildDefaultAssetPlaylist(context) }
             if (assetPlaylist.isNotEmpty()) {
                 folderPlaylist = assetPlaylist
                 currentFolderUri = null
@@ -137,6 +188,7 @@ object FillerSoundManager {
                 advanceOnNextStart = false
                 runCatching { startFromFolderIndex(context, folderIndex) }
                     .onFailure {
+                        if (it is CancellationException) throw it
                         Log.e("FillerSoundManager", "startFromAssets failed: ${it.message}", it)
                         fadeOutAndStop(0)
                     }
@@ -146,6 +198,7 @@ object FillerSoundManager {
         try {
             startFromSingleFile(context, fileUri)
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
             e.printStackTrace()
             FillerSoundPrefs.clear(context)
             Toast.makeText(context, "Impossible de lire le fond sonore.", Toast.LENGTH_SHORT).show()
@@ -160,8 +213,12 @@ object FillerSoundManager {
     }
 
     fun next(context: Context) {
+        requestStart(context) { nextPrepared(it) }
+    }
+
+    private suspend fun nextPrepared(context: Context) {
         if (folderPlaylist.isEmpty()) {
-            startIfConfigured(context)
+            if (FillerSoundPrefs.isEnabled(context) && !PlaybackCoordinator.isMainPlaying) internalStart(context)
             return
         }
         if (folderPlaylist.size == 1) {
@@ -173,8 +230,12 @@ object FillerSoundManager {
     }
 
     fun previous(context: Context) {
+        requestStart(context) { previousPrepared(it) }
+    }
+
+    private suspend fun previousPrepared(context: Context) {
         if (folderPlaylist.isEmpty()) {
-            startIfConfigured(context)
+            if (FillerSoundPrefs.isEnabled(context) && !PlaybackCoordinator.isMainPlaying) internalStart(context)
             return
         }
         if (folderPlaylist.size == 1) {
@@ -245,12 +306,11 @@ object FillerSoundManager {
         }
     }
 
-    private fun startFromSingleFile(context: Context, uri: Uri) {
+    private suspend fun startFromSingleFile(context: Context, uri: Uri) {
         stopNow()
 
         val mp = MediaPlayer()
         try {
-            setDataSource(context, mp, uri)
             mp.isLooping = true
 
             mp.setOnErrorListener { _, what, extra ->
@@ -259,8 +319,7 @@ object FillerSoundManager {
                 true
             }
 
-            // ✅ synchrone
-            mp.prepare()
+            prepareSource(context, mp, uri)
             mp.setVolume(currentVolume, currentVolume)
             mp.start()
             logMeterState("start single file")
@@ -270,11 +329,23 @@ object FillerSoundManager {
             folderPlaylist = emptyList()
             currentFolderUri = null
         } catch (t: Throwable) {
+            if (t is CancellationException) {
+                mp.release()
+                throw t
+            }
             android.util.Log.e("FillerSoundManager", "startFromSingleFile failed uri=$uri : ${t.message}", t)
             try { mp.release() } catch (_: Exception) {}
             Toast.makeText(context, "Impossible de lire le fond sonore (autorisation ?).", Toast.LENGTH_SHORT).show()
             fadeOutAndStop(0)
         }
+    }
+
+    private suspend fun prepareSource(context: Context, mp: MediaPlayer, uri: Uri) {
+        withContext(Dispatchers.IO) {
+            setDataSource(context, mp, uri)
+            mp.prepare()
+        }
+        currentCoroutineContext().ensureActive()
     }
 
     private fun isAudioName(name: String): Boolean {
@@ -313,20 +384,23 @@ object FillerSoundManager {
             ?: DocumentFile.fromSingleUri(context, folderUri)
     }
 
-    private fun buildPlaylistFromFolderDirect(
+    private suspend fun buildPlaylistFromFolderDirect(
         context: Context,
         folderUri: Uri
     ): List<Uri> {
+        val scanContext = currentCoroutineContext()
         if (folderUri.scheme == "file") {
             val rootDir = File(folderUri.path ?: return emptyList())
             if (!rootDir.isDirectory) return emptyList()
 
             val out = ArrayList<Pair<String, Uri>>(256)
             fun walk(dir: File) {
+                scanContext.ensureActive()
                 dir.listFiles()
                     ?.sortedBy { child -> child.name.lowercase(Locale.ROOT) }
                     .orEmpty()
                     .forEach { child ->
+                        scanContext.ensureActive()
                         if (child.isDirectory) {
                             walk(child)
                         } else if (isAudioName(child.name)) {
@@ -344,10 +418,12 @@ object FillerSoundManager {
 
         val out = ArrayList<Pair<String, Uri>>(256)
         fun walk(dir: DocumentFile) {
+            scanContext.ensureActive()
             runCatching { dir.listFiles() }
                 .getOrDefault(emptyArray())
                 .sortedBy { child -> (child.name ?: "").lowercase(Locale.ROOT) }
                 .forEach { child ->
+                    scanContext.ensureActive()
                     if (child.isDirectory) {
                         walk(child)
                     } else {
@@ -363,7 +439,7 @@ object FillerSoundManager {
         return out.sortedBy { it.first.lowercase(Locale.ROOT) }.map { it.second }
     }
 
-    private fun startFromFolderIndex(context: Context, index: Int) {
+    private suspend fun startFromFolderIndex(context: Context, index: Int) {
         if (folderPlaylist.isEmpty()) return
         val uri = folderPlaylist[index]
 
@@ -371,7 +447,6 @@ object FillerSoundManager {
 
         val mp = MediaPlayer()
         try {
-            setDataSource(context, mp, uri)
             mp.isLooping = false
 
             mp.setOnCompletionListener { playNextInFolder(context) }
@@ -382,8 +457,7 @@ object FillerSoundManager {
                 true
             }
 
-            // ✅ IMPORTANT : synchrone -> démarre immédiatement, isPlaying() devient vrai
-            mp.prepare()
+            prepareSource(context, mp, uri)
             mp.setVolume(currentVolume, currentVolume)
             mp.start()
             logMeterState("start folder index")
@@ -392,6 +466,10 @@ object FillerSoundManager {
             player = mp
             attachFillerMeterTap(mp)
         } catch (t: Throwable) {
+            if (t is CancellationException) {
+                mp.release()
+                throw t
+            }
             android.util.Log.e("FillerSoundManager", "setDataSource/prepare failed uri=$uri : ${t.message}", t)
             try { mp.release() } catch (_: Exception) {}
             Toast.makeText(context, "Impossible de lire ce fichier (autorisation ?).", Toast.LENGTH_SHORT).show()
@@ -467,6 +545,7 @@ object FillerSoundManager {
     }
 
     fun fadeOutAndStop(durationMs: Long = 200) {
+        cancelScheduledStart()
         val p = player ?: return
         fadeJob?.cancel()
         fadeJob = CoroutineScope(Dispatchers.Main).launch {
