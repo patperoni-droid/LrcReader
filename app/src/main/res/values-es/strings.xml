@@ -1293,12 +1293,11 @@ No olvides guardar 😉</string>
     <string name="open_beta_welcome_feedback_message">Si encuentras un error o tienes una idea, tus comentarios nos ayudan enormemente a mejorar MusiMio.</string>
     <string name="open_beta_send_feedback">Enviar comentarios</string>
     <string name="open_beta_welcome_thanks">Gracias por formar parte de la aventura 🎵</string>
-
     <string name="filler_start_delay">Retraso antes del inicio</string>
     <string name="filler_delay_minutes">%1$d min</string>
     <string name="filler_delay_seconds">%1$d s</string>
 
-    <!-- Sound Pads debug diagnostic and durable bank management -->
+    <!-- Sound Pads V1 strings; legacy diagnostic resources retained for compatibility -->
     <string name="soundpads_prototype_title">Sound Pads — prueba de audio</string>
     <string name="soundpads_prototype_description">Banco de pads persistente. Los otros reproductores continúan. Los sonidos se copian al almacenamiento interno.</string>
     <string name="soundpads_prototype_source">Fuente principal: %1$s</string>

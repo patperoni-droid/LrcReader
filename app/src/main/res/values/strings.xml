@@ -1384,12 +1384,11 @@ N’oubliez pas d’enregistrer 😉</string>
     <string name="open_beta_welcome_feedback_message">Si tu rencontres un bug ou si tu as une idée, ton retour nous aide énormément à faire progresser MusiMio.</string>
     <string name="open_beta_send_feedback">Envoyer un retour</string>
     <string name="open_beta_welcome_thanks">Merci de participer à l’aventure 🎵</string>
-
     <string name="filler_start_delay">Délai avant démarrage</string>
     <string name="filler_delay_minutes">%1$d min</string>
     <string name="filler_delay_seconds">%1$d s</string>
 
-    <!-- Sound Pads debug diagnostic and durable bank management -->
+    <!-- Sound Pads V1 strings; legacy diagnostic resources retained for compatibility -->
     <string name="soundpads_prototype_title">Sound Pads — test audio</string>
     <string name="soundpads_prototype_description">Banque de pads persistante. Les autres lecteurs continuent. Les sons sont copiés dans le stockage interne.</string>
     <string name="soundpads_prototype_source">Source principale : %1$s</string>

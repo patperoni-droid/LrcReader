@@ -165,3 +165,13 @@ pas leur priorité.
 - **Règle** : aucun refactor global ni réécriture préventive.
 - **Risque** : régression transversale dans le Player live.
 - **Référence** : `docs/PlayerScreen.md`.
+
+
+## Sound Pads — V1 validée, activation Labo release à traiter séparément
+
+- **État** : V1 debug implémentée sur `feature/soundpads` et validée sur appareil réel, correction tactile comprise.
+- **Livré** : grille 6/12 extensible, banque persistante, import interne, édition/suppression, IN/OUT, volume individuel, Stop, navigation cockpit et Bus Pads global persistant. Media3, un seul pad à la fois, coexistence avec les autres sources.
+- **Prochaine étape à autoriser séparément** : activation dans `laboRelease`, en conservant les identifiants et Concert release ; aucune activation ou fusion vers l’ancienne stable dans cette consolidation.
+- **Hors V1** : transposition, timeline, polyphonie, waveform complète, MIDI, export/import de banque, PCM. V2/V3 restent documentées sans développement engagé.
+- **Limites** : latence qualifiée par le Créateur sur ses appareils, pas de promesse universelle ; banque non incluse dans les sauvegardes générales existantes. Échec JVM préexistant des couleurs Arrangement conservé hors périmètre.
+- **Références** : [état et recette V1](soundpads/SOUNDPADS_PATCH3_INTERFACE.md), [cahier des charges](soundpads/SOUNDPADS_CAHIER_DES_CHARGES.md), [architecture et historique](soundpads/SOUNDPADS_ARCHITECTURE.md), [roadmap et estimations historiques](soundpads/SOUNDPADS_ROADMAP.md).
