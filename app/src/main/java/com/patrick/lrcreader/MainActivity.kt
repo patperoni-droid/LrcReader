@@ -1920,10 +1920,10 @@ class MainActivity : AppCompatActivity() {
                 var isMoreMenuOpen by remember { mutableStateOf(false) }
                 var isSoundPadsPrototypeOpen by rememberSaveable { mutableStateOf(false) }
                 val soundPadsEngine = remember {
-                    if (BuildConfig.DEBUG) com.patrick.lrcreader.core.soundpads.SoundPadsPrototypeEngine(ctx) else null
+                    if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") com.patrick.lrcreader.core.soundpads.SoundPadsPrototypeEngine(ctx) else null
                 }
                 LaunchedEffect(Unit) {
-                    if (BuildConfig.DEBUG) com.patrick.lrcreader.core.PadsBusController.initialize(ctx)
+                    if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") com.patrick.lrcreader.core.PadsBusController.initialize(ctx)
                 }
                 DisposableEffect(soundPadsEngine) {
                     val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
@@ -5169,7 +5169,7 @@ class MainActivity : AppCompatActivity() {
                                                 tint = Color.White.copy(alpha = 0.78f)
                                             )
                                         }
-                                        if (BuildConfig.DEBUG) {
+                                        if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") {
                                             val padsLabel = stringResource(R.string.soundpads_title)
                                             IconButton(
                                                 modifier = Modifier.size(48.dp).semantics {
@@ -6325,7 +6325,7 @@ class MainActivity : AppCompatActivity() {
                                                         }
                                                     }
                                                 }
-                                                if (BuildConfig.DEBUG && isSoundPadsPrototypeOpen) {
+                                                if ((BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") && isSoundPadsPrototypeOpen) {
                                                     Column(Modifier.fillMaxSize().background(Color.Black)) {
                                                         TabletSplitTopNavigationShortcuts()
                                                         com.patrick.lrcreader.ui.soundpads.SoundPadsScreen(
@@ -7325,7 +7325,7 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
-                    if (BuildConfig.DEBUG && isSoundPadsPrototypeOpen &&
+                    if ((BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") && isSoundPadsPrototypeOpen &&
                         !(adaptiveTokens.tabletMode && tabletExperimentalModeEnabled &&
                             (selectedTab is BottomTab.Player || selectedTab is BottomTab.QuickPlaylists))
                     ) {

@@ -48,7 +48,7 @@ fun GlobalMixScreen(
     val context = LocalContext.current
     val padsUiLevel by PadsBusController.uiLevel.collectAsState()
     val padsBusReady by PadsBusController.ready.collectAsState()
-    LaunchedEffect(Unit) { if (BuildConfig.DEBUG) PadsBusController.initialize(context) }
+    LaunchedEffect(Unit) { if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") PadsBusController.initialize(context) }
 
     //---------------------------------------------------------
     // MAPPING doux (même logique que dans FillerSoundScreen)
@@ -91,7 +91,7 @@ fun GlobalMixScreen(
         Column(
             modifier = modifier
                 .fillMaxSize()
-                .then(if (BuildConfig.DEBUG) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+                .then(if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") Modifier.verticalScroll(rememberScrollState()) else Modifier)
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
             // HEADER
@@ -110,7 +110,7 @@ fun GlobalMixScreen(
             )
 
             Text(
-                text = stringResource(if (BuildConfig.DEBUG) R.string.global_mix_subtitle_pads else R.string.global_mix_subtitle),
+                text = stringResource(if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") R.string.global_mix_subtitle_pads else R.string.global_mix_subtitle),
                 color = sub,
                 fontSize = 12.sp
             )
@@ -172,7 +172,7 @@ fun GlobalMixScreen(
                         FillerSoundManager.setVolume(real)
                     }
                 )
-                if (BuildConfig.DEBUG) {
+                if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") {
                     MixFader(
                         title = stringResource(R.string.soundpads_title_short),
                         subtitle = stringResource(R.string.mixer_channel_pads_subtitle),

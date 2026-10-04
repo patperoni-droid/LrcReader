@@ -113,7 +113,7 @@ fun BottomTabsBar(
         if (showDjTab) {
             add(BottomTab.Dj)
         }
-        if (BuildConfig.DEBUG) add(BottomTab.SoundPads)
+        if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") add(BottomTab.SoundPads)
         add(BottomTab.Library)
         add(BottomTab.Search)
         add(BottomTab.More)

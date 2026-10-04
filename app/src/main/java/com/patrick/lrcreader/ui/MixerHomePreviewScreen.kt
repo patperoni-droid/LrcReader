@@ -102,7 +102,7 @@ fun MixerHomePreviewScreen(
     val padsUiLevel by PadsBusController.uiLevel.collectAsState()
     val padsBusReady by PadsBusController.ready.collectAsState()
     val activePadId by PlaybackCoordinator.activePadId.collectAsState()
-    LaunchedEffect(Unit) { if (BuildConfig.DEBUG) PadsBusController.initialize(context) }
+    LaunchedEffect(Unit) { if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") PadsBusController.initialize(context) }
     var hasMicPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -367,8 +367,8 @@ fun MixerHomePreviewScreen(
                         // LECTEUR = STOP DU LECTEUR
                         MixerChannelColumn(
                             label = stringResource(R.string.mixer_channel_player),
-                            modifier = if (BuildConfig.DEBUG) Modifier.weight(1f) else Modifier.width(88.dp),
-                            adaptiveHeight = BuildConfig.DEBUG,
+                            modifier = if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") Modifier.weight(1f) else Modifier.width(88.dp),
+                            adaptiveHeight = BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo",
                             subtitle = stringResource(R.string.mixer_channel_player_subtitle),
                             icon = Icons.Filled.MusicNote,
                             faderColor = Color(0xFF81C784),
@@ -389,8 +389,8 @@ fun MixerHomePreviewScreen(
                         // FOND = STOP DU FOND SONORE
                         MixerChannelColumn(
                             label = stringResource(R.string.mixer_channel_fond),
-                            modifier = if (BuildConfig.DEBUG) Modifier.weight(1f) else Modifier.width(88.dp),
-                            adaptiveHeight = BuildConfig.DEBUG,
+                            modifier = if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") Modifier.weight(1f) else Modifier.width(88.dp),
+                            adaptiveHeight = BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo",
                             subtitle = stringResource(R.string.mixer_channel_fond_subtitle),
                             icon = Icons.Filled.LibraryMusic,
                             faderColor = Color(0xFFFFC107),
@@ -415,8 +415,8 @@ fun MixerHomePreviewScreen(
                         // DJ = STOP DU DJ
                         MixerChannelColumn(
                             label = stringResource(R.string.mixer_channel_dj),
-                            modifier = if (BuildConfig.DEBUG) Modifier.weight(1f) else Modifier.width(88.dp),
-                            adaptiveHeight = BuildConfig.DEBUG,
+                            modifier = if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") Modifier.weight(1f) else Modifier.width(88.dp),
+                            adaptiveHeight = BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo",
                             subtitle = stringResource(R.string.mixer_channel_dj_subtitle),
                             icon = Icons.Filled.Headphones,
                             faderColor = Color(0xFF64B5F6),
@@ -432,7 +432,7 @@ fun MixerHomePreviewScreen(
                             DjBusController.setUiLevel(uiLevel)
                         }
 
-                        if (BuildConfig.DEBUG) {
+                        if (BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo") {
                             MixerChannelColumn(
                                 label = stringResource(R.string.mixer_channel_pads),
                                 subtitle = stringResource(R.string.mixer_channel_pads_subtitle),
