@@ -46,6 +46,18 @@ object PlaybackCoordinator {
     var stopPlayer: (() -> Unit)? = null
     var stopDj: (() -> Unit)? = null
     var stopFiller: (() -> Unit)? = null
+    // Pads are an explicit overlay, not a replacement for the main source.
+    private val _activePadId = MutableStateFlow<String?>(null)
+    val activePadId: StateFlow<String?> = _activePadId.asStateFlow()
+
+    fun onPadsStart(padId: String) {
+        _activePadId.value = padId
+    }
+
+    fun onPadsStop() {
+        _activePadId.value = null
+    }
+
     private val _nextTrack = MutableStateFlow<NextTrack?>(null)
     val nextTrack: StateFlow<NextTrack?> = _nextTrack.asStateFlow()
 

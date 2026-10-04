@@ -1384,4 +1384,36 @@ N’oubliez pas d’enregistrer 😉</string>
     <string name="open_beta_welcome_feedback_message">Si tu rencontres un bug ou si tu as une idée, ton retour nous aide énormément à faire progresser MusiMio.</string>
     <string name="open_beta_send_feedback">Envoyer un retour</string>
     <string name="open_beta_welcome_thanks">Merci de participer à l’aventure 🎵</string>
+
+    <!-- Sound Pads debug diagnostic and durable bank management -->
+    <string name="soundpads_prototype_title">Sound Pads — test audio</string>
+    <string name="soundpads_prototype_description">Banque de pads persistante. Les autres lecteurs continuent. Les sons sont copiés dans le stockage interne.</string>
+    <string name="soundpads_prototype_source">Source principale : %1$s</string>
+    <string name="soundpads_prototype_idle">Arrêté</string>
+    <string name="soundpads_prototype_preparing">Préparation</string>
+    <string name="soundpads_prototype_playing">Lecture</string>
+    <string name="soundpads_prototype_error">Impossible de charger le son</string>
+    <string name="soundpads_prototype_pad">Pad %1$d</string>
+    <string name="soundpads_prototype_choose">Choisir un son</string>
+    <string name="soundpads_prototype_clip">IN %1$d ms / OUT %2$d ms</string>
+    <string name="soundpads_prototype_level">Niveau global de test (non mémorisé)</string>
+    <string name="soundpads_prototype_importing">Copie en cours…</string>
+    <string name="soundpads_prototype_measure">Prêt : %1$d ms ; callback audio : %2$d ms</string>
+    <string name="soundpads_prototype_samples">%1$d mesures ; %2$d sous-alimentations audio</string>
+    <string name="soundpads_prototype_measure_warning">Ces délais logiciels ne mesurent pas le son réellement entendu.</string>
+    <string name="soundpads_prototype_stop">Stop Pads</string>
+    <string name="soundpads_prototype_close">Fermer</string>
+    <string name="soundpads_add">Ajouter un pad</string>
+    <string name="soundpads_empty">Banque vide : ajoutez un pad, puis choisissez un son.</string>
+    <string name="soundpads_edit">Modifier</string>
+    <string name="soundpads_delete">Supprimer</string>
+    <string name="soundpads_delete_confirm">Supprimer le pad « %1$s » ? Son fichier interne sera supprimé si aucun autre pad ne l’utilise.</string>
+    <string name="soundpads_cancel">Annuler</string>
+    <string name="soundpads_save">Enregistrer</string>
+    <string name="soundpads_name">Nom</string>
+    <string name="soundpads_in">IN (ms)</string>
+    <string name="soundpads_out">OUT (ms, vide = fin du fichier)</string>
+    <string name="soundpads_volume">Volume individuel</string>
+    <string name="soundpads_to_end">IN %1$d ms / OUT fin du fichier</string>
+    <string name="soundpads_operation_error">Opération impossible. Vérifiez le fichier, le stockage et les points IN/OUT ; les données précédentes sont conservées.</string>
 </resources>

@@ -1378,4 +1378,36 @@ Don’t forget to save 😉</string>
     <string name="open_beta_welcome_feedback_message">If you encounter a bug or have an idea, your feedback helps us enormously to improve MusiMio.</string>
     <string name="open_beta_send_feedback">Send feedback</string>
     <string name="open_beta_welcome_thanks">Thank you for being part of the adventure 🎵</string>
+
+    <!-- Sound Pads debug diagnostic and durable bank management -->
+    <string name="soundpads_prototype_title">Sound Pads — audio test</string>
+    <string name="soundpads_prototype_description">Persistent pad bank. Other players continue. Sounds are copied to internal storage.</string>
+    <string name="soundpads_prototype_source">Main source: %1$s</string>
+    <string name="soundpads_prototype_idle">Stopped</string>
+    <string name="soundpads_prototype_preparing">Preparing</string>
+    <string name="soundpads_prototype_playing">Playing</string>
+    <string name="soundpads_prototype_error">Unable to load sound</string>
+    <string name="soundpads_prototype_pad">Pad %1$d</string>
+    <string name="soundpads_prototype_choose">Choose sound</string>
+    <string name="soundpads_prototype_clip">IN %1$d ms / OUT %2$d ms</string>
+    <string name="soundpads_prototype_level">Test master level (not saved)</string>
+    <string name="soundpads_prototype_importing">Copying…</string>
+    <string name="soundpads_prototype_measure">Ready: %1$d ms; audio callback: %2$d ms</string>
+    <string name="soundpads_prototype_samples">%1$d samples; %2$d audio underruns</string>
+    <string name="soundpads_prototype_measure_warning">These software delays do not measure the sound actually heard.</string>
+    <string name="soundpads_prototype_stop">Stop Pads</string>
+    <string name="soundpads_prototype_close">Close</string>
+    <string name="soundpads_add">Add pad</string>
+    <string name="soundpads_empty">Empty bank: add a pad, then choose a sound.</string>
+    <string name="soundpads_edit">Edit</string>
+    <string name="soundpads_delete">Delete</string>
+    <string name="soundpads_delete_confirm">Delete pad “%1$s”? Its internal file will be deleted if no other pad uses it.</string>
+    <string name="soundpads_cancel">Cancel</string>
+    <string name="soundpads_save">Save</string>
+    <string name="soundpads_name">Name</string>
+    <string name="soundpads_in">IN (ms)</string>
+    <string name="soundpads_out">OUT (ms, blank = end of file)</string>
+    <string name="soundpads_volume">Individual volume</string>
+    <string name="soundpads_to_end">IN %1$d ms / OUT end of file</string>
+    <string name="soundpads_operation_error">Operation failed. Check the file, storage and IN/OUT points; previous data is preserved.</string>
 </resources>
