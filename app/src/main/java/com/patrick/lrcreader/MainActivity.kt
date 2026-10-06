@@ -4631,6 +4631,45 @@ class MainActivity : AppCompatActivity() {
                                 selectedTab is BottomTab.Dj ||
                                 selectedTab is BottomTab.More
                         )
+                @Composable
+                fun SoundPadsPlaybackControls() {
+                    fun playbackTimes(): Pair<Int, Int> =
+                        effectiveMainPlaybackPositionMs().coerceIn(0L, Int.MAX_VALUE.toLong()).toInt() to
+                            resolveEffectiveDurationMs(
+                                requestedUri = currentPlayingUri,
+                                activeUri = exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
+                            ).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+                    val times by androidx.compose.runtime.produceState(
+                        initialValue = playbackTimes(), currentPlayingUri, isPlaying
+                    ) {
+                        while (true) {
+                            value = playbackTimes()
+                            kotlinx.coroutines.delay(if (isPlaying) 250L else 500L)
+                        }
+                    }
+                    var seekPreview by remember { mutableStateOf<Int?>(null) }
+                    com.patrick.lrcreader.ui.PlaybackControl(
+                        positionMs = seekPreview ?: times.first,
+                        durationMs = times.second,
+                        onSeekLivePreview = { seekPreview = it },
+                        onSeekCommit = { position ->
+                            seekPreview = null
+                            seekMainPlaybackToMs(position.coerceIn(0, times.second).toLong())
+                        },
+                        highlightColor = com.patrick.lrcreader.ui.MusicControlAccent,
+                        isPlaying = isPlaying,
+                        onPlayPause = ::togglePlaybackFromMainBus,
+                        onPrev = { seekPreview = null; seekMainPlaybackToMs(0L) },
+                        onNext = {},
+                        gainDb = currentTrackGainDb,
+                        onGainDelta = { if (canAdjustLiveGain()) adjustLiveGain(it) },
+                        compact = true,
+                        refinedStyle = true,
+                        liveConsoleMode = adaptiveTokens.tabletMode,
+                        liveSelectionInSync = quickPlaylistLiveSelectionInSync
+                    )
+                }
+
                 fun returnToTabletCockpit() {
                     isTabletCockpitDestinationOpen = false
                     textPrompterId = null
@@ -6330,6 +6369,7 @@ class MainActivity : AppCompatActivity() {
                                                         TabletSplitTopNavigationShortcuts()
                                                         com.patrick.lrcreader.ui.soundpads.SoundPadsScreen(
                                                             sharedEngine = soundPadsEngine,
+                                                            mainPlaybackControls = { SoundPadsPlaybackControls() },
                                                             onClose = { isSoundPadsPrototypeOpen = false },
                                                             modifier = Modifier.weight(1f).fillMaxWidth()
                                                         )
@@ -7331,6 +7371,7 @@ class MainActivity : AppCompatActivity() {
                     ) {
                         com.patrick.lrcreader.ui.soundpads.SoundPadsScreen(
                             sharedEngine = soundPadsEngine,
+                                                            mainPlaybackControls = { SoundPadsPlaybackControls() },
                             onClose = { isSoundPadsPrototypeOpen = false },
                             modifier = scaffoldContentModifier.consumeWindowInsets(innerPadding)
                         )

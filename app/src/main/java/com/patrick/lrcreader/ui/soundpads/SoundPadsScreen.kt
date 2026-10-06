@@ -42,7 +42,8 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SoundPadsScreen(onClose: () -> Unit, modifier: Modifier = Modifier, tabletMode: Boolean? = null,
-                    sharedEngine: SoundPadsPrototypeEngine? = null) {
+                    sharedEngine: SoundPadsPrototypeEngine? = null,
+                    mainPlaybackControls: (@Composable () -> Unit)? = null) {
     val context = LocalContext.current
     val tablet = tabletMode ?: rememberSmpAdaptiveTokens().tabletMode
     val scope = rememberCoroutineScope()
@@ -168,6 +169,13 @@ fun SoundPadsScreen(onClose: () -> Unit, modifier: Modifier = Modifier, tabletMo
                                 onSave = { name, start, end, volume, color ->
                                     mutate({ store.update(editorPad.padId, name, start, end, volume, color) }) { editingId = null }
                                 }, onTest = engine::trigger, onStop = engine::stopAll)
+                        }
+                    }
+                    mainPlaybackControls?.let { controls ->
+                        Surface(color = Color(0xFF101112), shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                                .testTag("soundpads-main-playback")) {
+                            Box(Modifier.padding(horizontal = 8.dp, vertical = 6.dp)) { controls() }
                         }
                     }
                 }
