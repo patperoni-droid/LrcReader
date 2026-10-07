@@ -102,7 +102,6 @@ import com.patrick.lrcreader.ui.SmpPreparationNoticeDialog
 import com.patrick.lrcreader.ui.createScrollingText
 import com.patrick.lrcreader.ui.clearPersistedUris
 import com.patrick.lrcreader.ui.PlaybackControl
-import com.patrick.lrcreader.ui.TrackGainDrawer
 import com.patrick.lrcreader.ui.theme.DarkBlueGradientBackground
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -1261,7 +1260,7 @@ fun LibraryScreen(
             targetLufs = target,
             autoDb = auto,
             manualDb = manual.coerceIn(LIBRARY_LUFS_MANUAL_MIN_DB, LIBRARY_LUFS_MANUAL_MAX_DB),
-            finalDb = finalLufsDb(auto, manual)
+            finalDb = song.volumeDb ?: finalLufsDb(auto, manual)
         )
     }
 
@@ -1882,7 +1881,6 @@ fun LibraryScreen(
     var showLufsLiteDialog by remember { mutableStateOf(false) }
     var lufsHintDoNotShowAgainChecked by remember { mutableStateOf(false) }
     var levelsGainDrawerSongId by remember { mutableStateOf<String?>(null) }
-    var isLevelsGainDrawerOpen by rememberSaveable { mutableStateOf(false) }
     var lufsPreparations by remember { mutableStateOf<Map<String, LibraryLufsPreparation>>(emptyMap()) }
     val lufsPreparationLibraryKey = remember(songItems) {
         songItems.joinToString(separator = "|") { item ->
@@ -2837,11 +2835,20 @@ fun LibraryScreen(
 
     fun adjustLufsManualDb(song: LibrarySongItem, deltaDb: Int) {
         val current = lufsPreparations[song.songId] ?: initialLufsPreparation(song)
-        val measured = current.measuredLufs ?: return
-        val auto = current.autoDb ?: return
-        val nextEffectiveLufs = (effectiveLufsForDisplay(song, current) ?: measured) + deltaDb
-        val finalDb = (nextEffectiveLufs - measured)
-            .roundToInt()
+        val currentDb = current.finalDb ?: song.volumeDb ?: 0
+        val measured = current.measuredLufs
+        val auto = current.autoDb
+        if (measured == null || auto == null) {
+            // Reuse the manual gain path when legacy analysis data is unavailable.
+            adjustLibrarySongGainDb(song.copy(volumeDb = currentDb), deltaDb)
+            lufsPreparations = lufsPreparations.toMutableMap().apply {
+                put(song.songId, current.copy(
+                    finalDb = (currentDb + deltaDb).coerceIn(LIBRARY_LUFS_MIN_DB, LIBRARY_LUFS_MAX_DB)
+                ))
+            }
+            return
+        }
+        val finalDb = (currentDb + deltaDb)
             .coerceIn(LIBRARY_LUFS_MIN_DB, LIBRARY_LUFS_MAX_DB)
         val manual = ((measured + finalDb) - current.targetLufs)
             .roundToInt()
@@ -4481,6 +4488,9 @@ fun LibraryScreen(
                                             val isPreviewing = audioUri != null &&
                                                 isActivePlaybackUri(audioUri) &&
                                                 isActivePlaybackPlaying
+                                            var gainEditorExpanded by remember(song.songId) {
+                                                mutableStateOf(false)
+                                            }
                                             var previewOffsetMenuExpanded by remember(song.songId) {
                                                 mutableStateOf(false)
                                             }
@@ -4585,6 +4595,10 @@ fun LibraryScreen(
                                                         Box(
                                                             modifier = Modifier
                                                                 .widthIn(min = 90.dp)
+                                                                .clickable {
+                                                                    levelsGainDrawerSongId = song.songId
+                                                                    gainEditorExpanded = !gainEditorExpanded
+                                                                }
                                                                 .border(
                                                                     width = 1.dp,
                                                                     color = accent.copy(alpha = 0.55f),
@@ -4602,6 +4616,33 @@ fun LibraryScreen(
                                                                 fontSize = 12.sp,
                                                                 maxLines = 1
                                                             )
+                                                            androidx.compose.material3.DropdownMenu(
+                                                                expanded = gainEditorExpanded,
+                                                                onDismissRequest = { gainEditorExpanded = false }
+                                                            ) {
+                                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                                    androidx.compose.material3.TextButton(
+                                                                        onClick = { adjustLufsManualDb(song, -1) },
+                                                                        enabled = !preparation.isLoading &&
+                                                                            (preparation.finalDb ?: song.volumeDb ?: 0) > LIBRARY_LUFS_MIN_DB
+                                                                    ) {
+                                                                        Text(stringResource(R.string.library_lufs_manual_minus))
+                                                                    }
+                                                                    Text(
+                                                                        text = context.getString(
+                                                                            R.string.library_lufs_db_value,
+                                                                            preparation.finalDb ?: song.volumeDb ?: 0
+                                                                        )
+                                                                    )
+                                                                    androidx.compose.material3.TextButton(
+                                                                        onClick = { adjustLufsManualDb(song, 1) },
+                                                                        enabled = !preparation.isLoading &&
+                                                                            (preparation.finalDb ?: song.volumeDb ?: 0) < LIBRARY_LUFS_MAX_DB
+                                                                    ) {
+                                                                        Text(stringResource(R.string.library_lufs_manual_plus))
+                                                                    }
+                                                                }
+                                                            }
                                                         }
                                                     }
 
@@ -4674,23 +4715,6 @@ fun LibraryScreen(
                                         onLivePlay = onActivePlaybackLivePlay
                                     )
                                 }
-                                    TrackGainDrawer(
-                                        gainDb = levelsGainPreparation?.finalDb
-                                            ?: levelsGainSong?.volumeDb
-                                            ?: 0,
-                                        isOpen = isLevelsGainDrawerOpen,
-                                        onToggleOpen = {
-                                            isLevelsGainDrawerOpen = !isLevelsGainDrawerOpen
-                                        },
-                                        onGainDelta = { deltaDb ->
-                                            levelsGainSong?.let { song ->
-                                                adjustLufsManualDb(song, deltaDb)
-                                            }
-                                        },
-                                        modifier = Modifier
-                                            .align(Alignment.CenterEnd)
-                                            .padding(end = 10.dp, bottom = 96.dp)
-                                    )
                                 }
                             }
                         } else {

@@ -335,7 +335,7 @@
     <string name="sequential_navigation_select_previous_cd">Sélection précédente</string>
     <string name="sequential_navigation_select_next_cd">Sélection suivante</string>
     <string name="library_lufs_hint_title">Uniformisation du volume</string>
-    <string name="library_lufs_hint_message">Ici, vous pouvez harmoniser le volume de vos morceaux.\n\nCela permet d’éviter les différences de niveau entre les titres, pour un rendu plus confortable et professionnel en live.\n\nNous utilisons une référence proche de -14 LUFS, un standard largement utilisé.\n\nVous pouvez appliquer ou retirer ce réglage à tout moment.</string>
+    <string name="library_lufs_hint_message">Ici, vous pouvez harmoniser le volume de vos morceaux.\n\nCela permet d’éviter les différences de niveau entre les titres, pour un rendu plus confortable et professionnel en live.\n\nVous pouvez appliquer ou retirer ce réglage à tout moment.</string>
     <string name="library_lufs_hint_do_not_show_again">Ne plus afficher</string>
     <string name="library_help_title">Important</string>
     <string name="library_help_message">Important : pour un fonctionnement optimal, effectuez toutes les opérations sur vos morceaux (importer, exporter, copier, déplacer, supprimer) directement dans l’application.</string>
@@ -434,6 +434,7 @@
     <string name="lyrics_live_grid">Grid</string>
     <string name="lyrics_live_chords">Transpo</string>
     <string name="lyrics_live_sync_pitch">Sync Pitch</string>
+    <string name="lyrics_live_sync_pitch_help">Lorsque cette option est activée, la hauteur audio suit la transposition des accords.</string>
     <string name="lyrics_live_minus">−</string>
     <string name="lyrics_live_plus">+</string>
     <string name="lyrics_live_reset_chords">Remettre la transposition des accords à zéro</string>

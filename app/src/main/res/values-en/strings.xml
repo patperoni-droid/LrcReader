@@ -341,7 +341,7 @@
     <string name="sequential_navigation_select_previous_cd">Previous selection</string>
     <string name="sequential_navigation_select_next_cd">Next selection</string>
     <string name="library_lufs_hint_title">Volume normalization</string>
-    <string name="library_lufs_hint_message">Here you can balance the volume of your tracks.\n\nThis helps avoid large level differences between songs, for a more comfortable and professional live experience.\n\nWe use a reference close to -14 LUFS, a widely used standard.\n\nYou can apply or remove this setting at any time.</string>
+    <string name="library_lufs_hint_message">Here you can balance the volume of your tracks.\n\nThis helps avoid large level differences between songs, for a more comfortable and professional live experience.\n\nYou can apply or remove this setting at any time.</string>
     <string name="library_lufs_hint_do_not_show_again">Do not show again</string>
     <string name="library_help_title">Important</string>
     <string name="library_help_message">Important: for optimal operation, perform all actions on your songs (import, export, copy, move, delete) directly in the app.</string>
@@ -442,6 +442,7 @@
     <string name="lyrics_live_grid">Grid</string>
     <string name="lyrics_live_chords">Transpo</string>
     <string name="lyrics_live_sync_pitch">Sync Pitch</string>
+    <string name="lyrics_live_sync_pitch_help">When this option is enabled, the audio pitch follows chord transposition.</string>
     <string name="lyrics_live_minus">−</string>
     <string name="lyrics_live_plus">+</string>
     <string name="lyrics_live_reset_chords">Reset chord transposition</string>

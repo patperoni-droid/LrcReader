@@ -34,9 +34,6 @@ import com.patrick.lrcreader.core.TrackEqEngine
 import com.patrick.lrcreader.core.TrackEqPrefs
 import com.patrick.lrcreader.core.TrackEqSettings
 import com.patrick.lrcreader.exo.R
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -52,9 +49,6 @@ fun TrackMixScreen(
     onTrackGainChange: (Int) -> Unit,
     onTrackGainCommit: (Int) -> Unit,
 
-    tempo: Float,
-    onTempoChange: (Float) -> Unit,
-
     currentTrackUri: String?,
     showLyricsReturnButton: Boolean = false,
     onReturnToLyrics: () -> Unit = {},
@@ -65,8 +59,6 @@ fun TrackMixScreen(
     val minDb = -24
     val maxDb = 24
 
-    val minTempo = 0.8f
-    val maxTempo = 1.2f
     val isLufsVolumeLocked = currentTrackVolumeSource == com.patrick.lrcreader.smp.SmpConfig.PlaybackConfig.VOLUME_SOURCE_LUFS
     var lastLockedVolumeFeedbackAtMs by remember { mutableLongStateOf(0L) }
 
@@ -94,30 +86,6 @@ fun TrackMixScreen(
         mutableFloatStateOf(
             ((displayGainDb - minDb).toFloat() / (maxDb - minDb)).coerceIn(0f, 1f)
         )
-    }
-
-    var tempo01 by remember(tempo) {
-        mutableFloatStateOf(((tempo - minTempo) / (maxTempo - minTempo)).coerceIn(0f, 1f))
-    }
-
-    // ✅ Anti-craquement SPEED : on évite 200 updates/sec vers ExoPlayer
-    val scope = rememberCoroutineScope()
-    var tempoApplyJob by remember { mutableStateOf<Job?>(null) }
-    var tempoPending by remember { mutableFloatStateOf(tempo) }
-
-    fun scheduleTempoApply(newTempo: Float) {
-        tempoPending = newTempo
-        tempoApplyJob?.cancel()
-        tempoApplyJob = scope.launch {
-            delay(90)
-            onTempoChange(tempoPending)
-        }
-    }
-
-    LaunchedEffect(tempo) { tempoPending = tempo }
-
-    DisposableEffect(currentTrackUri) {
-        onDispose { tempoApplyJob?.cancel() }
     }
 
     val initialEq = remember(currentTrackUri) {
@@ -232,41 +200,8 @@ fun TrackMixScreen(
                         )
                     }
 
-                    Column(
-                        modifier = Modifier.width(96.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(stringResource(R.string.track_mix_speed), color = textSub, fontSize = 11.sp, letterSpacing = 2.sp)
-                        Spacer(Modifier.height(6.dp))
-
-                        AnalogKnob(
-                            value01 = tempo01,
-                            accent = Color(0xFF80CBC4),
-                            label = String.format("x%.2f", tempoPending),
-                            onChange = { v ->
-                                tempo01 = v
-                                val newTempo = (minTempo + v * (maxTempo - minTempo))
-                                    .coerceIn(minTempo, maxTempo)
-                                scheduleTempoApply(newTempo)
-                            },
-                            onCommit = { v ->
-                                tempoApplyJob?.cancel()
-                                val finalTempo = (minTempo + v * (maxTempo - minTempo))
-                                    .coerceIn(minTempo, maxTempo)
-                                tempoPending = finalTempo
-                                onTempoChange(finalTempo)
-                            }
-                        )
-
-                        TextButton(onClick = {
-                            tempoApplyJob?.cancel()
-                            tempoPending = 1f
-                            onTempoChange(1f)
-                            tempo01 = ((1f - minTempo) / (maxTempo - minTempo)).coerceIn(0f, 1f)
-                        }) {
-                            Text(stringResource(R.string.track_mix_reset_speed), color = Color(0xFF80CBC4), fontSize = 11.sp)
-                        }
-                    }
+                    // Preserve the Volume / EQ positions after removing the Speed control.
+                    Spacer(Modifier.width(96.dp))
                     FiveBandEqPrototype(Modifier.weight(1f).padding(start = 2.dp))
                 }
             }
@@ -697,8 +632,6 @@ fun TrackMixScreenPreview() {
         currentTrackVolumeSource = com.patrick.lrcreader.smp.SmpConfig.PlaybackConfig.VOLUME_SOURCE_MANUAL,
         onTrackGainChange = {},
         onTrackGainCommit = {},
-        tempo = 1f,
-        onTempoChange = {},
         currentTrackUri = "content://demo/track"
     )
 }

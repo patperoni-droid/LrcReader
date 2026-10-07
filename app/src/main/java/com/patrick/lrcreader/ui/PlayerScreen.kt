@@ -36,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.ShowChart
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -43,6 +44,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
@@ -127,6 +129,7 @@ import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.roundToInt
 
 private const val DEFAULT_TIMELINE_LIGHT_CUE_ARGB = 0xFFFF0000L
 private const val DMX_PLAYBACK_POLL_INTERVAL_MS = 20L
@@ -732,6 +735,29 @@ fun PlayerScreen(
                 lastLiveNoteTraceKey = null
             }
             delay(200L)
+        }
+    }
+
+    fun updateLiveTempo(newTempo: Float) {
+        if (!isHqAvailable) {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - hqToastShownAtMs > 1200L) {
+                Toast.makeText(context, sHqUnavailable, Toast.LENGTH_SHORT).show()
+                hqToastShownAtMs = now
+            }
+            return
+        }
+        if (EditionConfig.isLite) {
+            if (liteTrackMixTempo != newTempo) {
+                liteTrackMixModified = true
+            }
+            liteTrackMixTempo = newTempo
+            applyLiteTrackMixToPlayer(
+                speed = liteTrackMixTempo,
+                pitchSemi = liteTrackMixPitchSemi
+            )
+        } else {
+            onTempoChange(newTempo)
         }
     }
 
@@ -3669,7 +3695,7 @@ fun PlayerScreen(
                             },
                             highlightColor = highlightColor,
                             onOpenMix = { showMixScreen = true },
-                            showMixAction = true,
+                            showMixAction = false,
                             showEditLyrics = selectedViewMode == LyricsViewMode.LYRICS ||
                                 selectedViewMode == LyricsViewMode.CHORDS,
                             onOpenEditor = {
@@ -3754,6 +3780,9 @@ fun PlayerScreen(
                                     onSelectMode = ::selectLyricsViewMode,
                                     transposeSemitones = audioLyricsTransposeSemitones,
                                     onTransposeAction = ::applyLiveChordAction,
+                                    tempo = if (EditionConfig.isLite) liteTrackMixTempo else tempo,
+                                    onTempoChange = ::updateLiveTempo,
+                                    speedControlsEnabled = isHqAvailable,
                                     syncPitchToChords = syncPitchToChords,
                                     onSyncPitchToChordsChange = ::updateSyncPitchToChords,
                                     chordControlsEnabled = !syncPitchToChords || isHqAvailable,
@@ -3989,29 +4018,6 @@ fun PlayerScreen(
                     currentTrackVolumeSource = currentTrackVolumeSource,
                     onTrackGainChange = onTrackGainChange,
                     onTrackGainCommit = onTrackGainCommit,
-                    tempo = if (EditionConfig.isLite) liteTrackMixTempo else tempo,
-                    onTempoChange = { newTempo ->
-                        if (!isHqAvailable) {
-                            val now = android.os.SystemClock.elapsedRealtime()
-                            if (now - hqToastShownAtMs > 1200L) {
-                                Toast.makeText(context, sHqUnavailable, Toast.LENGTH_SHORT).show()
-                                hqToastShownAtMs = now
-                            }
-                            return@TrackMixScreen
-                        }
-                        if (EditionConfig.isLite) {
-                            if (liteTrackMixTempo != newTempo) {
-                                liteTrackMixModified = true
-                            }
-                            liteTrackMixTempo = newTempo
-                            applyLiteTrackMixToPlayer(
-                                speed = liteTrackMixTempo,
-                                pitchSemi = liteTrackMixPitchSemi
-                            )
-                        } else {
-                            onTempoChange(newTempo)
-                        }
-                    },
                     currentTrackUri = currentTrackUri,
                     showLyricsReturnButton = compactTabletLayout,
                     onReturnToLyrics = { showMixScreen = false },
@@ -4171,11 +4177,29 @@ private fun LiveLyricsChordToolbar(
     onSelectMode: (LyricsViewMode) -> Unit,
     transposeSemitones: Int,
     onTransposeAction: (Int, Boolean) -> Unit,
+    tempo: Float,
+    onTempoChange: (Float) -> Unit,
+    speedControlsEnabled: Boolean,
     syncPitchToChords: Boolean,
     onSyncPitchToChordsChange: (Boolean) -> Unit,
     chordControlsEnabled: Boolean,
     accent: Color
 ) {
+    val context = LocalContext.current
+    var syncPitchHelpSeen by remember(context) {
+        mutableStateOf(DisplayPrefs.isSyncPitchHelpSeen(context))
+    }
+    var showSyncPitchHelp by rememberSaveable { mutableStateOf(false) }
+    fun dismissSyncPitchHelp() {
+        DisplayPrefs.setSyncPitchHelpSeen(context)
+        syncPitchHelpSeen = true
+        showSyncPitchHelp = false
+    }
+    var speedMode by remember { mutableStateOf(false) }
+    val controlsEnabled = if (speedMode) speedControlsEnabled else chordControlsEnabled
+    val minTempo = 0.8f
+    val maxTempo = 1.2f
+
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         if (showViewModeButtons) {
             LiveToolbarButton(
@@ -4202,12 +4226,30 @@ private fun LiveLyricsChordToolbar(
                 .border(1.dp, Color.White.copy(alpha = 0.20f), RoundedCornerShape(8.dp)),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.weight(1.6f), contentAlignment = Alignment.Center) {
-                Text(
-                    stringResource(R.string.lyrics_live_chords),
-                    color = Color.White,
-                    fontSize = 12.sp,
-                    maxLines = 1
+            Row(
+                Modifier.weight(2.8f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                LiveToolbarButton(
+                    label = stringResource(R.string.lyrics_live_chords).uppercase(),
+                    selected = !speedMode,
+                    selectedTextColor = accent,
+                    dimmed = speedMode,
+                    accent = accent,
+                    weight = 1.35f,
+                    fontSizeSp = 10,
+                    onClick = { speedMode = false }
+                )
+                Box(Modifier.width(1.dp).height(14.dp).background(Color.White.copy(alpha = 0.38f)))
+                LiveToolbarButton(
+                    label = stringResource(R.string.track_mix_speed),
+                    selected = speedMode,
+                    selectedTextColor = accent,
+                    dimmed = !speedMode,
+                    accent = accent,
+                    weight = 1f,
+                    fontSizeSp = 10,
+                    onClick = { speedMode = true }
                 )
             }
             LiveToolbarButton(
@@ -4215,35 +4257,80 @@ private fun LiveLyricsChordToolbar(
                 accent = accent,
                 weight = 1.2f,
                 fontSizeSp = 18,
-                enabled = chordControlsEnabled && transposeSemitones > PROMPTER_TRANSPOSE_MIN,
-                onClickLabel = stringResource(R.string.prompter_transposition_decrease),
-                onClick = { onTransposeAction(stepPrompterTransposition(transposeSemitones, -1), false) }
+                enabled = controlsEnabled && if (speedMode) tempo > minTempo
+                    else transposeSemitones > PROMPTER_TRANSPOSE_MIN,
+                onClickLabel = if (speedMode) null else stringResource(R.string.prompter_transposition_decrease),
+                onClick = {
+                    if (speedMode) {
+                        onTempoChange(
+                            (((tempo - 0.01f) * 100).roundToInt() / 100f).coerceIn(minTempo, maxTempo)
+                        )
+                    } else {
+                        onTransposeAction(stepPrompterTransposition(transposeSemitones, -1), false)
+                    }
+                }
             )
             LiveToolbarButton(
-                label = formatPrompterTransposition(transposeSemitones),
+                label = if (speedMode) String.format("x%.2f", tempo)
+                    else formatPrompterTransposition(transposeSemitones),
                 accent = accent,
                 weight = 1.2f,
                 fontSizeSp = 13,
-                enabled = chordControlsEnabled,
-                onClickLabel = stringResource(R.string.lyrics_live_reset_chords),
-                onClick = { onTransposeAction(0, true) }
+                enabled = controlsEnabled,
+                onClickLabel = stringResource(
+                    if (speedMode) R.string.track_mix_reset_speed else R.string.lyrics_live_reset_chords
+                ),
+                onClick = {
+                    if (speedMode) onTempoChange(1f) else onTransposeAction(0, true)
+                }
             )
             LiveToolbarButton(
                 label = stringResource(R.string.lyrics_live_plus),
                 accent = accent,
                 weight = 1.2f,
                 fontSizeSp = 18,
-                enabled = chordControlsEnabled && transposeSemitones < PROMPTER_TRANSPOSE_MAX,
-                onClickLabel = stringResource(R.string.prompter_transposition_increase),
-                onClick = { onTransposeAction(stepPrompterTransposition(transposeSemitones, 1), false) }
+                enabled = controlsEnabled && if (speedMode) tempo < maxTempo
+                    else transposeSemitones < PROMPTER_TRANSPOSE_MAX,
+                onClickLabel = if (speedMode) null else stringResource(R.string.prompter_transposition_increase),
+                onClick = {
+                    if (speedMode) {
+                        onTempoChange(
+                            (((tempo + 0.01f) * 100).roundToInt() / 100f).coerceIn(minTempo, maxTempo)
+                        )
+                    } else {
+                        onTransposeAction(stepPrompterTransposition(transposeSemitones, 1), false)
+                    }
+                }
             )
         }
-        LiveToolbarButton(
-            label = stringResource(R.string.lyrics_live_sync_pitch),
-            selected = syncPitchToChords,
-            accent = accent,
-            weight = 2.25f,
-            onClick = { onSyncPitchToChordsChange(!syncPitchToChords) }
+        IconToggleButton(
+            checked = syncPitchToChords,
+            onCheckedChange = { enabled ->
+                if (!syncPitchHelpSeen) {
+                    showSyncPitchHelp = true
+                } else {
+                    onSyncPitchToChordsChange(enabled)
+                }
+            },
+            modifier = Modifier.size(48.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Filled.Link,
+                contentDescription = stringResource(R.string.lyrics_live_sync_pitch),
+                tint = if (syncPitchToChords) accent else Color.White.copy(alpha = 0.38f)
+            )
+        }
+    }
+    if (showSyncPitchHelp) {
+        AlertDialog(
+            onDismissRequest = ::dismissSyncPitchHelp,
+            title = { Text(stringResource(R.string.lyrics_live_sync_pitch)) },
+            text = { Text(stringResource(R.string.lyrics_live_sync_pitch_help)) },
+            confirmButton = {
+                TextButton(onClick = ::dismissSyncPitchHelp) {
+                    Text(stringResource(R.string.library_help_understood))
+                }
+            }
         )
     }
 }
@@ -4255,6 +4342,7 @@ private fun RowScope.LiveToolbarButton(
     weight: Float,
     fontSizeSp: Int = 12,
     selected: Boolean = false,
+    selectedTextColor: Color = Color.White,
     enabled: Boolean = true,
     dimmed: Boolean = false,
     onClickLabel: String? = null,
@@ -4281,6 +4369,7 @@ private fun RowScope.LiveToolbarButton(
             color = when {
                 !enabled -> Color.White.copy(alpha = 0.38f)
                 dimmed -> Color.White.copy(alpha = 0.55f)
+                selected -> selectedTextColor
                 else -> Color.White
             },
             fontSize = fontSizeSp.sp,
