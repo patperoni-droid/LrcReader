@@ -112,7 +112,7 @@ Current ChordPro Player details:
   views, subject to edition restrictions.
 - **Transpo accords** changes displayed chords (`-11..+11`), locally per `songId`,
   without rewriting source. **Pitch audio** changes heard pitch (`-6..+6`).
-  Audio speed (`0.5..2.0`) is separate.
+  Audio speed is separate; the current live SPEED control uses `×0.80..×1.20`.
 - **Sync Pitch** is a global device preference, off by default. Explicit live
   Transpo actions add their variation to audio pitch, then clamp it to ±6.
   Activation alone does not realign values; permanent equality is not guaranteed.
@@ -132,7 +132,7 @@ Current ChordPro Player details:
 See [ChordPro Audio Lyrics](CHORDPRO_AUDIO_LYRICS_SPEC.md) and
 [ChordPro Prompter](CHORDPRO_PROMPTER_SPEC.md) for the specialized contracts.
 
-Track Console currently exposes LEVEL and SPEED plus a static five-band EQ drawing. The EQ has no audio effect, callback or persistence. Background Sound and DJ use their own playback paths and remain subject to the central audio coordination rules; this paragraph does not change their existing priority contract.
+Track Console is currently hidden on phone and tablet via `showMixAction = false`. Its screen, Volume controls, static five-band EQ drawing and EQ infrastructure remain in code for a future V2/V3; functional EQ is not enabled in this version. SPEED is now accessed through the Reader live toolbar, using the existing tempo pipeline. See [FEATURE_PLAYER.md](Features/FEATURE_PLAYER.md). Background Sound and DJ use their own playback paths and remain subject to the central audio coordination rules; this paragraph does not change their existing priority contract.
 
 ⸻
 
@@ -275,7 +275,8 @@ Tablet split navigation rule:
 - in tablet split mode, `Lyrics` always means the scrolling playback lyrics: `Playlist | Lyrics`
 - `Lyrics` never means the lyrics editor; the editor is a secondary right-pane destination
 - Lyrics is the home state of the right pane
-- compatible right-pane destinations may include Lyrics, Library, Track Console, Settings, Background Sound, DJ, Main Bus, Tuner, Lyrics Editor, and future tablet-safe panels
+- compatible right-pane destinations may include Lyrics, Library, Settings, Background Sound, DJ, Main Bus, Tuner, Lyrics Editor, and future tablet-safe panels
+- Track Console remains technically integrated but has no current user entry; it is reserved for future reactivation
 - a standalone `Scrolling text` opened from Library or Playlist temporarily uses the modern right
   pane while the Playlist remains fixed on the left; it is not the synchronized Lyrics destination
 - scrolling-text progress, transport and speed controls must be measured and constrained inside

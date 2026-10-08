@@ -161,7 +161,7 @@ Déploiement tablette réalisé et validé dans :
 - Bibliothèque : SONGS, LISTS, SCROLLING TEXTS et LEVEL ;
 - Accordeur ;
 - Waveform, avec suppression du lecteur d'aperçu secondaire ;
-- Track Console, avec suppression de l'ancien raccourci bas `TOUCH HERE TO RETURN` ;
+- Track Console, avec suppression de l'ancien raccourci bas `TOUCH HERE TO RETURN` ; intégration conservée, mais accès utilisateur masqué depuis le 7 octobre 2026 ;
 - Timeline, avec suppression des commandes locales et maintien de l'écran ouvert lors du passage du titre actif A au titre sélectionné B.
 - Arrangement tablette et téléphone : le composant contrôle le titre complet par défaut,
   prend temporairement la main sur la preview du segment sélectionné, puis revient au titre

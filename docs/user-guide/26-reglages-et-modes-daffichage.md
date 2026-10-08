@@ -53,9 +53,13 @@ Choisissez la taille depuis la distance réelle de lecture. Une taille plus gran
 ## Transpo accords et Sync Pitch dans le Lecteur
 
 **Transpo accords** règle l'affichage de `−11` à `+11` demi-tons et est mémorisée
-localement par morceau. **Sync Pitch**, à côté de Transpo dans la barre live, est
+localement par morceau. La barre **TRANSPO | SPEED** permet aussi de sélectionner
+le réglage de vitesse ; voir [les commandes du Lecteur](08-lecteur-et-commandes-de-lecture.md).
+**Sync Pitch**, l'icône de maillons à côté de cette barre, est
 une préférence globale de l'appareil, désactivée par défaut ; ce n'est pas une
-commande de Track Console.
+commande de Track Console. Son premier appui affiche seulement l'aide sans
+changer son état ; après fermeture, cette aide n'est plus affichée pour les
+autres morceaux et les appuis suivants activent ou désactivent la liaison.
 
 Le **pitch audio** change la hauteur entendue de `−6` à `+6` demi-tons. Avec Sync
 Pitch activé, une action live Transpo ajoute sa variation au pitch audio puis

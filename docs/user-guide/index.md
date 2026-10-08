@@ -2,6 +2,8 @@
 
 MusiMio aide les musiciens à préparer leurs morceaux, organiser leurs playlists et piloter une prestation depuis un téléphone ou une tablette Android.
 
+Actualisation Sound Pads : Labo `0.5.0-beta-labo`, code 15, validée localement sur appareil réel ; aucune publication Google Play annoncée.
+
 Ce manuel décrit les fonctions présentes dans la version bêta actuelle. Une fonction encore expérimentale ou prévue pour une version future n’est pas présentée comme disponible.
 
 ## Bien commencer
@@ -29,7 +31,7 @@ Pour commencer avec le son et les paroles, consultez d’abord [les commandes du
 
 ## Préparer le son et la structure
 
-Pour régler LEVEL et SPEED, consultez [Track Console et le mixage](14-mixage-du-titre-et-bus-principal.md). Le pitch audio lié à Sync Pitch est expliqué avec [les accords du Lecteur](10-paroles-et-accords.md).
+Pour régler LEVEL, consultez [les niveaux dans la Bibliothèque](13-levels-et-niveaux-des-morceaux.md) ; pour SPEED, [les commandes du Lecteur](08-lecteur-et-commandes-de-lecture.md). Le [mixage général](14-mixage-du-titre-et-bus-principal.md) reste distinct ; Track Console est masqué. Le pitch audio lié à Sync Pitch est expliqué avec [les accords du Lecteur](10-paroles-et-accords.md).
 
 13. [Préparer les niveaux avec LEVELS](13-levels-et-niveaux-des-morceaux.md)
 14. [Régler le mixage du titre et le Bus principal](14-mixage-du-titre-et-bus-principal.md)
@@ -39,7 +41,7 @@ Pour régler LEVEL et SPEED, consultez [Track Console et le mixage](14-mixage-du
 
 ## Utiliser les outils de scène
 
-Pour diffuser une ambiance entre deux morceaux, commencez par [le Fond sonore](18-fond-sonore.md).
+Pour diffuser une ambiance entre deux morceaux, commencez par [le Fond sonore](18-fond-sonore.md). Pour déclencher des effets manuellement, consultez [Sound Pads](03-navigation-telephone-et-tablette.md#sound-pads), disponible dans Labo.
 
 18. [Utiliser le Fond sonore](18-fond-sonore.md)
 19. [Utiliser le mode DJ](19-mode-dj.md)

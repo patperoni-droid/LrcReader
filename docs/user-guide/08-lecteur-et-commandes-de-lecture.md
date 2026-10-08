@@ -77,18 +77,31 @@ Lorsque vous changez de morceau, le fader doit afficher le gain mémorisé pour 
 
 ## Réglages du morceau
 
-La Track Console donne accès à :
+Dans le Lecteur audio/paroles, la barre **TRANSPO | SPEED   −   valeur   +**
+propose deux modes. Touchez leur nom pour choisir le réglage ; le mode actif est
+mis en évidence et chaque valeur reste indépendante. **TRANSPO** est le mode
+sélectionné à l'ouverture.
 
-- LEVEL ;
-- SPEED, pour la vitesse de lecture, avec retour à `1,00x`.
+En mode **SPEED**, `− / +` changent la vitesse par pas de `0,01`, de `×0,80` à
+`×1,20`. Touchez la valeur pour revenir à `×1,00`. Ce réglage ne transpose pas les
+accords et ses commandes sont indisponibles si HQ est absent. La mémorisation
+dépend de l'édition de l'application.
 
-Le bloc EQ cinq bandes visible n’agit pas encore sur le son. Il n’y a plus de commande PITCH ni de VU dans Track Console. LEVEL et SPEED ne modifient pas le fichier audio d’origine.
+Track Console est volontairement masqué sur téléphone et tablette. Son code,
+son Volume et son prototype EQ sont conservés pour une future V2/V3 ; l'EQ n'est
+pas une fonction disponible dans cette version. Pour préparer le niveau des
+morceaux, utilisez [LEVELS](13-levels-et-niveaux-des-morceaux.md).
 
 ## Transpo accords et Sync Pitch
 
-Dans la barre live, **Transpo − / valeur / +** change les accords affichés de
+Dans la barre live, sélectionnez **TRANSPO** : **− / valeur / +** change les accords affichés de
 `−11` à `+11` demi-tons ; toucher la valeur revient à `0`.
 Le **pitch audio** change la hauteur entendue de `−6` à `+6`.
+
+**Sync Pitch** est l'icône de maillons : accent si actif, atténuée si inactif.
+Le premier appui affiche uniquement une aide et ne change pas son état. Après
+fermeture, les appuis activent ou désactivent la liaison ; cette aide n'apparaît
+qu'une fois pour l'installation, quel que soit le morceau.
 
 Avec **Sync Pitch** activé, chaque action live Transpo ajoute sa variation au
 pitch audio, dans cette plage. L'activation seule ne réaligne pas les valeurs :

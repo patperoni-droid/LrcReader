@@ -28,13 +28,13 @@ Si le morceau est déjà en lecture, la commande l’arrête.
 
 ## Régler le LEVEL
 
-1. touchez la ligne du morceau afin de le sélectionner ;
-2. ouvrez le tiroir de niveau situé sur le côté droit ;
-3. déplacez le fader pendant l’écoute ;
+1. touchez la case **dB** du morceau à régler ;
+2. utilisez **−1 dB** ou **+1 dB** dans le petit panneau ouvert ;
+3. ajustez pendant l'écoute du morceau ;
 4. comparez avec un morceau de référence ;
 5. passez au morceau suivant lorsque le résultat vous convient.
 
-La plage de réglage active va de `-24 dB` à `+6 dB`.
+La plage de réglage active va de `-24 dB` à `+6 dB`. Le fader tiroir n'est plus affiché dans cet onglet.
 
 Le niveau est immédiatement audible et mémorisé pour le morceau. Il sera réutilisé lorsque vous lancerez ce morceau depuis la Bibliothèque, une playlist ou le Lecteur.
 
@@ -72,7 +72,7 @@ L’objectif est d’éviter les écarts gênants, pas d’aplatir la dynamique 
 
 ### Le mauvais morceau est réglé
 
-Touchez sa ligne et vérifiez son titre avant de déplacer le fader.
+Vérifiez le titre de la ligne puis ouvrez sa case dB avant d'utiliser **−1 dB / +1 dB**.
 
 ### Le passage choisi n’est pas représentatif
 

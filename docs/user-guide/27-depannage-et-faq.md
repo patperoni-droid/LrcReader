@@ -30,7 +30,7 @@ Contrôlez dans cet ordre :
 
 ## Le son sature
 
-Réduisez le gain du morceau, puis le bus concerné. Vérifiez ensuite LEVELS. Une correction positive à plusieurs endroits peut dépasser la marge disponible. Les cinq bandes EQ visibles dans Track Console ne règlent pas encore le son.
+Réduisez le gain du morceau, puis le bus concerné. Vérifiez ensuite LEVELS. Une correction positive à plusieurs endroits peut dépasser la marge disponible. Track Console est masqué et l'EQ n'est pas disponible dans cette version.
 
 ## Les paroles ne suivent pas
 

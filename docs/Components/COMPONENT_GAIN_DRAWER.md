@@ -15,7 +15,7 @@ Le `GainDrawer` est né dans le mode **DJ**, où il a été conçu pour permettr
 
 Son ergonomie s'étant révélée particulièrement efficace, il a ensuite été adopté par le **Lecteur Audio / Paroles**.
 
-Il est désormais destiné à être utilisé également dans **LEVELS**.
+Il a également été utilisé dans **LEVELS**. Depuis la simplification du 7 octobre 2026, cet onglet ne l'affiche plus : sa case dB ouvre les commandes directes `−1 / +1 dB` existantes, décrites dans [FEATURE_LEVELS.md](../Features/FEATURE_LEVELS.md). Le composant partagé reste conservé pour ses autres usages.
 
 Cette évolution confirme que le `GainDrawer` n'appartient plus à un écran particulier : il devient un composant officiel et transversal de Stage Music Player.
 ## Philosophie
@@ -31,7 +31,7 @@ Il doit conserver :
 
 La hauteur ergonomique officielle du fader est `450.dp`.
 
-Cette hauteur est commune à tous les écrans qui utilisent le `GainDrawer` afin que le musicien retrouve la même amplitude de geste dans DJ, le Lecteur Audio / Paroles et LEVELS.
+Cette hauteur est commune à tous les écrans qui utilisent le `GainDrawer` afin que le musicien retrouve la même amplitude de geste dans DJ et le Lecteur Audio / Paroles.
 
 L'utilisateur ne doit jamais avoir à réapprendre son fonctionnement selon l'écran dans lequel il se trouve.
 
@@ -46,7 +46,7 @@ Il n'existe qu'un seul `GainDrawer` officiel.
 Toutes les évolutions doivent être effectuées sur ce composant unique.
 
 Aucune duplication n'est autorisée.
-Le `GainDrawer` constitue la référence ergonomique officielle de SMP pour tout réglage manuel de gain.
+Le `GainDrawer` constitue la référence ergonomique officielle des réglages de gain par fader. Les commandes directes LEVELS réutilisent la persistance existante sans créer de variante du tiroir.
 Un écran peut décider quand afficher le `GainDrawer`, mais il ne doit pas créer sa propre variante locale du composant.
 
 ---
@@ -58,11 +58,9 @@ Usages actuels :
 - DJ ;(origine du composant)
 - Lecteur Audio / Paroles.
 
-Usage prévu :
-
-- LEVELS.
-
-`LEVELS` devra utiliser le même composant que les autres écrans afin de conserver une expérience cohérente pour le réglage du gain.
+LEVELS n'utilise plus ce tiroir. Ses commandes directes sont définies dans
+[FEATURE_LEVELS.md](../Features/FEATURE_LEVELS.md) ; cette décision ne modifie pas
+le composant ni le gain du Lecteur ou du DJ.
 
 ---
 

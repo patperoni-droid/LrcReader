@@ -109,7 +109,7 @@ Le code utilise actuellement `PlaybackControl` dans les contextes suivants :
 - Player officiel ;
 - éditeur Paroles / Accords ;
 - Timeline et Arrangement, via le Playback Control officiel fourni par le Player ;
-- Track Console, via le même Playback Control officiel ;
+- Track Console, intégration conservée mais sans accès utilisateur actuel ;
 - Bibliothèque, dans plusieurs vues utilisant le contrôle commun ;
 - LEVELS ;
 - Bus principal / console ;
@@ -142,7 +142,7 @@ Ce Playback principal peut avoir été démarré depuis :
 - Bibliothèque ;
 - LEVELS ;
 - Bus Principal ;
-- Track Console ;
+- Track Console uniquement dans son intégration technique conservée, actuellement non exposée ;
 - toute autre interface autorisée.
 
 Lorsqu'un nouveau morceau est lancé :
@@ -451,7 +451,7 @@ Exemples :
 - LEVELS → Gain Playback ;
 - Bibliothèque → Gain Playback ;
 - Bus Principal → Gain Playback ;
-- Track Console → Gain Playback.
+- Track Console → Gain Playback (code conservé, accès masqué).
 
 Le GainDrawer reste le réglage précis.
 
@@ -482,7 +482,7 @@ Le téléphone et la tablette utilisent exactement le même chemin de gain dans 
 
 ## Intégration Track Console
 
-Track Console affiche le `Playback Control` officiel du Playback principal.
+Track Console conserve le `Playback Control` officiel du Playback principal dans son code. L'écran n'est plus accessible depuis l'UI actuelle (`showMixAction = false`) ; l'intégration ci-dessous est conservée pour une future réactivation V2/V3.
 
 En mode Live tablette :
 

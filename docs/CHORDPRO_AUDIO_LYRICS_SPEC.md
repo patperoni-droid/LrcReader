@@ -201,8 +201,32 @@ les tags ChordPro, Lyrics, le fichier audio ou les timestamps. La palette contin
 de représenter les accords source, indépendamment de leur transposition affichée.
 
 Le **pitch audio** change la hauteur entendue et reste borné à `-6..+6` demi-tons
-dans les commandes applicatives concernées. La vitesse audio (`0,5` à `2,0`)
-est séparée et ne transpose pas les accords.
+dans les commandes applicatives concernées. La vitesse audio reste séparée et
+ne transpose pas les accords ; la plage de la commande live actuelle est `×0,80..×1,20`.
+
+### Présentation de la barre live
+
+La barre du Lecteur audio/paroles, sur téléphone comme sur tablette, utilise
+`TRANSPO | SPEED   −   valeur   +`. Les deux modes sont sélectionnables ; le mode
+actif est mis en évidence. TRANSPO est sélectionné à l'ouverture de la barre.
+Les boutons `− / +` et le toucher de la valeur centrale pilotent uniquement le
+mode actif ; transposition et vitesse conservent chacune leur propre valeur.
+
+- TRANSPO conserve les actions décrites ci-dessous, avec retour à `0` par la valeur.
+- SPEED avance par pas de `0,01`, de `×0,80` à `×1,20` ; toucher sa valeur revient
+  à `×1,00`. Les commandes SPEED sont désactivées si HQ est indisponible.
+- Le chemin existant est réutilisé : `currentTrackTempo` → `onTempoChange` →
+  `TrackTempoPrefs` et `AudioEngine.setSpeedPitch`. La mémorisation reste soumise
+  aux droits de l'édition ; Lite conserve son chemin de réglage de session.
+
+Sync Pitch est une icône Material `Link`, dans une zone tactile de `48 dp` :
+couleur accent si actif, atténuée si inactif. Le premier clic affiche seulement
+l'aide, sans changer ON/OFF. Sa fermeture mémorise globalement
+`sync_pitch_help_seen` dans `DisplayPrefs` ; les clics suivants activent ou
+désactivent la liaison existante. L'aide n'est pas propre à chaque morceau.
+
+Texte FR : « Lorsque cette option est activée, la hauteur audio suit la
+transposition des accords. » Les ressources EN et ES existent également.
 
 ### Actions de la barre live
 

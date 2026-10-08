@@ -356,7 +356,7 @@ Règles live :
 
 ✔ aucune analyse lourde pendant le live
 ✔ analyse uniquement à l'import, sur action volontaire ou en préparation avant concert
-✔ Track Console doit rester cohérente avec le niveau réellement entendu
+✔ Track Console, conservée mais non exposée dans l'UI actuelle, doit rester cohérente avec le niveau réellement entendu en cas de réactivation
 
 ---
 

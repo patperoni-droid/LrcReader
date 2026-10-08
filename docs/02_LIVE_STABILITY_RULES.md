@@ -203,12 +203,13 @@ Tablet live navigation:
 - in tablet split mode, the Playlist remains fixed on the left
 - the right pane hosts the active destination and defaults to Lyrics
 - `Lyrics` means the scrolling playback lyrics, not the lyrics editor
-- compatible right-pane destinations include Lyrics, Library, Track Console, Settings, Background Sound, DJ, Main Bus, Tuner, Lyrics Editor, and future tablet-safe panels
+- compatible right-pane destinations include Lyrics, Library, Settings, Background Sound, DJ, Main Bus, Tuner, Lyrics Editor, and future tablet-safe panels
 - a standalone scrolling text may replace the right-pane content while the Playlist remains visible;
   its transport and speed controls must never overflow onto the left pane
 - the cockpit menu is the preferred way to navigate between compatible right-pane destinations
 - every compatible right-pane destination must keep a clear path back to `Playlist | Lyrics`
-- secondary panels such as Track Console, Library, Settings, Background Sound, or Lyrics Editor must not trap the user away from `Playlist | Lyrics`
+- secondary panels such as Library, Settings, Background Sound, or Lyrics Editor must not trap the user away from `Playlist | Lyrics`
+- Track Console has no current user entry; its retained integration must obey these same rules if reactivated
 - fullscreen tablet tools such as Arrangement or Timeline must be explicit and must return cleanly to the live cockpit
 - tablet navigation changes must not alter phone behavior or playback state
 - the existing full-screen phone scrolling-text prompter must remain unchanged by tablet fixes

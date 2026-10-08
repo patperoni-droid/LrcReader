@@ -1,14 +1,29 @@
 # Sound Pads — Architecture proposée et audit de réutilisation
 
-## État actuel — 4 octobre 2026
+## Jalon du 5 octobre 2026 — état historique
 
-La V1 est implémentée sur `feature/soundpads` et **validée sur appareil réel par le Créateur**, y compris la correction tactile. Labo est la variante fonctionnelle de référence ; Concert doit rester compilable. Aucun déploiement Google Play ni intégration dans l’ancienne branche `stable` n’est revendiqué.
+Pour la référence `stable` publiée le 7 octobre et les changements Lecteur/LEVELS, voir [PROJECT_STATUS.md](../../PROJECT_STATUS.md). Le SHA et l’absence de push ci-dessous décrivent uniquement ce jalon antérieur.
 
-Accès par l’icône Pads du cockpit téléphone/tablette, navigation principale conservée ; grille 6/12 par défaut, banque extensible à IDs stables ; ajout/édition/suppression, copie audio interne persistante, nom/couleur/volume/IN/OUT. Media3 joue un pad à la fois au-dessus du Lecteur, du DJ ou du Fond sonore. Stop ne coupe que Pads. Le gain global vient du Bus Pads, persiste via `pads_volume_prefs` / `pads_volume_ui` et s’applique au volume individuel selon la courbe cubique du Bus.
+La référence locale **`stable` pointe sur `ed5c8506`**, identique à `feature/soundpads` lors de la bascule. Elle contient la MusiMio Labo récente, Sound Pads V1 et les correctifs locaux consolidés. L’ancienne stable de mars (`636d18ec`) est conservée sous `backup/legacy-stable-march` et le tag `legacy-stable-march-2026` ; aucun merge des historiques n’a été créé. Aucun push distant ni publication Google Play n’est revendiqué.
 
-La V1 reste accessible **uniquement en debug** à cette révision : les gardes `BuildConfig.DEBUG` sont conservées, et `laboRelease` n’est pas encore activé. Le debug conserve son identifiant séparé ; l’identifiant Labo release ne change pas. Aucune transposition, timeline, polyphonie, waveform complète, MIDI, export/import de banque ou moteur PCM. Les sauvegardes générales de MusiMio ne sont pas annoncées comme incluant la banque Pads.
+**Version de référence : `0.5.0-beta-labo`, code 15.** Le Créateur a confirmé la validation physique de Labo release : accès Pads, tactile, lecture, Bus PADS, fader et Stop. L’évaluation acoustique reste celle de ses appareils et sorties, sans promesse de latence universelle.
 
-Référence de livraison et recette : [rapport Patchs 3/4 et correction tactile](SOUNDPADS_PATCH3_INTERFACE.md). Les six commits V1 s’étendent de `273d94c6` à `f8d60efd` ; la base avant Pads est `51da14df`. La consolidation ultérieure du Fond sonore et du Prompteur est distincte de Sound Pads.
+| Variante | Sound Pads | Version |
+| --- | --- | --- |
+| `laboDebug` | présent | `0.5.0-beta-labo`, 15 |
+| `laboRelease` | présent | `0.5.0-beta-labo`, 15 |
+| `concertDebug` | présent | `0.5.0-beta-concert`, 15 |
+| `concertRelease` | absent ; Bus trois sources | `0.5.0-beta-concert`, 15 |
+
+La garde fonctionnelle est `BuildConfig.DEBUG || BuildConfig.FLAVOR == "labo"` ; les traces tactiles restent strictement debug. Icône 2 × 2 dédiée, navigation principale conservée, grille 6/12 par défaut et banque extensible à IDs stables ; ajout/édition/suppression, copie interne persistante, nom/couleur/volume/IN/OUT. Media3 joue un seul pad à la fois, en coexistence avec les sources principales ; leurs règles d’exclusion entre elles restent inchangées.
+
+Le Bus PADS et le Mixage général utilisent la même préférence `pads_volume_prefs` / `pads_volume_ui`. Le gain appliqué est `volumeIndividuel × niveauUI³`, selon la courbe du Bus. Stop coupe uniquement Pads. Banque : `filesDir/soundpads/bank.json`, audio sous `filesDir/soundpads/audio/`. Les paramètres IN/OUT sont des positions de lecture en millisecondes, pas des fondus.
+
+Pas de transposition, timeline, polyphonie, waveform complète, MIDI, export/import de banque ni moteur PCM. **La banque Pads n’est pas incluse dans les sauvegardes générales MusiMio** ; effacement des données/désinstallation peut la supprimer. Les installations debug et release ont des banques privées séparées, sans transfert automatique.
+
+Les quatre builds ont été compilés depuis la nouvelle stable et **346 tests JVM ciblés par variante ont réussi (1 384 au total)**. Ce résultat ne signifie pas que la suite globale est verte : l’échec préexistant des couleurs Arrangement reste hors périmètre. Aucun nouvel essai instrumenté sur un appareil utilisateur n’est revendiqué.
+
+[Utilisation et import](../user-guide/03-navigation-telephone-et-tablette.md#sound-pads) · [Bus et volumes](../user-guide/14-mixage-du-titre-et-bus-principal.md) · [Android Studio et identités](SOUNDPADS_DEVELOPPEMENT_ANDROID_STUDIO.md).
 
 ## Historique de conception et du prototype
 

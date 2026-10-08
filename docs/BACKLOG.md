@@ -167,11 +167,17 @@ pas leur priorité.
 - **Référence** : `docs/PlayerScreen.md`.
 
 
-## Sound Pads — V1 validée, activation Labo release à traiter séparément
+## Perspectives non engagées — Track Console / EQ et PDF
 
-- **État** : V1 debug implémentée sur `feature/soundpads` et validée sur appareil réel, correction tactile comprise.
+- Track Console reste masqué dans l'UI actuelle, avec son Volume et son infrastructure EQ conservés. Une réactivation V2/V3 et un EQ fonctionnel complet restent futurs, sans développement engagé.
+- La lecture/affichage PDF est uniquement une idée possible pour V2, non implémentée ; elle n'est pas une fonction actuelle ni un chantier engagé.
+- Référence de l'état livré : [FEATURE_PLAYER.md](Features/FEATURE_PLAYER.md).
+
+## Sound Pads — V1 locale terminée et validée en Labo release
+
+- **État** : V1 intégrée lors du jalon `ed5c8506`, désormais conservée dans `stable` publiée (`0b6eb4b9`), `0.5.0-beta-labo`, code 15, validée sur appareil réel par le Créateur. Labo debug/release et Concert debug actifs ; Concert release sans Pads.
 - **Livré** : grille 6/12 extensible, banque persistante, import interne, édition/suppression, IN/OUT, volume individuel, Stop, navigation cockpit et Bus Pads global persistant. Media3, un seul pad à la fois, coexistence avec les autres sources.
-- **Prochaine étape à autoriser séparément** : activation dans `laboRelease`, en conservant les identifiants et Concert release ; aucune activation ou fusion vers l’ancienne stable dans cette consolidation.
+- **Finalisation locale terminée** : activation Labo release et promotion de la base récente en stable sans merge de l’ancien historique. Le push de `stable` sur `origin/stable` a été réalisé le 7 octobre 2026 avec `--force-with-lease` ; aucune publication Google Play n'est revendiquée.
 - **Hors V1** : transposition, timeline, polyphonie, waveform complète, MIDI, export/import de banque, PCM. V2/V3 restent documentées sans développement engagé.
 - **Limites** : latence qualifiée par le Créateur sur ses appareils, pas de promesse universelle ; banque non incluse dans les sauvegardes générales existantes. Échec JVM préexistant des couleurs Arrangement conservé hors périmètre.
 - **Références** : [état et recette V1](soundpads/SOUNDPADS_PATCH3_INTERFACE.md), [cahier des charges](soundpads/SOUNDPADS_CAHIER_DES_CHARGES.md), [architecture et historique](soundpads/SOUNDPADS_ARCHITECTURE.md), [roadmap et estimations historiques](soundpads/SOUNDPADS_ROADMAP.md).

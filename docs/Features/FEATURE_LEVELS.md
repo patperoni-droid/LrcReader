@@ -39,7 +39,7 @@ Le `LEVEL` appartient au morceau et doit rester cohérent entre :
 - la page `LEVELS` ;
 - le Playback Control ;
 - le tiroir de gain ;
-- le Player et la Track Console ;
+- le Player et, techniquement, la Track Console conservée mais non exposée ;
 - l'export, la sauvegarde, la restauration et la synchronisation du morceau.
 
 ---
@@ -56,7 +56,7 @@ Cet onglet affiche les morceaux live jouables connus de la Bibliothèque. Chaque
 - une commande de lecture rapide ;
 - le `LEVEL` courant en dB.
 
-Toucher une ligne sélectionne le morceau à régler et le relie au tiroir de gain.
+Toucher une ligne sélectionne le morceau sans lancer la lecture. Toucher sa case dB ouvre le petit panneau de réglage direct du morceau concerné.
 
 ### Démarrage Rapide
 
@@ -86,11 +86,24 @@ Il permet notamment de :
 
 `LEVELS` ne possède pas de moteur audio autonome. Il réutilise le Playback principal et ses règles de stabilité.
 
-### Tiroir LEVEL
+### Réglage direct LEVEL
 
-Le tiroir de gain officiel permet de régler le morceau sélectionné de `-24 dB` à `+6 dB`.
+Le fader tiroir n'est plus affiché dans cet onglet. La case dB de chaque titre ouvre
+un petit panneau avec les commandes existantes `−1 dB` et `+1 dB`, bornées à
+`-24 dB` et `+6 dB`. Les commandes attendent la fin d'une préparation en cours.
 
-Le réglage est manuel, immédiatement audible et mémorisé pour le morceau. Le même niveau doit être retrouvé lorsque le morceau est ensuite lancé depuis la Bibliothèque, une playlist ou le Player.
+Le morceau est ciblé par `songId`. Le réglage réutilise `TrackVolumePrefs` et le
+callback audio existant ; aucune nouvelle source de vérité n'est créée. Le niveau
+mémorisé est retrouvé à la réouverture et au lancement dans les autres parcours ;
+la modification agit immédiatement sur le morceau s'il est actif en lecture.
+
+L'aide utilisateur FR, également traduite en EN et ES, ne mentionne plus LUFS :
+
+> Ici, vous pouvez harmoniser le volume de vos morceaux.
+>
+> Cela permet d’éviter les différences de niveau entre les titres, pour un rendu plus confortable et professionnel en live.
+>
+> Vous pouvez appliquer ou retirer ce réglage à tout moment.
 
 ---
 
@@ -132,7 +145,7 @@ L'objectif n'est pas de rendre tous les morceaux identiques. Il est d'éviter le
 
 Le code actuel conserve encore des identifiants, champs de configuration et fonctions portant l'ancien nom `lufs`. Certains participent encore au chargement ou à la sauvegarde du gain.
 
-Un écart d'implémentation reste notamment présent : à l'ouverture de LEVELS, le code peut encore extraire des crêtes de waveform, calculer une estimation héritée par rapport à une cible `-14` et utiliser le résultat comme niveau initial affiché ou écouté. Cette opération n'est pas exposée comme une commande utilisateur, mais elle est encore active dans le parcours actuel.
+Un écart d'implémentation reste présent : à l'ouverture de LEVELS, le code peut encore extraire des crêtes de waveform et calculer une estimation héritée de l'ancienne approche LUFS abandonnée. Le gain `song.volumeDb` mémorisé est désormais prioritaire ; en son absence, cette estimation peut encore servir de repli au niveau initial affiché ou écouté. Ce calcul résiduel n'est ni une commande utilisateur ni une promesse de normalisation automatique. Le retrait du paragraphe d'aide relatif à −14 LUFS n'a pas supprimé ce code.
 
 Ces éléments sont hérités de l'ancien système. Ils peuvent être lus pour préserver les morceaux existants, mais :
 
@@ -150,7 +163,8 @@ La suppression de cet écart nécessite donc une tâche applicative distincte. D
 - La liste affiche le titre et le niveau en dB de chaque morceau.
 - Le démarrage rapide propose `Début`, `20 s`, `40 s`, `60 s` et `90 s`.
 - La sélection d'une ligne cible le bon morceau sans le lancer.
-- Le Playback Control et le tiroir modifient le même niveau mémorisé.
+- Le Playback Control et le panneau ouvert depuis la case dB réutilisent le niveau mémorisé existant.
+- Les commandes directes respectent les bornes `-24 dB` / `+6 dB` et la valeur revient à la réouverture ; aucun fader tiroir n'est affiché dans LEVELS.
 - Le morceau retrouve ce niveau dans le Player.
 - Aucun vocabulaire ni commande de l'ancien système n'est nécessaire pour comprendre ou utiliser la page.
 

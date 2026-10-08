@@ -531,7 +531,8 @@ The Library LEVELS tab provides an isolated listening and adjustment tool for pr
 
 Current product rule:
 - LEVELS is the sole current workflow
-- adjustment is manual and expressed in dB
+- adjustment is manual and expressed in dB; each clickable dB box opens the existing `−1 / +1 dB` commands (`-24..+6 dB`), without the former LEVELS drawer
+- song targeting and persistence reuse `songId`, `TrackVolumePrefs` and the existing audio callback; the help text no longer mentions the abandoned LUFS reference
 - no automatic loudness measurement, target or normalization is part of the current functional contract
 - historical implementation identifiers do not define the user-visible feature
 

@@ -28,9 +28,11 @@ ni toutes ses directives.
 
 ## Transpo accords, pitch audio et Sync Pitch
 
-Dans la barre live, utilisez **Transpo −** ou **+** pour abaisser ou monter les accords affichés d’un demi-ton. La valeur centrale indique la transposition des accords ; touchez-la pour revenir à `0`. La plage des accords va de `−11` à `+11` demi-tons.
+Dans la barre live **TRANSPO | SPEED**, sélectionnez **TRANSPO**, puis utilisez **−** ou **+** pour abaisser ou monter les accords affichés d’un demi-ton. La valeur centrale indique la transposition des accords ; touchez-la pour revenir à `0`. La plage des accords va de `−11` à `+11` demi-tons.
 
 La **transposition des accords** désigne la valeur appliquée à leur affichage. Le **pitch audio** change la hauteur entendue du morceau ; sa plage est de `−6` à `+6` demi-tons. Ces deux valeurs peuvent donc différer, notamment près de leurs limites.
+
+Sync Pitch utilise l'icône de maillons : accent si actif, atténuée si inactif. Le premier appui affiche l'aide sans changer ON/OFF ; après fermeture, les appuis suivants activent ou désactivent la liaison. L'aide est mémorisée une fois pour l'appareil, tous morceaux confondus.
 
 Avec **Sync Pitch** activé, une action live **Transpo accords** ajoute sa variation
 au pitch audio courant, puis limite celui-ci à `−6..+6`. Activer Sync Pitch seul

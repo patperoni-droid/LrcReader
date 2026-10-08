@@ -213,6 +213,9 @@ If no derived chords exist, legacy separate chord lines are returned unchanged
 as a read-only fallback, without derived Grid's chord-display transposition.
 
 Current live toolbar:
+- **TRANSPO | SPEED** selects which independent value the shared `− / value / +` controls edit; TRANSPO is the opening mode;
+- live SPEED uses `0.01` steps within `×0.80..×1.20`, resets to `×1.00` when its value is touched, and requires HQ; existing tempo callbacks and storage are reused;
+- Sync Pitch uses a compact Material `Link` icon with a `48 dp` touch area, accent when active and dimmed when inactive; its first click shows help only, then dismissal stores global `sync_pitch_help_seen` before later clicks toggle the existing state;
 - **Transpo accords** changes displayed chords (`-11..+11` semitones), without
   rewriting the source or timestamps;
 - **pitch audio** changes heard pitch (`-6..+6` semitones);
@@ -233,7 +236,7 @@ audio pitch when Sync Pitch is off, even if another pitch is stored. It does not
 derive pitch from displayed chords. No inverse audio-pitch observer recalculates
 the displayed chords. Local display preferences are not transported source content.
 
-Audio speed (`0.5..2.0`) is separate and does not transpose chords.
+The current live SPEED control range is `×0.80..×1.20`; audio speed is separate and does not transpose chords. This UI range does not redefine the engine or legacy stored values.
 The pitch/speed transition guard still selects sequential playback when either
 track uses non-neutral audio pitch or speed.
 
@@ -583,7 +586,8 @@ Level workflow note:
 - LEVELS is the sole current preparation workflow
 - the musician listens to representative passages and adjusts the level manually in dB
 - LEVELS corrections are stored per song and must be audible immediately on the active track
-- Track Console must reflect the level actually applied to the current playback
+- Library LEVELS uses the clickable dB box and existing `−1 / +1 dB` commands instead of its former gain drawer; see [FEATURE_LEVELS.md](FEATURE_LEVELS.md)
+- Track Console is hidden on phone and tablet (`showMixAction = false`); `TrackMixScreen.kt`, its Volume controls, EQ prototype and playback integration remain for a future V2/V3, without a current user entry; SPEED moved to the live toolbar
 - Player must apply prepared gain values only; it must not run heavy level analysis during live playback
 
 Live gain controls:
